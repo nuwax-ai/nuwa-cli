@@ -141,7 +141,9 @@ export function startUiHttp(options: UiServerOptions): {
       }
       (async () => {
         const result = await parseTranscript(engine, file, { limit: 200 });
-        sendJson(res, 200, httpResult(result));
+        // Spread so `messages`/`hasMore` sit at the top level (the SPA reads
+        // r.messages), matching how the other routes alias their payloads.
+        sendJson(res, 200, { ...httpResult(result), ...result });
       })().catch((err) =>
         sendJson(res, 400, httpError("BAD_REQUEST", (err as Error).message)),
       );

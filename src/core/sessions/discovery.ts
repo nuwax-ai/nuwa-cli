@@ -97,14 +97,33 @@ async function readClaudeSessionSummary(
   };
 }
 
+/** Joins the text parts of a codex message payload's `content` array. */
+function codexMessageText(payload: Record<string, unknown>): string | undefined {
+  const content = payload.content;
+  if (!Array.isArray(content)) return undefined;
+  let text = "";
+  for (const part of content) {
+    if (
+      part &&
+      typeof part === "object" &&
+      typeof (part as Record<string, unknown>).text === "string"
+    ) {
+      text += (part as Record<string, unknown>).text as string;
+    }
+  }
+  const trimmed = text.trim();
+  return trimmed || undefined;
+}
+
 async function readCodexSessionSummary(
   filePath: string,
 ): Promise<LocalSessionSummary | null> {
   let sessionId: string | undefined;
   let cwd: string | undefined;
   let model: string | undefined;
+  let title: string | undefined;
 
-  await scanJsonlHead(filePath, 25, (obj) => {
+  await scanJsonlHead(filePath, 80, (obj) => {
     if (
       obj.type === "session_meta" &&
       obj.payload &&
@@ -128,7 +147,29 @@ async function readCodexSessionSummary(
     ) {
       model = (obj.payload as Record<string, unknown>).model as string;
     }
-    return Boolean(sessionId && cwd && model);
+    // Derive a title from the first *real* user message. Codex prepends an
+    // AGENTS.md instruction blob as a user turn, so skip content that looks
+    // like injected instructions (leading "#" / "<") or is very long.
+    if (
+      !title &&
+      obj.type === "response_item" &&
+      obj.payload &&
+      typeof obj.payload === "object"
+    ) {
+      const payload = obj.payload as Record<string, unknown>;
+      if (payload.type === "message" && payload.role === "user") {
+        const text = codexMessageText(payload);
+        if (
+          text &&
+          !text.startsWith("#") &&
+          !text.startsWith("<") &&
+          text.length <= 400
+        ) {
+          title = truncateTitle(text);
+        }
+      }
+    }
+    return Boolean(sessionId && cwd && model && title);
   });
 
   if (!sessionId || !cwd) return null;
@@ -137,7 +178,7 @@ async function readCodexSessionSummary(
     engine: "codex",
     sessionId,
     cwd,
-    title: "(codex 会话)",
+    title: title ?? "(codex 会话)",
     updatedAt: stat.mtime.toISOString(),
     filePath,
     model,

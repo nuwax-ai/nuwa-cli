@@ -18,21 +18,21 @@ export function getEngineModelHint(engine: EngineKind): string | undefined {
       const file = path.join(os.homedir(), ".claude", "settings.json");
       const raw = fs.readFileSync(file, "utf-8");
       const obj = JSON.parse(raw) as Record<string, unknown>;
-      // Top-level `model` (e.g. "sonnet"), else an env override declared inside
-      // the settings `env` block. `ANTHROPIC_MODEL` wins over the per-tier
-      // defaults because it is the one that actually forces a single model.
-      if (typeof obj.model === "string" && obj.model) return obj.model;
       const env = obj.env;
-      if (env && typeof env === "object") {
-        const e = env as Record<string, unknown>;
-        for (const key of [
-          "ANTHROPIC_MODEL",
-          "ANTHROPIC_DEFAULT_SONNET_MODEL",
-          "ANTHROPIC_DEFAULT_OPUS_MODEL",
-          "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-        ]) {
-          if (typeof e[key] === "string" && e[key]) return e[key] as string;
-        }
+      const envObj =
+        env && typeof env === "object" ? (env as Record<string, unknown>) : {};
+      // ANTHROPIC_MODEL is the concrete model override (the model that actually
+      // runs), so prefer it over the `model` tier alias ("sonnet"/"opus"/...)
+      // which may itself map to a different concrete model via ANTHROPIC_DEFAULT_*.
+      if (typeof envObj.ANTHROPIC_MODEL === "string" && envObj.ANTHROPIC_MODEL)
+        return envObj.ANTHROPIC_MODEL;
+      if (typeof obj.model === "string" && obj.model) return obj.model;
+      for (const key of [
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+      ]) {
+        if (typeof envObj[key] === "string" && envObj[key]) return envObj[key] as string;
       }
       return undefined;
     }
