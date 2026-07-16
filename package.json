@@ -10,7 +10,7 @@
     "dist"
   ],
   "scripts": {
-    "prepare": "pnpm run build",
+    "prepare": "npm run build",
     "build": "tsc --noEmit && node scripts/build.mjs",
     "build:tsc": "tsc",
     "dev:build": "node scripts/build.mjs",
