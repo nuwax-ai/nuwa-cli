@@ -6,6 +6,9 @@ import type { EngineKind } from "../env/inheritEnv.js";
 import type { PermissionMode } from "../permissions/policy.js";
 import { SessionHub } from "./sessionHub.js";
 import { writeServeLock, clearServeLock } from "./serveLock.js";
+import { parseComputerPermissionResolveRequest } from "../permissions/notifyResolved.js";
+import { listLocalSessions } from "../sessions/discovery.js";
+import { parseTranscript } from "../sessions/transcript.js";
 import { ensureDir } from "../../util/paths.js";
 import { debugLog } from "../debugLog.js";
 
@@ -95,6 +98,17 @@ function textField(
     if (typeof value === "string" && value.length > 0) return value;
   }
   return undefined;
+}
+
+/** 仅本机回环客户端可无 secret 调 sensitive-access（CLI 闸门）；非 loopback 必须带 secret。 */
+function isLoopbackRemote(req: http.IncomingMessage): boolean {
+  const addr = req.socket.remoteAddress ?? "";
+  return (
+    addr === "127.0.0.1" ||
+    addr === "::1" ||
+    addr === "::ffff:127.0.0.1" ||
+    addr.endsWith("/127.0.0.1")
+  );
 }
 
 function secretCandidates(req: http.IncomingMessage, url: URL): string[] {
@@ -208,6 +222,7 @@ function resolveChatCwd(
 export function startServeHttp(options: ServeOptions): {
   secret: string;
   server: http.Server;
+  hub: SessionHub;
   addAcceptedSecret: (secret: string | undefined) => void;
   stop: () => Promise<void>;
 } {
@@ -265,6 +280,11 @@ export function startServeHttp(options: ServeOptions): {
 
     const isProgressRoute =
       url.pathname.startsWith("/computer/progress/") && method === "GET";
+    // 本机 CLI 闸门：仅 loopback 可无 secret；secret 不落盘，CLI 靠本机回环调用
+    const isSensitiveAwaitRoute =
+      url.pathname === "/computer/sensitive-access/await" && method === "POST";
+    const allowSensitiveAwaitUnauthed =
+      isSensitiveAwaitRoute && isLoopbackRemote(req);
     const isComputerRoute = url.pathname.startsWith("/computer/");
     const allowElectronCompatibleComputerRoute =
       options.allowUnauthenticatedComputerRoutes === true && isComputerRoute;
@@ -274,6 +294,7 @@ export function startServeHttp(options: ServeOptions): {
     if (
       !authorized &&
       !isProgressRoute &&
+      !allowSensitiveAwaitUnauthed &&
       !allowElectronCompatibleComputerRoute
     ) {
       debugLog("serve.http", "unauthorized", {
@@ -587,9 +608,283 @@ export function startServeHttp(options: ServeOptions): {
 
     if (url.pathname === "/computer/notify-resolved" && method === "POST") {
       readJsonBody(req)
-        .then(() =>
-          sendJson(res, 200, httpResult({ success: true, ignored: true })),
-        )
+        .then((body) => {
+          const parsed = parseComputerPermissionResolveRequest(body);
+          if (!parsed.ok) {
+            // 无 permission_resolve_request：保持向后兼容，当作 ignored no-op
+            if (parsed.body.error.code === "ERR_NOT_PERMISSION_RESOLVE") {
+              sendJson(
+                res,
+                200,
+                httpResult({ success: true, ignored: true }),
+              );
+              return;
+            }
+            sendJson(res, parsed.status, {
+              ...httpError(parsed.body.error.code, parsed.body.error.message),
+              ...parsed.body,
+            });
+            return;
+          }
+
+          const result = hub.pending.resolveBySessionTool(
+            parsed.command.acpSessionId,
+            parsed.command.toolCallId,
+            parsed.command.acpResponse,
+          );
+          if (!result.ok) {
+            const status =
+              result.hostStatus === "gone"
+                ? 404
+                : result.error.code === "ERR_VALIDATION"
+                  ? 400
+                  : 409;
+            sendJson(res, status, {
+              ...httpError(result.error.code, result.error.message),
+              ok: false,
+              hostStatus: result.hostStatus,
+              error: result.error,
+            });
+            return;
+          }
+
+          // allow_always：若 pending 带 classifierId，缓存到 coordinator
+          if (
+            parsed.command.acpResponse.outcome.outcome === "selected" &&
+            result.pending.classifierId
+          ) {
+            const optionId = parsed.command.acpResponse.outcome.optionId;
+            const option = result.pending.request.options.find(
+              (o) => o.optionId === optionId,
+            );
+            if (option?.kind === "allow_always") {
+              hub.coordinator.rememberAllowAlways(
+                result.pending.appSessionId,
+                result.pending.classifierId,
+              );
+            }
+          }
+
+          debugLog("serve.notify-resolved", "resolved", {
+            acpSessionId: parsed.command.acpSessionId,
+            toolCallId: parsed.command.toolCallId,
+            hostStatus: result.hostStatus,
+          });
+          sendJson(
+            res,
+            200,
+            httpResult({
+              success: true,
+              ok: true,
+              hostStatus: result.hostStatus,
+            }),
+          );
+        })
+        .catch((err) =>
+          sendJson(res, 400, httpError("BAD_REQUEST", (err as Error).message)),
+        );
+      return;
+    }
+
+    // CLI 旁路：阻塞等待敏感访问审批（与 ACP ask 同构 SSE）
+    if (
+      url.pathname === "/computer/sensitive-access/await" &&
+      method === "POST"
+    ) {
+      readJsonBody(req)
+        .then(async (body) => {
+          const kind =
+            textField(body, "kind") ?? textField(body, "sensitive_kind");
+          if (!kind) {
+            sendJson(
+              res,
+              400,
+              httpError("VALIDATION_ERROR", "kind is required"),
+            );
+            return;
+          }
+          const title =
+            textField(body, "title") ?? `local_sessions_${kind}`;
+          const result = await hub.awaitSensitiveAccess({
+            kind,
+            title,
+            rawInput:
+              body.raw_input && typeof body.raw_input === "object"
+                ? (body.raw_input as Record<string, unknown>)
+                : { kind },
+            appSessionId: textField(body, "session_id", "sessionId"),
+          });
+          if (result.noApprovalChannel) {
+            sendJson(
+              res,
+              503,
+              httpError(
+                "NO_APPROVAL_CHANNEL",
+                "no SSE subscriber on /computer/progress — open a cloud/local progress stream before requesting sensitive access",
+              ),
+            );
+            return;
+          }
+          if (!result.allowed) {
+            sendJson(
+              res,
+              403,
+              httpError(
+                "CONSENT_DENIED",
+                "user denied or cancelled sensitive access",
+              ),
+            );
+            return;
+          }
+          sendJson(res, 200, httpResult({ allowed: true, kind }));
+        })
+        .catch((err) =>
+          sendJson(res, 400, httpError("BAD_REQUEST", (err as Error).message)),
+        );
+      return;
+    }
+
+    // 敏感导出：列出本地 claude/codex sessions（须先审批）
+    if (
+      url.pathname === "/computer/local-sessions/list" &&
+      (method === "GET" || method === "POST")
+    ) {
+      const run = async () => {
+        const body = method === "POST" ? await readJsonBody(req) : {};
+        const engineRaw =
+          textField(body, "engine") ?? url.searchParams.get("engine") ?? undefined;
+        const engine =
+          engineRaw === "claude" || engineRaw === "codex"
+            ? engineRaw
+            : undefined;
+        const consent = await hub.awaitSensitiveAccess({
+          kind: "session-history",
+          title: "local_sessions_list",
+          rawInput: {
+            command: `nuwa-cli context list${engine ? ` --engine ${engine}` : ""}`,
+          },
+          appSessionId: textField(body, "session_id", "sessionId"),
+        });
+        if (consent.noApprovalChannel) {
+          sendJson(
+            res,
+            503,
+            httpError(
+              "NO_APPROVAL_CHANNEL",
+              "no SSE subscriber on /computer/progress — open a progress stream before listing local sessions",
+            ),
+          );
+          return;
+        }
+        if (!consent.allowed) {
+          sendJson(
+            res,
+            403,
+            httpError("CONSENT_DENIED", "user denied local sessions list"),
+          );
+          return;
+        }
+        const sessions = await listLocalSessions(engine);
+        sendJson(res, 200, httpResult({ items: sessions }));
+      };
+      run().catch((err) =>
+        sendJson(res, 400, httpError("BAD_REQUEST", (err as Error).message)),
+      );
+      return;
+    }
+
+    // 敏感导出：读取单个本地 session transcript
+    if (url.pathname === "/computer/local-sessions/read" && method === "POST") {
+      readJsonBody(req)
+        .then(async (body) => {
+          const engineRaw = textField(body, "engine");
+          const sessionId = textField(body, "session_id", "sessionId");
+          if (engineRaw !== "claude" && engineRaw !== "codex") {
+            sendJson(
+              res,
+              400,
+              httpError("VALIDATION_ERROR", "engine must be claude or codex"),
+            );
+            return;
+          }
+          if (!sessionId) {
+            sendJson(
+              res,
+              400,
+              httpError("VALIDATION_ERROR", "session_id is required"),
+            );
+            return;
+          }
+          const consent = await hub.awaitSensitiveAccess({
+            kind: "session-history",
+            title: "local_sessions_read",
+            rawInput: {
+              command: `nuwa-cli context read --ref ${engineRaw}:${sessionId}`,
+            },
+            appSessionId: textField(body, "app_session_id", "appSessionId"),
+          });
+          if (consent.noApprovalChannel) {
+            sendJson(
+              res,
+              503,
+              httpError(
+                "NO_APPROVAL_CHANNEL",
+                "no SSE subscriber on /computer/progress — open a progress stream before reading local sessions",
+              ),
+            );
+            return;
+          }
+          if (!consent.allowed) {
+            sendJson(
+              res,
+              403,
+              httpError("CONSENT_DENIED", "user denied local session read"),
+            );
+            return;
+          }
+          const sessions = await listLocalSessions(engineRaw);
+          const match = sessions.find((s) => s.sessionId === sessionId);
+          if (!match) {
+            sendJson(
+              res,
+              404,
+              httpError(
+                "ERR_SESSION_NOT_FOUND",
+                `local session ${sessionId} not found`,
+              ),
+            );
+            return;
+          }
+          const limitRaw = body.limit;
+          const limit =
+            typeof limitRaw === "number"
+              ? limitRaw
+              : typeof limitRaw === "string"
+                ? Number(limitRaw)
+                : undefined;
+          const { messages, hasMore } = await parseTranscript(
+            engineRaw,
+            match.filePath,
+            {
+              limit:
+                Number.isFinite(limit) && (limit as number) > 0
+                  ? (limit as number)
+                  : undefined,
+            },
+          );
+          sendJson(
+            res,
+            200,
+            httpResult({
+              engine: engineRaw,
+              sessionId: match.sessionId,
+              cwd: match.cwd,
+              title: match.title,
+              messages,
+              hasMore,
+            }),
+          );
+        })
         .catch((err) =>
           sendJson(res, 400, httpError("BAD_REQUEST", (err as Error).message)),
         );
@@ -623,6 +918,7 @@ export function startServeHttp(options: ServeOptions): {
   return {
     secret,
     server,
+    hub,
     addAcceptedSecret: (value) => {
       if (!value) return;
       acceptedSecrets.add(value);

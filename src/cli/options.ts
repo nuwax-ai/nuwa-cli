@@ -49,7 +49,7 @@ export function addServeRuntimeOptions(command: Command): Command {
       )
       .option(
         "--approve <policy>",
-        "权限策略：auto（默认，自动批准）或 deny",
+        "权限策略：auto（默认，普通工具自动批准；敏感访问仍需审批）、ask（全部人工审批）或 deny",
         "auto",
       )
       .option(
@@ -84,7 +84,7 @@ export function addServiceInstallOptions(command: Command): Command {
     )
     .option(
       "--approve <policy>",
-      "权限策略：auto（默认，自动批准）或 deny",
+      "权限策略：auto（默认，普通工具自动批准；敏感访问仍需审批）、ask（全部人工审批）或 deny",
       "auto",
     )
     .option(

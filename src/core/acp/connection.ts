@@ -13,6 +13,7 @@ import {
 } from "@agentclientprotocol/sdk";
 import type { PermissionMode } from "../permissions/policy.js";
 import { decidePermission } from "../permissions/policy.js";
+import type { PermissionCoordinator } from "../permissions/coordinator.js";
 import { CLI_VERSION } from "../version.js";
 
 export interface SpawnTarget {
@@ -28,6 +29,14 @@ export interface EngineSessionHandlers {
   /** Fired for every session/update notification, in addition to the text-specific handlers above — used by `serve` to forward the full update over SSE. */
   onRawUpdate?: (notification: SessionNotification) => void;
   permissionMode: PermissionMode;
+  /** serve 侧注入：敏感/ask 时走 SSE + notify-resolved。 */
+  onPermissionAsk?: (
+    request: RequestPermissionRequest,
+    meta: { classifierId?: string; reason: string },
+  ) => Promise<RequestPermissionResponse>;
+  coordinator?: PermissionCoordinator;
+  /** Hub 的 app session id，用于 allow_always 缓存键。 */
+  appSessionId?: string;
 }
 
 const STDERR_BUFFER_LIMIT = 8000;
@@ -119,10 +128,12 @@ export async function withEngineConnection<T>(
     .onRequest(
       CLIENT_METHODS.session_request_permission,
       (reqCtx): Promise<RequestPermissionResponse> =>
-        decidePermission(
-          reqCtx.params as RequestPermissionRequest,
-          handlers.permissionMode,
-        ),
+        decidePermission(reqCtx.params as RequestPermissionRequest, {
+          mode: handlers.permissionMode,
+          onAsk: handlers.onPermissionAsk,
+          coordinator: handlers.coordinator,
+          appSessionId: handlers.appSessionId,
+        }),
     )
     .onNotification(CLIENT_METHODS.session_update, (reqCtx) => {
       routeSessionUpdate(reqCtx.params as SessionNotification, handlers);

@@ -44,6 +44,46 @@ describe("withEngineConnection", () => {
     expect(chunks.join("")).toBe("decision:allow-always");
   });
 
+  it("yolo still forces onAsk for session-history sensitive bash", async () => {
+    const chunks: string[] = [];
+    let asked = false;
+    await withEngineConnection(
+      spawnTarget(),
+      {
+        permissionMode: "yolo",
+        onAgentText: (t) => chunks.push(t),
+        onPermissionAsk: async (req) => {
+          asked = true;
+          expect(req.toolCall.rawInput).toMatchObject({
+            command: expect.stringContaining("nuwa-cli context"),
+          });
+          return {
+            outcome: { outcome: "selected", optionId: "allow-once" },
+          };
+        },
+      },
+      async (ctx) => {
+        const session = await ctx.buildSession(process.cwd()).start();
+        await session.prompt("trigger-sensitive-permission");
+      },
+    );
+    expect(asked).toBe(true);
+    expect(chunks.join("")).toBe("sensitive:allow-once");
+  });
+
+  it("yolo without onAsk denies sensitive bash instead of auto-allowing", async () => {
+    const chunks: string[] = [];
+    await withEngineConnection(
+      spawnTarget(),
+      { permissionMode: "yolo", onAgentText: (t) => chunks.push(t) },
+      async (ctx) => {
+        const session = await ctx.buildSession(process.cwd()).start();
+        await session.prompt("trigger-sensitive-permission");
+      },
+    );
+    expect(chunks.join("")).toBe("sensitive:reject-once");
+  });
+
   it("denies and reports the reject option in deny-noninteractive mode", async () => {
     const chunks: string[] = [];
     await withEngineConnection(

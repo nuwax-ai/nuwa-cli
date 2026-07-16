@@ -4,7 +4,10 @@ import { spawn } from "node:child_process";
 import pc from "picocolors";
 import { getEngine } from "../core/engines/registry.js";
 import { buildCliChildEnv, type EngineKind } from "../core/env/inheritEnv.js";
-import type { PermissionMode } from "../core/permissions/policy.js";
+import {
+  parseApproveFlag,
+  type PermissionMode,
+} from "../core/permissions/policy.js";
 import { startServeHttp } from "../core/serve/server.js";
 import { startFileServer, stopFileServer } from "../core/serve/fileServer.js";
 import {
@@ -155,18 +158,13 @@ export async function serveCommand(
   }
   // Validate explicitly so a typo (e.g. `--approve deni`, `--approve strict`)
   // errors out instead of silently falling through to yolo (full auto-approve).
-  const approveRaw = options.approve ?? "auto";
-  if (approveRaw !== "auto" && approveRaw !== "deny") {
-    console.error(
-      pc.red(
-        `[nuwa-cli] --approve 只支持 auto 或 deny，收到 "${approveRaw}"。`,
-      ),
-    );
+  const approveParsed = parseApproveFlag(options.approve);
+  if (!approveParsed.ok) {
+    console.error(pc.red(`[nuwa-cli] ${approveParsed.message}`));
     process.exitCode = 1;
     return;
   }
-  const permissionMode: PermissionMode =
-    approveRaw === "deny" ? "deny-noninteractive" : "yolo";
+  const permissionMode: PermissionMode = approveParsed.mode;
   let fileServerStarted = false;
   let activeFileServerPort: number | undefined;
   let lanproxyHandle: LanproxyHandle | undefined;
@@ -218,12 +216,17 @@ export async function serveCommand(
 
   if (permissionMode === "yolo") {
     // yolo has no path confinement (unlike the Electron client's strict gate):
-    // every tool call — file write/delete, shell, network — is auto-approved.
-    // Surface that explicitly at startup rather than letting the default look
-    // safe. See known limitation; full confinement is a follow-up.
+    // ordinary tool calls are auto-approved, but sensitive classifiers
+    // (e.g. local session history) still force ask via SSE/notify-resolved.
     console.error(
       pc.yellow(
-        "[nuwa-cli] 当前为自动批准（yolo）模式：引擎发起的所有工具调用（含文件写入/删除、命令执行、网络访问）都会被自动放行，且不做路径限制。请确认仅监听本机、X-Nuwax-Internal-Secret 未泄露；如需拒绝工具调用请改用 --approve deny。",
+        "[nuwa-cli] 当前为自动批准（auto/yolo）模式：普通工具调用（含文件写入/删除、命令执行、网络访问）会自动放行且无路径限制；本地 sessions 等敏感访问仍需云端/本机审批。请确认仅监听本机、X-Nuwax-Internal-Secret 未泄露；全部人工审批请用 --approve ask，全部拒绝请用 --approve deny。",
+      ),
+    );
+  } else if (permissionMode === "ask") {
+    console.error(
+      pc.yellow(
+        "[nuwa-cli] 当前为 ask 模式：所有工具调用均通过 SSE acpRequestPermission 等待 /computer/notify-resolved 审批。",
       ),
     );
   }

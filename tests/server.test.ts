@@ -304,7 +304,7 @@ describe("serve HTTP server", () => {
     });
   });
 
-  it("accepts notify-resolved as a no-op in headless CLI mode", async () => {
+  it("accepts notify-resolved without permission_resolve_request as ignored no-op", async () => {
     const res = await fetch(url("/computer/notify-resolved"), {
       method: "POST",
       headers: {
@@ -318,6 +318,142 @@ describe("serve HTTP server", () => {
       code: "0000",
       data: { success: true, ignored: true },
     });
+  });
+
+  it("cancels askPermission immediately when no SSE subscriber is attached", async () => {
+    const request = {
+      sessionId: "acp-no-sse",
+      toolCall: {
+        toolCallId: "tool-no-sse",
+        kind: "read" as const,
+        title: "local_sessions_list",
+        rawInput: { command: "nuwa-cli context list" },
+      },
+      options: [
+        { optionId: "allow_once", name: "允许本次", kind: "allow_once" as const },
+        { optionId: "reject_once", name: "拒绝", kind: "reject_once" as const },
+      ],
+    };
+    await expect(
+      handle.hub.askPermission("app-sess", request, {
+        classifierId: "session-history",
+      }),
+    ).resolves.toMatchObject({ outcome: { outcome: "cancelled" } });
+  });
+
+  it("resolves a pending permission via notify-resolved Selected.option_id", async () => {
+    const closeHandlers: Array<() => void> = [];
+    const fakeRes = {
+      write: () => true,
+      end: () => {},
+      on(event: string, cb: () => void) {
+        if (event === "close") closeHandlers.push(cb);
+        return fakeRes;
+      },
+    } as unknown as import("node:http").ServerResponse;
+    handle.hub.subscribeLooseSse(fakeRes);
+
+    const request = {
+      sessionId: "acp-pending-1",
+      toolCall: {
+        toolCallId: "tool-pending-1",
+        kind: "read" as const,
+        title: "local_sessions_list",
+        rawInput: { command: "nuwa-cli context list" },
+      },
+      options: [
+        { optionId: "allow_once", name: "允许本次", kind: "allow_once" as const },
+        { optionId: "reject_once", name: "拒绝", kind: "reject_once" as const },
+      ],
+    };
+    const pendingPromise = handle.hub.askPermission("app-sess", request, {
+      classifierId: "session-history",
+    });
+
+    const res = await fetch(url("/computer/notify-resolved"), {
+      method: "POST",
+      headers: {
+        "X-Nuwax-Internal-Secret": handle.secret,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        permission_resolve_request: {
+          session_id: "acp-pending-1",
+          tool_call_id: "tool-pending-1",
+          request_permission_response: {
+            outcome: { Selected: { option_id: "allow_once" } },
+          },
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      code: "0000",
+      data: { success: true, ok: true, hostStatus: "resolved" },
+    });
+    await expect(pendingPromise).resolves.toMatchObject({
+      outcome: { outcome: "selected", optionId: "allow_once" },
+    });
+
+    // idempotent retry → already_resolved
+    const retry = await fetch(url("/computer/notify-resolved"), {
+      method: "POST",
+      headers: {
+        "X-Nuwax-Internal-Secret": handle.secret,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        permission_resolve_request: {
+          session_id: "acp-pending-1",
+          tool_call_id: "tool-pending-1",
+          request_permission_response: {
+            outcome: { Selected: { option_id: "allow_once" } },
+          },
+        },
+      }),
+    });
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toMatchObject({
+      data: { hostStatus: "already_resolved" },
+    });
+
+    fakeRes.destroy?.();
+    for (const h of closeHandlers) h();
+  });
+
+  it("sensitive-access/await returns 503 when no SSE approval channel exists", async () => {
+    const res = await fetch(url("/computer/sensitive-access/await"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "session-history",
+        title: "local_sessions_list",
+      }),
+    });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({
+      code: "NO_APPROVAL_CHANNEL",
+    });
+  });
+
+  it("returns 404 when notify-resolved targets unknown pending", async () => {
+    const res = await fetch(url("/computer/notify-resolved"), {
+      method: "POST",
+      headers: {
+        "X-Nuwax-Internal-Secret": handle.secret,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        permission_resolve_request: {
+          session_id: "missing",
+          tool_call_id: "missing",
+          request_permission_response: {
+            outcome: { outcome: "cancelled" },
+          },
+        },
+      }),
+    });
+    expect(res.status).toBe(404);
   });
 
   it("allows unauthenticated computer routes when Electron-compatible tunnel mode is enabled", async () => {

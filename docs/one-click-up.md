@@ -85,7 +85,7 @@ nuwa-cli up
 | `--daemon` | 后台启动 serve |
 | `--port <port>` | HTTP API 优先端口，默认 `60016`，占用时自动后移 |
 | `--host <host>` | HTTP API 监听地址，默认 `127.0.0.1` |
-| `--approve <auto\|deny>` | 传给 `serve` 的权限策略 |
+| `--approve <auto\|ask\|deny>` | 传给 `serve` 的权限策略（敏感访问在 auto 下仍强制 ask） |
 | `--lanproxy-path <path>` | lanproxy 二进制或资源目录 |
 | `--lanproxy-host <host>` | 覆盖注册返回的 lanproxy serverHost |
 | `--lanproxy-port <port>` | 覆盖注册返回的 lanproxy serverPort |

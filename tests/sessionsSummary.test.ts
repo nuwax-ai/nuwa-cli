@@ -20,10 +20,12 @@ describe("sessionsSummaryCommand", () => {
     tmpHome = fs.mkdtempSync(
       path.join(os.tmpdir(), "nuwa-cli-sessions-summary-test-"),
     );
+    process.env.NUWACLI_SENSITIVE_ACCESS = "allow";
     vi.resetModules();
   });
 
   afterEach(() => {
+    delete process.env.NUWACLI_SENSITIVE_ACCESS;
     fs.rmSync(tmpHome, { recursive: true, force: true });
   });
 

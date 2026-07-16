@@ -226,7 +226,7 @@ If `--cwd` is not provided, the default workspace root is `~/.nuwa-cli/workspace
 
 For plain local `serve`, every route except `/health` and the read-only SSE `/computer/progress/:session_id` requires authentication. The preferred form is `X-Nuwax-Internal-Secret`, with `Authorization: Bearer <secret>` and `?apiKey=<secret>` accepted for clients that cannot set custom headers. In `--tunnel` mode, `/computer/*` and `/devcomputer/*` follow the Electron client's contract: the lanproxy connection is authenticated with the savedKey/configKey client key, and the forwarded local HTTP calls do not carry another per-request savedKey. The server still prints a fresh local debug secret on startup; it is never written to disk.
 
-`--approve` controls tool-call approval: `auto` (default) auto-approves every tool call (`yolo`), and `deny` refuses them (useful when the engine should run without side effects). Any other value is rejected rather than silently treated as `auto`. In `auto`/`yolo` mode the server prints a startup warning that **all** tool calls — including destructive writes, shell, and network — are auto-approved with no path confinement; pass `--approve deny` if that's not acceptable.
+`--approve` controls tool-call approval: `auto` (default) auto-approves ordinary tool calls (`yolo`) but **sensitive classifiers** (e.g. local session history) still require human approval via SSE `acpRequestPermission` + `POST /computer/notify-resolved`; `ask` requires approval for every tool call; `deny` refuses them all. Any other value is rejected rather than silently treated as `auto`. See [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).
 
 Lifecycle:
 
@@ -247,7 +247,7 @@ If the register response includes `serverHost`/`serverPort`, the explicit host/p
 
 - **codex on Windows/Linux ARM**: only tested on macOS arm64 so far.
 - **Process-tree teardown on exit**: only the direct engine child receives `SIGTERM`; grandchildren (for example, the `claude` binary the `claude-code-acp-ts` adapter spawns) aren't signalled and may be orphaned. `serve` shutdown still stops its own HTTP sessions, but stray grandchildren can linger.
-- **No path-confinement in `yolo`**: `--approve auto` auto-approves every tool call regardless of target path; there is no writable-root guard yet (the Electron client's strict-permission gate hasn't been ported).
+- **No path-confinement in `yolo`**: `--approve auto` auto-approves ordinary tool calls regardless of target path; there is no writable-root guard yet. Sensitive access (local sessions) is still forced to ask — see [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).
 - **Autostart is current-user scoped**: `service install` uses LaunchAgent / systemd user service / Scheduled Task. It is not a privileged system-wide daemon. On Linux, true boot-before-login requires systemd linger configured outside the CLI.
 - **Custom/third-party ACP engines** (pi-acp, hermes, kilo, openclaw, ...) aren't supported yet — only `claude` and `codex`.
 - **lanproxy distribution**: lanproxy is still the only preintegrated client resource; point `--lanproxy-path` (or `NUWACLI_LANPROXY_PATH`) at an existing binary or `resources/lanproxy` directory.

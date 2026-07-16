@@ -22,10 +22,12 @@ function writeClaudeSession(id: string, lines: unknown[]): void {
 describe("context commands", () => {
   beforeEach(() => {
     tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "nuwa-cli-context-test-"));
+    process.env.NUWACLI_SENSITIVE_ACCESS = "allow";
     vi.resetModules();
   });
 
   afterEach(() => {
+    delete process.env.NUWACLI_SENSITIVE_ACCESS;
     fs.rmSync(tmpHome, { recursive: true, force: true });
   });
 

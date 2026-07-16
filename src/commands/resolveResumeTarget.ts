@@ -5,6 +5,7 @@ import {
   type LocalSessionSummary,
 } from "../core/sessions/discovery.js";
 import type { EngineKind } from "../core/env/inheritEnv.js";
+import { withSensitiveAccess } from "../core/permissions/sensitiveAccessGate.js";
 
 export interface ResumeTarget {
   sessionId: string;
@@ -25,7 +26,15 @@ export async function resolveResumeTarget(
 ): Promise<ResumeTarget | null> {
   if (!resumeOption) return null;
 
-  const sessions = await listLocalSessions(engine);
+  // resume 是用户主动续接：purpose=user-resume，敏感闸门直接放行
+  const sessions = await withSensitiveAccess(
+    {
+      kind: "session-history",
+      title: "local_sessions_list",
+      purpose: "user-resume",
+    },
+    () => listLocalSessions(engine),
+  );
 
   if (typeof resumeOption === "string") {
     // Try exact match first

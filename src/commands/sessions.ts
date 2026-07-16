@@ -5,6 +5,11 @@ import {
   type LocalSessionSummary,
 } from "../core/sessions/discovery.js";
 import { parseTranscript } from "../core/sessions/transcript.js";
+import {
+  ConsentDeniedError,
+  ConsentRequiredError,
+  withSensitiveAccess,
+} from "../core/permissions/sensitiveAccessGate.js";
 
 export interface SessionsCommandOptions {
   engine?: string;
@@ -17,6 +22,15 @@ export interface SessionsCommandOptions {
   json?: boolean;
 }
 
+function handleGateError(err: unknown): void {
+  if (err instanceof ConsentRequiredError || err instanceof ConsentDeniedError) {
+    console.error(pc.red(`[nuwa-cli] ${err.message}`));
+    process.exitCode = 1;
+    return;
+  }
+  throw err;
+}
+
 export async function sessionsCommand(
   options: SessionsCommandOptions,
 ): Promise<void> {
@@ -25,14 +39,30 @@ export async function sessionsCommand(
       ? options.engine
       : undefined;
 
-  const sessions = await listLocalSessions({
-    engine,
-    search: options.search,
-    sinceDays: options.days ? Number(options.days) : undefined,
-    since: options.since,
-    until: options.until,
-    limit: options.limit ? Number(options.limit) : undefined,
-  });
+  let sessions: LocalSessionSummary[];
+  try {
+    sessions = await withSensitiveAccess(
+      {
+        kind: "session-history",
+        title: "local_sessions_list",
+        rawInput: {
+          command: `nuwa-cli sessions${engine ? ` --engine ${engine}` : ""}`,
+        },
+      },
+      () =>
+        listLocalSessions({
+          engine,
+          search: options.search,
+          sinceDays: options.days ? Number(options.days) : undefined,
+          since: options.since,
+          until: options.until,
+          limit: options.limit ? Number(options.limit) : undefined,
+        }),
+    );
+  } catch (err) {
+    handleGateError(err);
+    return;
+  }
 
   if (sessions.length === 0) {
     if (options.search) {
@@ -43,14 +73,12 @@ export async function sessionsCommand(
     return;
   }
 
-  // JSON output mode
   if (options.json) {
     console.log(JSON.stringify(sessions, null, 2));
     return;
   }
 
   if (options.verbose) {
-    // verbose: show more detail with message counts
     for (const s of sessions) {
       console.log(
         `${pc.cyan(s.engine.padEnd(6))} ${pc.dim(s.updatedAt.slice(0, 16).replace("T", " "))}  ${s.title}`,
@@ -59,7 +87,6 @@ export async function sessionsCommand(
       console.log(`       ${pc.dim(s.cwd)}`);
     }
   } else {
-    // compact: first line only
     for (const s of sessions) {
       console.log(
         `${pc.cyan(s.engine.padEnd(6))} ${pc.dim(s.updatedAt.slice(0, 16).replace("T", " "))}  ${s.title}`,
@@ -87,15 +114,7 @@ export interface SessionsSummaryCommandOptions {
 /**
  * Prints a compact, engine-agnostic JSON digest of one local session's full
  * transcript. Meant to be invoked by an *agent's own shell tool* (not a
- * human) — this is how `chat --ref-session` lets a session on one engine
- * read another engine's history on demand, instead of eagerly dumping it
- * into the first prompt.
- *
- * Takes the raw (unmerged) options plus the commander Command instance —
- * `--engine` is also declared on the parent `sessions` command (for the
- * list action), so this reads the effective value via `optsWithGlobals()`
- * and validates it itself rather than using commander's `requiredOption`,
- * which only sees a subcommand's own local options.
+ * human) — gated by sensitive-access when non-TTY.
  */
 export async function sessionsSummaryCommand(
   _options: SessionsSummaryCommandOptions,
@@ -119,43 +138,61 @@ export async function sessionsSummaryCommand(
     return;
   }
 
-  const sessions = await listLocalSessions(engine);
-  const match = sessions.find((s) => s.sessionId === sessionId);
-  if (!match) {
-    console.error(
-      pc.red(
-        `[nuwa-cli] 未在本地 ${engine} 会话历史中找到 sessionId "${sessionId}"。`,
-      ),
+  try {
+    await withSensitiveAccess(
+      {
+        kind: "session-history",
+        title: "local_sessions_read",
+        rawInput: {
+          command: `nuwa-cli sessions summary --engine ${engine} --session-id ${sessionId}`,
+        },
+      },
+      async () => {
+        const sessions = await listLocalSessions(engine);
+        const match = sessions.find((s) => s.sessionId === sessionId);
+        if (!match) {
+          console.error(
+            pc.red(
+              `[nuwa-cli] 未在本地 ${engine} 会话历史中找到 sessionId "${sessionId}"。`,
+            ),
+          );
+          process.exitCode = 1;
+          return;
+        }
+
+        const limit = merged.limit ? Number(merged.limit) : undefined;
+        const offset = merged.offset ? Number(merged.offset) : undefined;
+
+        const { messages, hasMore } = await parseTranscript(
+          engine,
+          match.filePath,
+          {
+            limit,
+            offset,
+            order: merged.reverse ? "desc" : "asc",
+          },
+        );
+
+        if (merged.format === "jsonl") {
+          for (const msg of messages) {
+            console.log(JSON.stringify({ engine, sessionId, ...msg }));
+          }
+          return;
+        }
+
+        console.log(
+          JSON.stringify({
+            engine,
+            sessionId: match.sessionId,
+            cwd: match.cwd,
+            title: match.title,
+            messages,
+            hasMore,
+          }),
+        );
+      },
     );
-    process.exitCode = 1;
-    return;
+  } catch (err) {
+    handleGateError(err);
   }
-
-  const limit = merged.limit ? Number(merged.limit) : undefined;
-  const offset = merged.offset ? Number(merged.offset) : undefined;
-
-  const { messages, hasMore } = await parseTranscript(engine, match.filePath, {
-    limit,
-    offset,
-    order: merged.reverse ? "desc" : "asc",
-  });
-
-  // Support jsonl output
-  if (merged.format === "jsonl") {
-    for (const msg of messages) {
-      console.log(JSON.stringify({ engine, sessionId, ...msg }));
-    }
-    return;
-  }
-
-  console.log(
-    JSON.stringify({
-      engine,
-      sessionId: match.sessionId,
-      cwd: match.cwd,
-      title: match.title,
-      messages,
-      hasMore,
-    }),
-  );
 }

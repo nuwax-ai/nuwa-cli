@@ -82,6 +82,34 @@ rl.on("line", async (line) => {
         // The connection's AbortSignal is what unblocks the caller.
         break;
       }
+      if (text.includes("trigger-sensitive-permission")) {
+        const permission = await request("session/request_permission", {
+          sessionId: msg.params.sessionId,
+          toolCall: {
+            toolCallId: "call-sensitive",
+            title: "bash",
+            kind: "execute",
+            rawInput: { command: "nuwa-cli context list --json" },
+          },
+          options: [
+            { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
+            { optionId: "allow-always", name: "Allow always", kind: "allow_always" },
+            { optionId: "reject-once", name: "Reject", kind: "reject_once" },
+          ],
+        });
+        notify("session/update", {
+          sessionId: msg.params.sessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text: `sensitive:${permission.outcome.outcome === "selected" ? permission.outcome.optionId : "cancelled"}`,
+            },
+          },
+        });
+        respond(msg.id, { stopReason: "end_turn" });
+        break;
+      }
       if (text.includes("trigger-permission")) {
         const permission = await request("session/request_permission", {
           sessionId: msg.params.sessionId,

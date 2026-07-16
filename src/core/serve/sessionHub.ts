@@ -2,6 +2,8 @@ import * as crypto from "node:crypto";
 import type { ServerResponse } from "node:http";
 import {
   AGENT_METHODS,
+  type RequestPermissionRequest,
+  type RequestPermissionResponse,
   type SessionNotification,
 } from "@agentclientprotocol/sdk";
 import { getEngine } from "../engines/registry.js";
@@ -9,6 +11,16 @@ import { buildEngineEnv, type EngineKind } from "../env/inheritEnv.js";
 import { withEngineConnection } from "../acp/connection.js";
 import { wrapNewSession } from "../acp/sessionHandle.js";
 import type { PermissionMode } from "../permissions/policy.js";
+import {
+  createDefaultCoordinator,
+  type PermissionCoordinator,
+} from "../permissions/coordinator.js";
+import { ApprovalPendingService } from "../permissions/approvalPending.js";
+import { toComputerPermissionProgressData } from "../permissions/notifyResolved.js";
+import {
+  buildSyntheticPermissionRequest,
+  responseAllowsAccess,
+} from "../permissions/syntheticRequest.js";
 import { AsyncQueue } from "./asyncQueue.js";
 
 export interface UnifiedSessionMessage {
@@ -18,6 +30,7 @@ export interface UnifiedSessionMessage {
     | "sessionPromptStart"
     | "sessionPromptEnd"
     | "agentSessionUpdate"
+    | "acpRequestPermission"
     | "heartbeat";
   subType: string;
   data: unknown;
@@ -51,13 +64,41 @@ function sendSseEvent(
   }
 }
 
+export interface SessionHubOptions {
+  permissionMode: PermissionMode;
+  overlay?: { apiKey?: string; baseUrl?: string; model?: string };
+  coordinator?: PermissionCoordinator;
+  pending?: ApprovalPendingService;
+}
+
 export class SessionHub {
   private sessions = new Map<string, ManagedSession>();
+  /** 无对应 ManagedSession 时仍可挂的审批 SSE（例如测试，或未来全局 permission 流）。 */
+  private looseSseClients = new Set<ServerResponse>();
+  readonly coordinator: PermissionCoordinator;
+  readonly pending: ApprovalPendingService;
+  private permissionMode: PermissionMode;
+  private overlay?: { apiKey?: string; baseUrl?: string; model?: string };
 
   constructor(
-    private permissionMode: PermissionMode,
-    private overlay?: { apiKey?: string; baseUrl?: string; model?: string },
-  ) {}
+    permissionModeOrOptions: PermissionMode | SessionHubOptions,
+    overlay?: { apiKey?: string; baseUrl?: string; model?: string },
+  ) {
+    // 兼容旧构造：new SessionHub(mode, overlay)
+    if (typeof permissionModeOrOptions === "string") {
+      this.permissionMode = permissionModeOrOptions;
+      this.overlay = overlay;
+      this.coordinator = createDefaultCoordinator();
+      this.pending = new ApprovalPendingService();
+    } else {
+      this.permissionMode = permissionModeOrOptions.permissionMode;
+      this.overlay = permissionModeOrOptions.overlay;
+      this.coordinator =
+        permissionModeOrOptions.coordinator ?? createDefaultCoordinator();
+      this.pending =
+        permissionModeOrOptions.pending ?? new ApprovalPendingService();
+    }
+  }
 
   private broadcast(
     sessionId: string,
@@ -68,6 +109,167 @@ export class SessionHub {
     if (!session) return;
     for (const client of session.sseClients)
       sendSseEvent(client, eventName, message);
+  }
+
+  /** 当前所有会话 + loose 挂着的 SSE 客户端总数。 */
+  countSseClients(): number {
+    let n = this.looseSseClients.size;
+    for (const session of this.sessions.values()) n += session.sseClients.size;
+    return n;
+  }
+
+  /**
+   * 挂一个不绑定引擎会话的 SSE，仅用于接收 acpRequestPermission。
+   * 生产上云端应订阅 /computer/progress/:sessionId；本方法供测试与无会话审批通道。
+   */
+  subscribeLooseSse(res: ServerResponse): void {
+    this.looseSseClients.add(res);
+    res.on("close", () => this.looseSseClients.delete(res));
+  }
+
+  private deliverPermissionSse(message: UnifiedSessionMessage): number {
+    let delivered = 0;
+    const write = (client: ServerResponse) => {
+      sendSseEvent(client, "acpRequestPermission", message);
+      sendSseEvent(client, "acp_request_permission", message);
+      delivered++;
+    };
+    for (const client of this.looseSseClients) write(client);
+    for (const session of this.sessions.values()) {
+      for (const client of session.sseClients) write(client);
+    }
+    return delivered;
+  }
+
+  /** 向所有活动会话的 SSE 客户端广播（合成敏感访问无单一 session 时用）。 */
+  broadcastPermissionToAll(message: UnifiedSessionMessage): number {
+    return this.deliverPermissionSse(message);
+  }
+
+  /**
+   * 挂起 ACP permission：创建 pending，经 SSE 推送，等待 notify-resolved。
+   * 若当前没有任何 SSE 订阅者，立即 cancelled，避免干等 120s。
+   */
+  async askPermission(
+    appSessionId: string,
+    request: RequestPermissionRequest,
+    meta?: { classifierId?: string; reason?: string },
+  ): Promise<RequestPermissionResponse> {
+    if (this.countSseClients() === 0) {
+      return { outcome: { outcome: "cancelled" } };
+    }
+
+    const { interventionId, promise, pending } = this.pending.createPending({
+      appSessionId,
+      acpSessionId: request.sessionId,
+      request,
+      classifierId: meta?.classifierId,
+    });
+
+    const message: UnifiedSessionMessage = {
+      sessionId: appSessionId,
+      acpSessionId: request.sessionId,
+      messageType: "acpRequestPermission",
+      subType: "request_permission",
+      data: toComputerPermissionProgressData({
+        request,
+        interventionId,
+        revision: 1,
+      }),
+      timestamp: new Date().toISOString(),
+    };
+
+    const session = this.sessions.get(appSessionId);
+    if (session && session.sseClients.size > 0) {
+      for (const client of session.sseClients) {
+        sendSseEvent(client, "acpRequestPermission", message);
+        sendSseEvent(client, "acp_request_permission", message);
+      }
+      for (const client of this.looseSseClients) {
+        sendSseEvent(client, "acpRequestPermission", message);
+        sendSseEvent(client, "acp_request_permission", message);
+      }
+    } else {
+      this.broadcastPermissionToAll(message);
+    }
+
+    const response = await promise;
+
+    // allow_always → 缓存该敏感分类，本会话后续不再弹
+    if (response.outcome.outcome === "selected" && pending.classifierId) {
+      const optionId = response.outcome.optionId;
+      const option = request.options.find((o) => o.optionId === optionId);
+      if (option?.kind === "allow_always") {
+        this.coordinator.rememberAllowAlways(
+          appSessionId,
+          pending.classifierId,
+        );
+      }
+    }
+
+    return response;
+  }
+
+  /**
+   * CLI/HTTP 旁路：合成 permission，走同一 pending + SSE，返回是否放行。
+   * 无审批通道（无 SSE）时立刻返回 allowed:false，并带上 noApprovalChannel。
+   */
+  async awaitSensitiveAccess(args: {
+    kind: string;
+    title: string;
+    rawInput?: Record<string, unknown>;
+    appSessionId?: string;
+  }): Promise<{
+    allowed: boolean;
+    response: RequestPermissionResponse;
+    noApprovalChannel?: boolean;
+  }> {
+    const appSessionId =
+      args.appSessionId ??
+      this.sessions.keys().next().value ??
+      `sensitive-${crypto.randomUUID()}`;
+    const acpSessionId = `synth-${crypto.randomUUID()}`;
+    const request = buildSyntheticPermissionRequest({
+      acpSessionId,
+      title: args.title,
+      kind: "read",
+      rawInput: {
+        sensitive_kind: args.kind,
+        ...(args.rawInput ?? {}),
+      },
+    });
+
+    const decision = this.coordinator.evaluate(
+      request,
+      this.permissionMode === "deny-noninteractive"
+        ? "deny"
+        : this.permissionMode === "ask"
+          ? "ask"
+          : "yolo",
+      appSessionId,
+    );
+    const immediate = this.coordinator.toImmediateResponse(decision);
+    if (immediate) {
+      return {
+        allowed: responseAllowsAccess(immediate, request),
+        response: immediate,
+      };
+    }
+
+    if (this.countSseClients() === 0) {
+      return {
+        allowed: false,
+        noApprovalChannel: true,
+        response: { outcome: { outcome: "cancelled" } },
+      };
+    }
+
+    const response = await this.askPermission(appSessionId, request, {
+      classifierId:
+        decision.kind === "ask" ? decision.classifierId : args.kind,
+      reason: decision.kind === "ask" ? decision.reason : "sensitive",
+    });
+    return { allowed: responseAllowsAccess(response, request), response };
   }
 
   /** Starts a brand-new session and returns its id immediately; the engine connects in the background. */
@@ -127,6 +329,10 @@ export class SessionHub {
           },
           {
             permissionMode: this.permissionMode,
+            coordinator: this.coordinator,
+            appSessionId: sessionId,
+            onPermissionAsk: (request, meta) =>
+              this.askPermission(sessionId, request, meta),
             onAgentText: () => {},
             onRawUpdate: (notification: SessionNotification) => {
               this.broadcast(sessionId, "agent_session_update", {
@@ -226,6 +432,8 @@ export class SessionHub {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
     session.queue.close();
+    this.pending.cancelByAppSession(sessionId);
+    this.coordinator.clearSession(sessionId);
     // Interrupt any in-flight prompt by killing the engine. Without this the
     // runner stays parked on `await active.prompt(...)` until the tool call
     // finishes on its own, so /computer/agent/stop would hang for minutes.
@@ -243,6 +451,7 @@ export class SessionHub {
   /** Stops every active session — used by `serve` shutdown so engine child
    *  processes don't outlive the HTTP server. */
   async stopAll(): Promise<void> {
+    this.pending.cancelAll();
     const ids = [...this.sessions.keys()];
     await Promise.all(ids.map((id) => this.stopSession(id)));
   }
@@ -256,6 +465,8 @@ export class SessionHub {
   private terminateSession(sessionId: string, error?: string): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
+    this.pending.cancelByAppSession(sessionId);
+    this.coordinator.clearSession(sessionId);
     this.broadcast(sessionId, "session_ended", {
       sessionId,
       messageType: "sessionPromptEnd",

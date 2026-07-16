@@ -226,7 +226,7 @@ nuwa-cli serve --port 60016
 
 普通本地 `serve` 下，除 `/health` 和只读 SSE `/computer/progress/:session_id` 外，每个路由都需要认证；推荐使用 `X-Nuwax-Internal-Secret`，不能设置自定义 header 的客户端也可用 `Authorization: Bearer <secret>` 或 `?apiKey=<secret>`。`--tunnel` 模式下，`/computer/*` 与 `/devcomputer/*` 对齐 Electron 客户端约定：lanproxy 连接用 savedKey/configKey 作为 clientKey 鉴权，转发到本地的 HTTP 请求不会再逐个携带 savedKey。服务器仍会打印一个仅用于本地调试的随机 secret；它永不落盘。
 
-`--approve` 控制工具调用授权：`auto`（默认）自动批准每一个工具调用（`yolo`），`deny` 则全部拒绝（适合让引擎无副作用地运行）。任何其他值都会被**拒绝**，而不是被静默当作 `auto`。在 `auto`/`yolo` 模式下，服务器启动时会打印一条警告：**所有**工具调用（含破坏性写文件、执行命令、网络访问）都会被自动放行，且**不做路径限制**；如不能接受，请用 `--approve deny`。
+`--approve` 控制工具调用授权：`auto`（默认）自动批准**普通**工具调用（`yolo`），但**敏感分类**（如本地 session 历史）仍须经 SSE `acpRequestPermission` + `POST /computer/notify-resolved` 人工审批；`ask` 则全部工具都要审批；`deny` 全部拒绝。任何其他值都会被**拒绝**，而不是被静默当作 `auto`。详见 [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md)。
 
 生命周期：
 
@@ -246,7 +246,7 @@ nuwa-cli serve --tunnel --lanproxy-host agent.nuwax.com --lanproxy-port 443
 
 - **Windows / Linux ARM 上的 codex**：目前仅在 macOS arm64 上测试过。
 - **退出时的进程树清理**：只有直接的引擎子进程会收到 `SIGTERM`；孙进程（例如 `claude-code-acp-ts` 适配器再拉起的 `claude` 二进制）不会被信号通知，可能成为孤儿。`serve` 关闭仍会停止自身的 HTTP 会话，但零散的孙进程可能残留。
-- **`yolo` 没有路径限制**：`--approve auto` 不论目标路径一律自动批准工具调用，目前没有可写根目录守卫（Electron 客户端的严格权限闸门尚未移植过来）。
+- **`yolo` 没有路径限制**：`--approve auto` 对普通工具不论目标路径一律自动批准，目前没有可写根目录守卫；本地 sessions 等敏感访问仍强制 ask。详见 [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md)。
 - **开机启动是当前用户级别**：`service install` 使用 LaunchAgent / systemd user service / 计划任务，不是需要管理员权限的系统级 daemon。Linux 若要用户未登录也启动，需要在 CLI 外部配置 systemd linger。
 - **自定义/第三方 ACP 引擎**（pi-acp、hermes、kilo、openclaw 等）暂不支持——仅支持 `claude` 和 `codex`。
 - **云端会话同步/列表**：`sessions`/`status` 目前仅本地可用，跨设备会话历史的后端接口尚未确定。

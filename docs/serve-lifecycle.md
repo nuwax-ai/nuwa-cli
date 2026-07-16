@@ -88,9 +88,13 @@
 
 以下在本次方案中**有意未做**，记录于此便于后续跟进：
 
-1. **yolo 路径越界守卫**：未移植 Electron 客户端的 strict-permission gate。需要 workspace 根跟踪 + 按工具类型解析目标路径，工作量较大，建议单独立项。当前仅启动告警。
+1. **yolo 路径越界守卫**：未移植 Electron 客户端的 strict-permission gate。需要 workspace 根跟踪 + 按工具类型解析目标路径，工作量较大，建议单独立项。当前仅启动告警。敏感访问（本地 sessions）已另见 [`acp-permission-guardrails.md`](./acp-permission-guardrails.md)。
 2. **进程树清理（孙进程孤儿）**：`proc.kill()` 仅 SIGTERM 直接子进程；`claude-code-acp-ts` 再拉起的 `claude` 等孙进程不受信号。建议改为 `detached:true` spawn + 进程组 kill。注意：本方案的 abort/stopAll 也走同一个 `proc.kill`，因此 serve 路径同样未覆盖孙进程。
 3. **SIGTERM → SIGKILL 升级**：当前只发 SIGTERM；若引擎忽略信号，靠 `stopSession` 的 3s 上限兜底（强制返回，但底层 runner promise 会延迟回收）。
+
+## ACP 权限审批护栏
+
+通用 HITL 总线（`--approve auto|ask|deny`、SSE `acpRequestPermission`、真正的 `notify-resolved`、敏感分类强制 ask）见 [`acp-permission-guardrails.md`](./acp-permission-guardrails.md)。
 
 ## 可观测性：serve 锁与 `status`
 
