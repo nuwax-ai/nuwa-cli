@@ -11,6 +11,11 @@ import { startUiHttp } from "../core/ui/uiServer.js";
 import { CLI_UI_PORT, findAvailablePort } from "../core/ports.js";
 import { ensureDir, workspacesDir } from "../util/paths.js";
 import { findOnPath } from "../util/which.js";
+import {
+  registerProcess,
+  unregisterProcess,
+  updateProcessRecord,
+} from "../core/processes/processRegistry.js";
 
 export interface UiCommandOptions {
   port?: string;
@@ -97,7 +102,7 @@ export async function uiCommand(options: UiCommandOptions): Promise<void> {
         }
       : undefined;
 
-  const { token, stop } = startUiHttp({
+  const { token, server, stop } = startUiHttp({
     port,
     host,
     engine: engineId,
@@ -106,6 +111,20 @@ export async function uiCommand(options: UiCommandOptions): Promise<void> {
     policyLabel,
     overlay,
   });
+  registerProcess({
+    pid: process.pid,
+    kind: "ui",
+    state: "starting",
+    daemon: false,
+    cwd,
+    engine: engineId,
+    host,
+    port,
+  });
+  const markRunning = () =>
+    updateProcessRecord(process.pid, { state: "running", host, port });
+  if (server.listening) markRunning();
+  else server.once("listening", markRunning);
 
   const url = `http://${host}:${port}/?t=${token}`;
   console.log(pc.green(`nuwa-cli ui 已启动：${url}`));
@@ -138,6 +157,7 @@ export async function uiCommand(options: UiCommandOptions): Promise<void> {
     shuttingDown = true;
     console.log(pc.dim(`\n[nuwa-cli] 收到 ${sig}，关闭中...`));
     await stop().catch(() => {});
+    unregisterProcess(process.pid);
     process.exit(0);
   };
   process.once("SIGINT", () => void shutdown("SIGINT"));

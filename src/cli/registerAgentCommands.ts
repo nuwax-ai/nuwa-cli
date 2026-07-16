@@ -6,8 +6,15 @@ import {
   sessionsSummaryCommand,
 } from "../commands/sessions.js";
 import { addModelOverlayOptions } from "./options.js";
+import { processesCommand } from "../commands/processes.js";
 
 export function registerAgentCommands(program: Command): void {
+  program
+    .command("ps")
+    .description("列出已注册且仍在运行的 nuwa-cli 进程")
+    .option("--json", "以 JSON 数组格式输出")
+    .action(processesCommand);
+
   program
     .command("doctor")
     .description(

@@ -18,6 +18,7 @@ function optionLongNames(commandName: string): string[] {
 describe("createProgram", () => {
   it("registers the public top-level command surface", () => {
     expect(commandNames()).toEqual([
+      "ps",
       "doctor",
       "chat",
       "sessions",
@@ -27,6 +28,7 @@ describe("createProgram", () => {
       "status",
       "config",
       "account",
+      "stop",
       "serve",
       "up",
       "service",
@@ -41,6 +43,7 @@ describe("createProgram", () => {
       expect(options.filter((name) => name === "--port")).toHaveLength(1);
       expect(options.filter((name) => name === "--host")).toHaveLength(1);
       expect(options.filter((name) => name === "--daemon")).toHaveLength(1);
+      expect(options.filter((name) => name === "--force")).toHaveLength(1);
       expect(options.filter((name) => name === "--api-key")).toHaveLength(1);
     }
   });

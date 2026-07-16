@@ -32,6 +32,15 @@ import {
 } from "../core/ports.js";
 import { ensureDir, logsDir, workspacesDir } from "../util/paths.js";
 import { debugLog } from "../core/debugLog.js";
+import {
+  registerProcess,
+  updateProcessRecord,
+} from "../core/processes/processRegistry.js";
+import {
+  acquireServeSingleton,
+  releaseServeSingleton,
+  transferServeSingleton,
+} from "../core/processes/serveSingleton.js";
 
 export interface ServeCommandOptions {
   port?: string;
@@ -45,6 +54,7 @@ export interface ServeCommandOptions {
   lanproxyPort?: string;
   lanproxySsl?: string;
   daemon?: boolean;
+  force?: boolean;
   apiKey?: string;
   baseUrl?: string;
   model?: string;
@@ -91,7 +101,7 @@ async function resolveAvailablePort(
   return port;
 }
 
-function launchDaemon(argsOverride?: string[]): void {
+function launchDaemon(argsOverride?: string[]): number {
   const args =
     argsOverride ?? process.argv.slice(1).filter((arg) => arg !== "--daemon");
   ensureDir(logsDir());
@@ -103,6 +113,7 @@ function launchDaemon(argsOverride?: string[]): void {
     stdio: ["ignore", out, err],
     env: buildCliChildEnv({ NUWACLI_SERVE_DAEMONIZED: "1" }),
   });
+  if (!child.pid) throw new Error("daemon 子进程启动失败：未取得 PID");
   child.unref();
   debugLog("serve.daemon", "launched", {
     pid: child.pid,
@@ -111,6 +122,7 @@ function launchDaemon(argsOverride?: string[]): void {
   });
   console.log(pc.green(`nuwa-cli serve 已后台启动（pid ${child.pid}）。`));
   console.log(pc.dim(`日志：${logPath}`));
+  return child.pid;
 }
 
 export async function serveCommand(
@@ -124,11 +136,63 @@ export async function serveCommand(
     requestedHost: options.host,
     requestedCwd: options.cwd,
   });
-  if (options.daemon && process.env.NUWACLI_SERVE_DAEMONIZED !== "1") {
-    launchDaemon(options.daemonArgs);
+  const isDaemonChild = process.env.NUWACLI_SERVE_DAEMONIZED === "1";
+  try {
+    const replaced = await acquireServeSingleton(options.force === true);
+    if (replaced.length > 0) {
+      console.log(
+        pc.yellow(`已通过 --force 停止旧 serve 进程：${replaced.join(", ")}`),
+      );
+    }
+  } catch (err) {
+    console.error(pc.red(`[nuwa-cli] ${(err as Error).message}`));
+    process.exitCode = 1;
     return;
   }
 
+  if (options.daemon && !isDaemonChild) {
+    try {
+      const childPid = launchDaemon(options.daemonArgs);
+      transferServeSingleton(process.pid, childPid);
+      registerProcess({
+        pid: childPid,
+        kind: "serve",
+        state: "starting",
+        daemon: true,
+        cwd: path.resolve(options.cwd ?? workspacesDir()),
+        engine: options.engine,
+        host: options.host ?? "127.0.0.1",
+        port: options.port ? Number(options.port) : CLI_AGENT_PORT,
+        logPath: path.join(logsDir(), "serve.log"),
+      });
+    } catch (err) {
+      releaseServeSingleton();
+      console.error(pc.red(`[nuwa-cli] ${(err as Error).message}`));
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  registerProcess({
+    pid: process.pid,
+    kind: "serve",
+    state: "starting",
+    daemon: isDaemonChild,
+    cwd: path.resolve(options.cwd ?? workspacesDir()),
+    engine: options.engine,
+    host: options.host ?? "127.0.0.1",
+    port: options.port ? Number(options.port) : CLI_AGENT_PORT,
+    logPath: isDaemonChild ? path.join(logsDir(), "serve.log") : undefined,
+  });
+
+  try {
+    await runServeCommand(options);
+  } finally {
+    releaseServeSingleton();
+  }
+}
+
+async function runServeCommand(options: ServeCommandOptions): Promise<void> {
   const engineId = options.engine as EngineKind;
   try {
     getEngine(engineId);
@@ -187,7 +251,7 @@ export async function serveCommand(
         }
       : undefined;
 
-  const { secret, stop, addAcceptedSecret } = startServeHttp({
+  const httpHandle = startServeHttp({
     port,
     host,
     engine: engineId,
@@ -198,6 +262,17 @@ export async function serveCommand(
     acceptedSecrets,
     allowUnauthenticatedComputerRoutes: options.tunnel === true,
   });
+  const { secret, stop, addAcceptedSecret } = httpHandle;
+  const markRunning = () => {
+    updateProcessRecord(process.pid, {
+      state: "running",
+      host,
+      port,
+    });
+  };
+  if (httpHandle.server?.listening) markRunning();
+  else if (httpHandle.server) httpHandle.server.once("listening", markRunning);
+  else markRunning();
   debugLog("serve.command", "http started", {
     host,
     port,

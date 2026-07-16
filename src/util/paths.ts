@@ -35,6 +35,19 @@ export function cliServeLockPath(): string {
   );
 }
 
+/** Per-process runtime records used by `nuwa-cli ps`. */
+export function cliProcessesDir(): string {
+  return (
+    process.env.NUWACLI_PROCESS_DIR ?? path.join(cliDir(), "processes")
+  );
+}
+
+export function cliServeGuardPath(): string {
+  return (
+    process.env.NUWACLI_SERVE_GUARD_PATH ?? path.join(cliDir(), "serve.guard")
+  );
+}
+
 export function enginesDir(): string {
   return path.join(nuwaCliHome(), "engines");
 }

@@ -89,6 +89,10 @@ export function addServeRuntimeOptions(command: Command): Command {
       .option(
         "--daemon",
         "后台启动 serve（stdout/stderr 写入 ~/.nuwa-cli/logs/serve.log）",
+      )
+      .option(
+        "--force",
+        "发现已有前台或后台 serve 时，先停止旧实例再启动",
       ),
   );
 }

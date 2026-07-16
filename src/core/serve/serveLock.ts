@@ -39,8 +39,9 @@ export function readServeLock(): ServeLockInfo | null {
   }
 }
 
-export function clearServeLock(): void {
+export function clearServeLock(expectedPid?: number): void {
   try {
+    if (expectedPid !== undefined && readServeLock()?.pid !== expectedPid) return;
     fs.unlinkSync(cliServeLockPath());
   } catch {
     // already gone — nothing to do
@@ -95,7 +96,7 @@ export async function getServeStatus(): Promise<ServeStatus> {
     return { state: "running", ...lock };
   }
   if (!isPidAlive(lock.pid)) {
-    clearServeLock();
+      clearServeLock();
     return {
       state: "stopped",
       note: `已清理残留锁文件（pid ${lock.pid} 已退出）`,

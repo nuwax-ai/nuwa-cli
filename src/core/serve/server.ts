@@ -877,7 +877,7 @@ export function startServeHttp(options: ServeOptions): {
       await hub.stopAll().catch(() => {});
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      clearServeLock();
+      clearServeLock(process.pid);
       debugLog("serve.http", "stopped");
     },
   };

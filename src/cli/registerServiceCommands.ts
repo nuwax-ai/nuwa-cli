@@ -8,6 +8,7 @@ import {
 } from "../commands/service.js";
 import { serveCommand } from "../commands/serve.js";
 import { upCommand } from "../commands/up.js";
+import { stopCommand } from "../commands/processes.js";
 import {
   addCloudLoginOptions,
   addServeRuntimeOptions,
@@ -15,6 +16,11 @@ import {
 } from "./options.js";
 
 export function registerServiceCommands(program: Command): void {
+  program
+    .command("stop")
+    .description("停止当前前台、daemon 或系统服务启动的 nuwa-cli serve")
+    .action(stopCommand);
+
   addServeRuntimeOptions(
     program
       .command("serve")

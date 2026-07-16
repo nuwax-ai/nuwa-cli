@@ -23,6 +23,7 @@ export interface UpCommandOptions {
   lanproxyPort?: string;
   lanproxySsl?: string;
   daemon?: boolean;
+  force?: boolean;
   apiKey?: string;
   baseUrl?: string;
   model?: string;
@@ -48,6 +49,7 @@ function buildServeDaemonArgs(
   pushFlag(args, "--api-key", options.apiKey);
   pushFlag(args, "--base-url", options.baseUrl);
   pushFlag(args, "--model", options.model);
+  if (options.force) args.push("--force");
   return args;
 }
 
@@ -140,6 +142,7 @@ export async function upCommand(options: UpCommandOptions): Promise<void> {
       lanproxyPort: options.lanproxyPort,
       lanproxySsl: options.lanproxySsl,
       daemon: options.daemon,
+      force: options.force,
       daemonArgs: options.daemon
         ? buildServeDaemonArgs(options, engine)
         : undefined,

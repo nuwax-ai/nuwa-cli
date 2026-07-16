@@ -18,6 +18,10 @@ import {
   resolveContextRef,
   shellQuote,
 } from "../core/context/context.js";
+import {
+  registerProcess,
+  unregisterProcess,
+} from "../core/processes/processRegistry.js";
 
 export interface ChatCommandOptions {
   engine: string;
@@ -184,65 +188,82 @@ export async function chatCommand(options: ChatCommandOptions): Promise<void> {
     },
   };
 
-  await withEngineConnection(
-    { command: resolved.command, args: resolved.args, env, cwd },
-    handlers,
-    async (ctx) => {
-      const session = resumeTarget
-        ? wrapResumedSession(
-            ctx,
-            resumeTarget.sessionId,
-            (
-              await ctx.request(AGENT_METHODS.session_load, {
-                sessionId: resumeTarget.sessionId,
-                cwd,
-                mcpServers: [],
-              })
-            ).modes,
-          )
-        : wrapNewSession(await ctx.buildSession(cwd).start());
-      await applySessionMode(ctx, session, options.mode, Boolean(options.yolo));
+  registerProcess({
+    pid: process.pid,
+    kind: "chat",
+    state: "running",
+    daemon: false,
+    cwd,
+    engine: engineId,
+  });
+  try {
+    await withEngineConnection(
+      { command: resolved.command, args: resolved.args, env, cwd },
+      handlers,
+      async (ctx) => {
+        const session = resumeTarget
+          ? wrapResumedSession(
+              ctx,
+              resumeTarget.sessionId,
+              (
+                await ctx.request(AGENT_METHODS.session_load, {
+                  sessionId: resumeTarget.sessionId,
+                  cwd,
+                  mcpServers: [],
+                })
+              ).modes,
+            )
+          : wrapNewSession(await ctx.buildSession(cwd).start());
+        await applySessionMode(
+          ctx,
+          session,
+          options.mode,
+          Boolean(options.yolo),
+        );
 
-      if (options.print) {
-        await session.prompt(firstTurnPrefix + options.print);
-        if (wroteAny) process.stdout.write("\n");
-        return;
-      }
-
-      console.log(
-        pc.dim(
-          `已连接 ${engineId} 引擎（session ${session.sessionId}${resumeTarget ? "，已续接历史" : ""}）。输入 /exit 退出。`,
-        ),
-      );
-      const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
-      let stdinClosed = false;
-      rl.on("close", () => {
-        stdinClosed = true;
-      });
-      try {
-        while (!stdinClosed) {
-          let line: string;
-          try {
-            line = await rl.question(pc.cyan("> "));
-          } catch {
-            // stdin ended (EOF / Ctrl+D / piped input exhausted) while awaiting
-            // input — treat as a clean exit instead of an unhandled crash.
-            break;
-          }
-          const trimmed = line.trim();
-          if (trimmed === "/exit" || trimmed === "/quit") break;
-          if (!trimmed) continue;
-          wroteAny = false;
-          await session.prompt(firstTurnPrefix + line);
-          firstTurnPrefix = ""; // only the first turn carries context routing
+        if (options.print) {
+          await session.prompt(firstTurnPrefix + options.print);
           if (wroteAny) process.stdout.write("\n");
+          return;
         }
-      } finally {
-        rl.close();
-      }
-    },
-  );
+
+        console.log(
+          pc.dim(
+            `已连接 ${engineId} 引擎（session ${session.sessionId}${resumeTarget ? "，已续接历史" : ""}）。输入 /exit 退出。`,
+          ),
+        );
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+        });
+        let stdinClosed = false;
+        rl.on("close", () => {
+          stdinClosed = true;
+        });
+        try {
+          while (!stdinClosed) {
+            let line: string;
+            try {
+              line = await rl.question(pc.cyan("> "));
+            } catch {
+              // stdin ended (EOF / Ctrl+D / piped input exhausted) while awaiting
+              // input — treat as a clean exit instead of an unhandled crash.
+              break;
+            }
+            const trimmed = line.trim();
+            if (trimmed === "/exit" || trimmed === "/quit") break;
+            if (!trimmed) continue;
+            wroteAny = false;
+            await session.prompt(firstTurnPrefix + line);
+            firstTurnPrefix = ""; // only the first turn carries context routing
+            if (wroteAny) process.stdout.write("\n");
+          }
+        } finally {
+          rl.close();
+        }
+      },
+    );
+  } finally {
+    unregisterProcess(process.pid);
+  }
 }
