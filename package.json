@@ -1,11 +1,11 @@
 {
   "name": "@nuwax-ai/nuwa-cli",
-  "version": "0.1.0-beta.0",
+  "version": "0.1.0-beta.1",
   "packageManager": "npm@10.9.2",
   "workspaces": [
     "packages/lanproxy"
   ],
-  "description": "Headless multi-engine agent CLI — attaches to your already-installed & logged-in claude/codex CLIs over ACP, no separate login, no bundled runtime",
+  "description": "Headless multi-engine agent CLI with managed Gateway, Console, ACP engines, and remote session routing",
   "type": "module",
   "bin": {
     "nuwa-cli": "dist/cli.js"

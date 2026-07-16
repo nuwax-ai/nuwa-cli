@@ -18,6 +18,7 @@ import { listLocalSessions } from "../sessions/discovery.js";
 import { parseTranscript } from "../sessions/transcript.js";
 import { ensureDir } from "../../util/paths.js";
 import { debugLog } from "../debugLog.js";
+import { parseDownstreamSessionConfig } from "./downstreamConfig.js";
 
 export interface ServeOptions {
   port: number;
@@ -295,12 +296,30 @@ export function startServeHttp(options: ServeOptions): {
             );
             return;
           }
+          const downstream = session
+            ? undefined
+            : parseDownstreamSessionConfig(body);
+          debugLog("serve.chat", "runtime config resolved", {
+            existingId,
+            engine: session?.engine ?? downstream?.engine,
+            hasModelOverlay: Boolean(downstream?.modelOverlay),
+            hasEngineEnv: Boolean(
+              downstream?.engineEnv &&
+                Object.keys(downstream.engineEnv).length > 0,
+            ),
+            mcpServerCount: downstream?.mcpServers.length ?? 0,
+          });
           const target =
             session ??
-            hub.startSession(options.engine, cwdResult.cwd, {
-              userId,
-              projectId: cwdResult.projectKey ?? projectId,
-            });
+            hub.startSession(
+              downstream?.engine ?? "codex",
+              cwdResult.cwd,
+              {
+                userId,
+                projectId: cwdResult.projectKey ?? projectId,
+              },
+              downstream,
+            );
 
           // Wait for the engine to actually connect before responding — if
           // resolve()/session/new fails, surface it here instead of handing

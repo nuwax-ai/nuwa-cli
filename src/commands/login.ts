@@ -88,6 +88,18 @@ export async function resolveLoginPassword(
   return password;
 }
 
+export async function resolveLoginUsername(): Promise<string | null> {
+  const username = await clack.text({
+    message: "Nuwax 用户名：",
+    validate: (value) =>
+      typeof value === "string" && value.trim()
+        ? undefined
+        : "请输入用户名",
+  });
+  if (clack.isCancel(username)) return null;
+  return String(username).trim();
+}
+
 export async function loginCommand(
   options: LoginCommandOptions,
 ): Promise<void> {
@@ -141,9 +153,26 @@ export async function loginCommand(
       return;
     }
 
-    throw new Error(
-      "首次登录需要 --saved-key <key> 或 -u <username>（随后提示输入密码）",
-    );
+    const domain = await resolveDomain(options.domain);
+    if (!domain) {
+      console.error(pc.dim("已取消。"));
+      return;
+    }
+    const username = await resolveLoginUsername();
+    if (username === null) {
+      console.error(pc.dim("已取消。"));
+      return;
+    }
+    const password = await resolveLoginPassword(username, domain);
+    if (password === null) {
+      console.error(pc.dim("已取消。"));
+      return;
+    }
+    await performReg(domain, {
+      username,
+      password,
+      savedKey: getSavedKeyForAccount(domain, username),
+    });
   } catch (err) {
     const message =
       err instanceof RegError ? err.message : (err as Error).message;

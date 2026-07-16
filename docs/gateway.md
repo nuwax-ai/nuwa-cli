@@ -142,31 +142,28 @@ flowchart TD
 可用条件：
 
 - `claude` 可在 `PATH` 中找到。
-- `claude-code-acp-ts` 包依赖可解析。
+- `claude-code-acp-ts` 及其 Claude Agent SDK 当前平台包可解析。
 
-当前实现不强制执行真实 Claude 登录探测，因为 Claude CLI 的登录状态可能依赖交互式命令输出，容易慢或不稳定。后续可以增加轻量 ACP 初始化探测。
+系统 `claude` CLI 与本地登录不是 ACP 运行时的硬前置：存在时优先复用；不存在时使用 Claude Agent SDK 平台运行时。没有本地配置时，历史与模型提示会降级，但可使用会话级 ACP 下发配置。
 
 失败提示：
 
 ```bash
-未找到可用 claude。请先安装并登录 Claude Code CLI：
-  claude login
+Claude ACP 平台运行时不可用。请重新安装 nuwa-cli，且不要使用 --omit=optional。
 ```
 
 ### Codex
 
 可用条件：
 
-- `~/.codex/auth.json` 存在。
 - `nuwax-codex-acp` 包依赖可解析。
 
-`codex` CLI 是否在 `PATH` 中可作为信息项，不作为硬阻塞项，因为当前 codex ACP 包可通过已安装依赖启动。
+`codex` CLI 与 `~/.codex/auth.json` 仅作为本地配置、历史和模型提示来源，不是运行硬前置。缺少时仍可通过 ACP 下发模型、环境变量与 MCP 配置运行。
 
 失败提示：
 
 ```bash
-未找到可用 codex 登录态。请先完成一次 Codex 登录：
-  codex login
+Codex ACP 平台运行时不可用。请重新安装 nuwa-cli，且不要使用 --omit=optional。
 ```
 
 ## 引擎选择
@@ -179,6 +176,18 @@ flowchart TD
   - 可用列表多个：随机选择一个，并在日志中打印选择结果。
 
 随机选择的目的是满足“优先使用本地多个中的随机一个”的需求；后续如果需要稳定策略，可增加 `--engine-priority claude,codex`。
+
+## ACP 会话配置优先级
+
+新会话优先读取 NuwaClaw 契约：`agent_config.agent_server.command` 选择引擎，`model_provider` 提供模型配置，`agent_config.agent_server.env` 提供引擎环境变量，`agent_config.context_servers` 提供 MCP servers。通用 `acp_config` 也继续兼容。配置优先级固定为：
+
+1. 当前会话 `acp_config`；
+2. Gateway 启动参数 `--api-key`、`--base-url`、`--model`；
+3. 用户电脑已有环境变量和 `~/.claude` / `~/.codex` 配置。
+
+没有下发的字段不会写入空值，也不会覆盖用户本地配置。MCP 配置会作为标准 ACP `mcpServers` 传给 `session/new` / `session/load`，其中 stdio MCP 的环境变量随该 MCP 进程下发。
+
+引擎映射：`claude-code` / `claude-code-acp-ts` → Claude；`codex` / `codex-cli` / `codex-acp` / `nuwax-codex-acp` → Codex。没有下发 command、command 未命中，或下发当前 CLI 不支持的引擎时，统一使用 Codex。已有会话固定使用创建时的引擎，后续 prompt 不会中途切换。
 
 ## 登录、注册与多账号
 

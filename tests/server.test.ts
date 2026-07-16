@@ -6,17 +6,31 @@ import {
   afterAll,
   beforeEach,
   afterEach,
+  vi,
 } from "vitest";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { startServeHttp } from "../src/core/serve/server.js";
 
-// Deterministically forces engine.resolve() to fail without needing a real
-// network call or a specific machine's installed tools: temporarily hide
-// every PATH entry so `which claude` can't find anything.
+const engineMocks = vi.hoisted(() => ({ ids: [] as string[] }));
+
+vi.mock("../src/core/engines/registry.js", () => ({
+  getEngine: (id: string) => {
+    engineMocks.ids.push(id);
+    return {
+      resolve: async () => {
+        throw new Error("claude ACP runtime unavailable for test");
+      },
+    };
+  },
+}));
+
+// Keep the process environment deterministic even though engine failure is
+// explicitly mocked above; packaged ACP runtimes no longer depend on PATH.
 let savedPath: string | undefined;
 beforeEach(() => {
+  engineMocks.ids.length = 0;
   savedPath = process.env.PATH;
   process.env.PATH = "/nonexistent-nuwa-cli-test-path";
 });
@@ -253,6 +267,26 @@ describe("serve HTTP server", () => {
       data: { sessions: [] },
       sessions: [],
     });
+  });
+
+  it("selects the ACP-requested engine and falls back unknown engines to codex", async () => {
+    const request = async (command: string) =>
+      fetch(url("/computer/chat"), {
+        method: "POST",
+        headers: {
+          "X-Nuwax-Internal-Secret": handle.secret,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: "hi",
+          agent_config: { agent_server: { command } },
+        }),
+      });
+
+    expect((await request("claude-code")).status).toBe(502);
+    expect(engineMocks.ids.at(-1)).toBe("claude");
+    expect((await request("unknown-engine")).status).toBe(502);
+    expect(engineMocks.ids.at(-1)).toBe("codex");
   });
 
   it("returns 404 when stopping an unknown session", async () => {

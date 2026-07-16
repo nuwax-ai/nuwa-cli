@@ -26,9 +26,10 @@ More local debugging scripts and step-by-step workflows live in [`docs/local-deb
 
 ## Why
 
-Most agent wrappers either bundle their own copy of the model runtime (heavy, and it can't see your existing login) or ask you to configure API keys again. `nuwa-cli` does neither:
+`nuwa-cli` installs both ACP engine adapters as normal package dependencies while preserving the user's existing local state:
 
-- **Inherits your environment.** `HOME`, `~/.claude`, `~/.codex`, MCP servers, skills, model preferences — all untouched. The engine sees exactly what your own `claude`/`codex` CLI would see.
+- **Local config remains the default.** When a session supplies no runtime configuration, `HOME`, `~/.claude`, `~/.codex`, MCP servers, skills, environment variables, and model preferences remain untouched.
+- **ACP session config wins when supplied.** Per-session model credentials/provider/model, engine environment variables, and MCP servers override Gateway flags and local settings for that session only.
 - **Uses normal package dependencies.** ACP adapters, `nuwax-file-server`, and `@nuwax-ai/lanproxy` are installed by npm with `nuwa-cli`; lanproxy uses platform-specific optional dependencies so each machine receives only its OS/CPU binary.
 - **Talks ACP.** Both engines are driven over the [Agent Client Protocol](https://agentclientprotocol.com), the same protocol editors like Zed use — not a scraped CLI wrapper.
 
@@ -36,7 +37,7 @@ Most agent wrappers either bundle their own copy of the model runtime (heavy, an
 
 ### `nuwa-cli doctor`
 
-Checks Node version, whether `claude`/`codex` are installed and logged in, `uv`, macOS TCC risk for the current directory, Nuwax cloud login state, and counts your local session history.
+Checks Node version, packaged Claude/Codex ACP runtimes, optional local CLI/login data, `uv`, macOS TCC risk, Nuwax cloud login/computer name, lanproxy runtime health, and local session history.
 
 Exit code only reflects checks that actually block core functionality: Node version, and having *at least one* of claude/codex usable. Everything else (`uv`, TCC risk, Nuwax login) is opt-in and shown as `○` rather than `✖` when unmet — `doctor` still exits `0` in that case, so it's safe to use in scripts/CI without false positives from features you haven't opted into.
 
@@ -66,7 +67,7 @@ Flags:
 | `--handoff <engine>:<sessionId>` | Generate a structured handoff package from another local session and inject it into the first turn of a new ACP session. Mutually exclusive with `--resume` / `--ref-session` |
 | `--api-key` / `--base-url` / `--model` | Override model connection — only needed if you don't want the engine's own configured provider |
 
-By default nuwa-cli injects **no** credentials and overrides **no** model/skill/MCP configuration — the engine runs with whatever you already have configured.
+By default nuwa-cli injects **no** credentials and overrides **no** model/skill/MCP configuration — the engine runs with whatever you already have configured. A remote ACP session may explicitly supply per-session model/MCP/environment configuration; that session-scoped configuration takes precedence without rewriting the user's local files.
 
 ### `nuwa-cli sessions`
 
@@ -188,7 +189,7 @@ nuwa-cli gateway --domain https://agent.nuwax.com -u <username>
 NUWACLI_PASSWORD='<password>' nuwa-cli gateway --domain https://agent.nuwax.com -u <username>
 ```
 
-When `--engine` is omitted, nuwa-cli checks local `claude` / `codex` availability: it uses the only available engine, randomly selects one when multiple are available, and fails with `claude login` / `codex login` hints when neither is available. `NUWACLI_PASSWORD` is only read for the current username/password registration, is never written to credentials, and is stripped from engine/lanproxy/file-server child environments.
+When `--engine` is omitted, nuwa-cli checks the packaged Claude/Codex ACP runtimes: it uses the only available engine and randomly selects one when both are available. System `claude`/`codex` commands and local login/config files are optional; without them, local history/model hints may be empty, but sessions can still run when ACP supplies model configuration. `NUWACLI_PASSWORD` is only read for Nuwax registration, is never written to credentials, and is stripped from child environments.
 
 After npm publish, clean machines can use the zero-install entry:
 
@@ -260,7 +261,7 @@ Starts a local-only HTTP API (`127.0.0.1` by default) for scripting or remote/IM
 
 ```bash
 nuwa-cli serve --port 60016
-# -> POST /computer/chat            { prompt, session_id?, agent_work_dir?, project_id?, cwd? } -> { session_id }
+# -> POST /computer/chat            { prompt, session_id?, cwd?, acp_config? } -> { session_id }
 # -> GET  /computer/progress/:id    SSE stream of session updates
 # -> GET/POST /computer/agent/status
 # -> POST /computer/agent/stop      { session_id }
@@ -270,6 +271,8 @@ nuwa-cli serve --port 60016
 ```
 
 `serve` prefers the CLI-owned `agentPort=60016` by default; if that port is already occupied it automatically advances to the next available port and prints the actual address. Under `--tunnel`, `nuwax-file-server` similarly prefers `fileServerPort=60015`, advances when occupied, and reports the final port in `sandboxConfigValue`.
+
+For a new session, the NuwaClaw-compatible contract uses `agent_config.agent_server.command` to select the engine, `model_provider` for model settings, `agent_config.agent_server.env` for engine environment variables, and `agent_config.context_servers` for MCP. Recognized Claude commands are `claude-code` / `claude-code-acp-ts`; recognized Codex commands are `codex`, `codex-cli`, `codex-acp`, and `nuwax-codex-acp`. Missing or unknown engines fall back to Codex. The generic `acp_config` shape remains accepted. Precedence is: session configuration > Gateway `--api-key/--base-url/--model` > local environment and `~/.claude` / `~/.codex`. Omitting session configuration preserves local behavior exactly.
 
 If `--cwd` is not provided, the default workspace root is `~/.nuwa-cli/workspaces`, and Cloud/Electron-style requests create project workspaces as `~/.nuwa-cli/workspaces/<project_id>`. `agent_work_dir` / `session_id` are only compatibility fallbacks when `project_id` is missing. `user_id` is kept as request metadata but is not used in the local path. If `--cwd <dir>` is provided, that directory is treated as the project directory itself; nuwa-cli does not append `project_id` under it. `nuwax-file-server` is pointed at the same active directory/root.
 
@@ -305,7 +308,7 @@ If the register response includes `serverHost`/`serverPort`, the explicit host/p
 ## How it works
 
 - ACP connection: `@agentclientprotocol/sdk`'s `client().connectWith(...)` builder, spawning the engine over stdio NDJSON.
-- `claude` engine: spawns the package dependency [`claude-code-acp-ts`](https://www.npmjs.com/package/claude-code-acp-ts) with `CLAUDE_CODE_EXECUTABLE` pointed at *your* `claude` binary.
+- `claude` engine: spawns [`claude-code-acp-ts`](https://www.npmjs.com/package/claude-code-acp-ts). It prefers a system `claude` binary when present; otherwise its Claude Agent SDK platform package provides the runtime.
 - `codex` engine: spawns the package dependency [`nuwax-codex-acp`](https://www.npmjs.com/package/nuwax-codex-acp); that package pulls the matching platform binary through npm optional dependencies.
 - `serve --tunnel`: starts [`nuwax-file-server`](https://www.npmjs.com/package/nuwax-file-server), resolves the current platform binary through `@nuwax-ai/lanproxy`, then launches it with the registered savedKey. file-server PID/lock temp files are scoped per port under `~/.nuwa-cli/tmp/file-server-<port>`, so CLI shutdown does not target the Electron client's instance or another CLI tunnel instance.
 - `service install`: writes a current-user OS service that runs `nuwa-cli gateway` on login/startup. It reuses CLI-owned credentials at runtime instead of embedding secrets into the OS service definition.
@@ -314,7 +317,7 @@ If the register response includes `serverHost`/`serverPort`, the explicit host/p
 ## Requirements
 
 - Node.js >= 22
-- `claude` and/or `codex` CLI, already installed and logged in
+- Platform optional dependencies must be installed (do not use `--omit=optional`). System `claude`/`codex` CLIs are optional; local login/config is only required when ACP does not supply model credentials.
 
 ## Development
 

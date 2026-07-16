@@ -5,6 +5,11 @@ import { cliCredentialsPath } from "../../util/paths.js";
 import { findOnPath, getVersion } from "../../util/which.js";
 import { findServeProcessIds } from "../processes/serveSingleton.js";
 import { findUiProcessIds } from "../processes/uiSingleton.js";
+import { findLanproxyProcesses } from "../processes/lanproxyStatus.js";
+import { resolveDefaultLanproxyBinary } from "../serve/lanproxyBinary.js";
+import { getServeStatus } from "../serve/serveLock.js";
+import { claudeEngine } from "../engines/claude.js";
+import { codexEngine } from "../engines/codex.js";
 
 export interface DoctorCheckResult {
   id: string;
@@ -38,54 +43,60 @@ export function checkNodeVersion(): DoctorCheckResult {
   };
 }
 
-export function checkClaude(): DoctorCheckResult {
+export async function checkClaude(): Promise<DoctorCheckResult> {
   const binPath = findOnPath("claude");
-  if (!binPath) {
+  try {
+    const resolved = await claudeEngine.resolve();
+    const version = binPath ? getVersion(binPath) : null;
     return {
       id: "claude",
-      label: "claude CLI",
+      label: "Claude ACP",
+      ok: true,
+      detail: binPath
+        ? `运行时可用；本机 CLI：${binPath}${version ? ` (${version})` : ""}`
+        : `内置运行时可用（${resolved.args[0]}）；未安装本机 CLI，本地历史/配置可能为空，可使用 ACP 下发配置`,
+    };
+  } catch (err) {
+    return {
+      id: "claude",
+      label: "Claude ACP",
       ok: false,
-      detail: "未在 PATH 中找到",
-      fix: "安装 Claude Code CLI 并登录：https://docs.claude.com/claude-code",
+      detail: (err as Error).message,
+      fix: "重新安装 nuwa-cli（不要使用 --omit=optional）",
     };
   }
-  const version = getVersion(binPath);
-  return {
-    id: "claude",
-    label: "claude CLI",
-    ok: true,
-    detail: `${binPath}${version ? ` (${version})` : ""}`,
-  };
 }
 
-export function checkCodex(): DoctorCheckResult {
-  // nuwa-cli's codex engine installs nuwax-codex-acp through npm. The local
-  // login-state prerequisite is ~/.codex/auth.json, which any Codex-using
-  // tool (CLI, Codex Desktop, the VS Code extension) can have produced.
-  // Only检测文件是否存在，不读取其内容。
+export async function checkCodex(): Promise<DoctorCheckResult> {
   const binPath = findOnPath("codex");
   const version = binPath ? getVersion(binPath) : null;
   const authFile = path.join(os.homedir(), ".codex", "auth.json");
   const hasAuth = fs.existsSync(authFile);
-  const binNote = binPath
-    ? `codex CLI: ${binPath}${version ? ` (${version})` : ""}`
-    : "未检测到 codex CLI（不影响引擎使用）";
-
-  if (!hasAuth) {
+  try {
+    const resolved = await codexEngine.resolve();
     return {
       id: "codex",
-      label: "codex 登录态",
+      label: "Codex ACP",
+      ok: true,
+      detail: [
+        `运行时可用（${resolved.args[0]}）`,
+        binPath
+          ? `本机 CLI：${binPath}${version ? ` (${version})` : ""}`
+          : "未安装本机 CLI",
+        hasAuth
+          ? "已检测到本地登录/配置"
+          : "无本地登录/配置；本地历史与模型提示可能为空，可使用 ACP 下发配置",
+      ].join("；"),
+    };
+  } catch (err) {
+    return {
+      id: "codex",
+      label: "Codex ACP",
       ok: false,
-      detail: `未检测到登录凭证（~/.codex/auth.json）。${binNote}`,
-      fix: "用 `codex login`、Codex Desktop 或 VS Code 插件登录一次",
+      detail: (err as Error).message,
+      fix: "重新安装 nuwa-cli（不要使用 --omit=optional）",
     };
   }
-  return {
-    id: "codex",
-    label: "codex 登录态",
-    ok: true,
-    detail: `已检测到登录凭证。${binNote}`,
-  };
 }
 
 export function checkUv(): DoctorCheckResult {
@@ -177,6 +188,79 @@ export function checkNuwaxLogin(): DoctorCheckResult {
   }
 }
 
+export function checkNuwaxComputer(): DoctorCheckResult {
+  const credPath = cliCredentialsPath();
+  try {
+    const raw = JSON.parse(fs.readFileSync(credPath, "utf-8"));
+    const computerName =
+      typeof raw?.computerName === "string" ? raw.computerName.trim() : "";
+    return {
+      id: "nuwax-computer",
+      label: "我的电脑",
+      ok: Boolean(computerName),
+      detail: computerName || "尚未注册，登录后由 Nuwax 分配电脑名",
+      severity: "info",
+    };
+  } catch {
+    return {
+      id: "nuwax-computer",
+      label: "我的电脑",
+      ok: false,
+      detail: "尚未注册，登录后由 Nuwax 分配电脑名",
+      severity: "info",
+    };
+  }
+}
+
+export async function checkLanproxy(): Promise<DoctorCheckResult> {
+  let binaryPath: string;
+  try {
+    binaryPath = resolveDefaultLanproxyBinary();
+  } catch (err) {
+    return {
+      id: "lanproxy",
+      label: "lanproxy",
+      ok: false,
+      detail: (err as Error).message,
+      fix: "重新安装 nuwa-cli（不要使用 --omit=optional），并确认当前 npm 源已同步平台包",
+      severity: "info",
+    };
+  }
+
+  const running = findLanproxyProcesses();
+  const gateway = await getServeStatus();
+  if (running.length > 0 && gateway.state !== "running") {
+    return {
+      id: "lanproxy",
+      label: "lanproxy",
+      ok: false,
+      detail: `进程运行中（PID ${running.map((item) => item.pid).join(", ")}），但 Gateway /health ${gateway.state === "unhealthy" ? "无响应" : "不可用"}；二进制：${binaryPath}`,
+      fix: "运行 `nuwa-cli restart --all` 重启完整服务，并检查 ~/.nuwa-cli/logs/serve.log",
+      severity: "info",
+    };
+  }
+  if (running.length === 0 && gateway.state === "running") {
+    return {
+      id: "lanproxy",
+      label: "lanproxy",
+      ok: false,
+      detail: `Gateway /health 正常，但未检测到 lanproxy 进程；二进制：${binaryPath}`,
+      fix: "运行 `nuwa-cli restart --all` 重建云端隧道，并检查 ~/.nuwa-cli/logs/serve.log",
+      severity: "info",
+    };
+  }
+  return {
+    id: "lanproxy",
+    label: "lanproxy",
+    ok: true,
+    detail:
+      running.length > 0
+        ? `运行中（PID ${running.map((item) => item.pid).join(", ")}），Gateway /health 正常；二进制：${binaryPath}`
+        : `已安装，当前未运行；二进制：${binaryPath}`,
+    severity: "info",
+  };
+}
+
 /** Count session files without parsing them — cheap, bounded directory walk. */
 function countFiles(
   root: string,
@@ -262,14 +346,16 @@ export function checkUiSingleton(): DoctorCheckResult {
   };
 }
 
-export function runAllDoctorChecks(): DoctorCheckResult[] {
+export async function runAllDoctorChecks(): Promise<DoctorCheckResult[]> {
   return [
     checkNodeVersion(),
-    checkClaude(),
-    checkCodex(),
+    await checkClaude(),
+    await checkCodex(),
     checkUv(),
     checkTccRisk(),
     checkNuwaxLogin(),
+    checkNuwaxComputer(),
+    await checkLanproxy(),
     checkLocalSessions(),
     checkServeSingleton(),
     checkUiSingleton(),

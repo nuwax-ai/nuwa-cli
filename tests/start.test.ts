@@ -6,6 +6,26 @@ const mocks = vi.hoisted(() => ({
   findGateway: vi.fn(),
   findConsole: vi.fn(),
   records: vi.fn(),
+  credentials: vi.fn(),
+  login: vi.fn(),
+  waitLanproxy: vi.fn(),
+  serveStatus: vi.fn(),
+}));
+
+vi.mock("../src/core/processes/lanproxyStatus.js", () => ({
+  waitForLanproxyProcess: (...args: unknown[]) => mocks.waitLanproxy(...args),
+}));
+
+vi.mock("../src/core/serve/serveLock.js", () => ({
+  getServeStatus: (...args: unknown[]) => mocks.serveStatus(...args),
+}));
+
+vi.mock("../src/core/auth/credentials.js", () => ({
+  readCredentials: () => mocks.credentials(),
+}));
+
+vi.mock("../src/commands/login.js", () => ({
+  loginCommand: (...args: unknown[]) => mocks.login(...args),
 }));
 
 vi.mock("../src/commands/gateway.js", () => ({
@@ -35,7 +55,57 @@ describe("startCommand", () => {
     mocks.findGateway.mockReset().mockReturnValue([]);
     mocks.findConsole.mockReset().mockReturnValue([]);
     mocks.records.mockReset().mockReturnValue([]);
+    mocks.credentials.mockReset().mockReturnValue({ configKey: "logged-in" });
+    mocks.login.mockReset().mockResolvedValue(undefined);
+    mocks.waitLanproxy.mockReset().mockResolvedValue({
+      pid: 303,
+      kind: "lanproxy",
+      host: "agent.nuwax.com",
+      port: 443,
+    });
+    mocks.serveStatus.mockReset().mockResolvedValue({
+      state: "running",
+      pid: 101,
+      host: "127.0.0.1",
+      port: 60016,
+      startedAt: "2026-07-16T00:00:00.000Z",
+    });
     process.exitCode = 0;
+  });
+
+  it("guides an unauthenticated user through login before starting services", async () => {
+    mocks.credentials
+      .mockReturnValueOnce({})
+      .mockReturnValue({ configKey: "fresh-login" });
+    const { startCommand } = await import("../src/commands/start.js");
+
+    await startCommand({ domain: "example.com", username: "alice" });
+
+    expect(mocks.login).toHaveBeenCalledWith({
+      domain: "example.com",
+      username: "alice",
+      savedKey: undefined,
+    });
+    expect(mocks.login.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.gateway.mock.invocationCallOrder[0],
+    );
+    expect(mocks.gateway).toHaveBeenCalled();
+    expect(mocks.gateway).toHaveBeenCalledWith(
+      expect.objectContaining({ authReady: true }),
+    );
+    expect(mocks.ui).toHaveBeenCalled();
+    expect(mocks.waitLanproxy).toHaveBeenCalled();
+  });
+
+  it("does not start services when login is cancelled or fails", async () => {
+    mocks.credentials.mockReturnValue({});
+    const { startCommand } = await import("../src/commands/start.js");
+
+    await startCommand({});
+
+    expect(mocks.login).toHaveBeenCalled();
+    expect(mocks.gateway).not.toHaveBeenCalled();
+    expect(mocks.ui).not.toHaveBeenCalled();
   });
 
   it("starts Gateway as a daemon before the foreground Console", async () => {

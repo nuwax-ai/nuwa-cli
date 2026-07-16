@@ -18,9 +18,10 @@ function endpoint(host?: string, port?: number): string {
   return host && port ? `http://${host}:${port}` : "-";
 }
 
-function processLabel(kind: "serve" | "ui" | "chat"): string {
+function processLabel(kind: "serve" | "ui" | "chat" | "lanproxy"): string {
   if (kind === "serve") return "gateway";
   if (kind === "ui") return "console";
+  if (kind === "lanproxy") return "lanproxy";
   return kind;
 }
 

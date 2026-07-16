@@ -76,6 +76,7 @@ describe("serveCommand", () => {
     });
     mocks.startLanproxy.mockReturnValue({
       pid: 1234,
+      ready: Promise.resolve(),
       stop: mocks.stopLanproxy,
     });
   });

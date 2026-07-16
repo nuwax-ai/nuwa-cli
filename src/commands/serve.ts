@@ -428,6 +428,7 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
           clientKey: reg.configKey,
           ssl,
         });
+        await lanproxyHandle.ready;
         debugLog("serve.lanproxy", "started", {
           pid: lanproxyHandle.pid,
           serverHost: lanproxyHost,

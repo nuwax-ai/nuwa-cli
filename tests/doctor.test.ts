@@ -7,7 +7,7 @@ vi.mock("../src/core/detect/doctorChecks.js", async (importOriginal) => {
     await importOriginal<typeof import("../src/core/detect/doctorChecks.js")>();
   return {
     ...actual,
-    runAllDoctorChecks: () => runAllDoctorChecksMock(),
+    runAllDoctorChecks: async () => runAllDoctorChecksMock(),
   };
 });
 

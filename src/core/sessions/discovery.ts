@@ -51,6 +51,26 @@ function truncateTitle(text: string, max = 80): string {
   return oneLine.length > max ? `${oneLine.slice(0, max)}…` : oneLine;
 }
 
+function claudeMessageText(content: unknown): string | undefined {
+  if (typeof content === "string") return content.trim() || undefined;
+  if (!Array.isArray(content)) return undefined;
+
+  const text = content
+    .filter(
+      (part): part is { type: "text"; text: string } =>
+        Boolean(
+          part &&
+            typeof part === "object" &&
+            (part as Record<string, unknown>).type === "text" &&
+            typeof (part as Record<string, unknown>).text === "string",
+        ),
+    )
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
+  return text || undefined;
+}
+
 async function readClaudeSessionSummary(
   filePath: string,
 ): Promise<LocalSessionSummary | null> {
@@ -63,13 +83,11 @@ async function readClaudeSessionSummary(
     if (!sessionId && typeof obj.sessionId === "string")
       sessionId = obj.sessionId;
     if (!cwd && typeof obj.cwd === "string") cwd = obj.cwd;
-    if (
-      !title &&
-      obj.type === "user" &&
-      typeof (obj.message as { content?: unknown } | undefined)?.content ===
-        "string"
-    ) {
-      title = truncateTitle((obj.message as { content: string }).content);
+    if (!title && obj.type === "user") {
+      const text = claudeMessageText(
+        (obj.message as { content?: unknown } | undefined)?.content,
+      );
+      if (text) title = truncateTitle(text);
     }
     // The model name lives on the assistant message object (`message.model`),
     // not at the top level — keep scanning past the user title line to reach
@@ -90,7 +108,7 @@ async function readClaudeSessionSummary(
     engine: "claude",
     sessionId,
     cwd,
-    title: title ?? "(无标题)",
+    title: title ?? "(claude 会话) （无标题）",
     updatedAt: stat.mtime.toISOString(),
     filePath,
     model,
@@ -123,7 +141,7 @@ async function readCodexSessionSummary(
   let model: string | undefined;
   let title: string | undefined;
 
-  await scanJsonlHead(filePath, 80, (obj) => {
+  await scanJsonlHead(filePath, 400, (obj) => {
     if (
       obj.type === "session_meta" &&
       obj.payload &&
@@ -149,7 +167,8 @@ async function readCodexSessionSummary(
     }
     // Derive a title from the first *real* user message. Codex prepends an
     // AGENTS.md instruction blob as a user turn, so skip content that looks
-    // like injected instructions (leading "#" / "<") or is very long.
+    // like injected instructions (leading "#" / "<"). Long prompts are
+    // still valid title sources and are truncated by `truncateTitle`.
     if (
       !title &&
       obj.type === "response_item" &&
@@ -162,8 +181,7 @@ async function readCodexSessionSummary(
         if (
           text &&
           !text.startsWith("#") &&
-          !text.startsWith("<") &&
-          text.length <= 400
+          !text.startsWith("<")
         ) {
           title = truncateTitle(text);
         }
@@ -178,7 +196,7 @@ async function readCodexSessionSummary(
     engine: "codex",
     sessionId,
     cwd,
-    title: title ?? "(codex 会话)",
+    title: title ?? "(codex 会话) （无标题）",
     updatedAt: stat.mtime.toISOString(),
     filePath,
     model,

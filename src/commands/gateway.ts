@@ -27,6 +27,8 @@ export interface GatewayCommandOptions {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
+  /** Internal: start already completed registration during its login preflight. */
+  authReady?: boolean;
 }
 
 function pushFlag(args: string[], name: string, value?: string): void {
@@ -129,8 +131,10 @@ export async function gatewayCommand(
       })),
     });
 
-    await ensureRegistered(options);
-    debugLog("gateway.command", "registered");
+    if (!options.authReady) {
+      await ensureRegistered(options);
+      debugLog("gateway.command", "registered");
+    }
 
     const serveOptions: ServeCommandOptions = {
       port: options.port,

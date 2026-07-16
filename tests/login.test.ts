@@ -219,13 +219,26 @@ describe("login/logout/status commands", () => {
     );
   });
 
-  it("errors clearly when there's no savedKey and neither --saved-key nor -u was given", async () => {
-    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("guides first-time login through username and password prompts", async () => {
+    textMock.mockResolvedValueOnce("alice");
+    passwordMock.mockResolvedValueOnce("secret");
+    registerClientMock.mockResolvedValue({
+      id: 1,
+      configKey: "fresh-key",
+      name: "alice",
+      online: true,
+    });
     const { loginCommand } = await import("../src/commands/login.js");
     await loginCommand({ domain: "example.com" });
-    expect(registerClientMock).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
-    errSpy.mockRestore();
+
+    expect(textMock).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Nuwax 用户名：" }),
+    );
+    expect(passwordMock).toHaveBeenCalled();
+    expect(registerClientMock).toHaveBeenCalledWith(
+      "https://example.com",
+      expect.objectContaining({ username: "alice", password: "secret" }),
+    );
   });
 
   it("surfaces a RegError message and sets exitCode on failed registration", async () => {

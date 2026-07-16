@@ -1,5 +1,8 @@
 import pc from "picocolors";
+import { readCredentials } from "../core/auth/credentials.js";
 import { listRegisteredProcesses } from "../core/processes/processRegistry.js";
+import { waitForLanproxyProcess } from "../core/processes/lanproxyStatus.js";
+import { getServeStatus } from "../core/serve/serveLock.js";
 import { findServeProcessIds } from "../core/processes/serveSingleton.js";
 import { findUiProcessIds } from "../core/processes/uiSingleton.js";
 import {
@@ -7,6 +10,7 @@ import {
   type GatewayCommandOptions,
 } from "./gateway.js";
 import { uiCommand } from "./ui.js";
+import { loginCommand } from "./login.js";
 
 export interface StartCommandOptions extends GatewayCommandOptions {
   open?: boolean;
@@ -24,6 +28,21 @@ function registeredGatewayEngine(pids: number[]): string | undefined {
  * unless --force is supplied.
  */
 export async function startCommand(options: StartCommandOptions): Promise<void> {
+  let authReady = false;
+  if (!readCredentials().configKey) {
+    console.log(pc.dim("尚未登录 Nuwax，请先完成登录。"));
+    await loginCommand({
+      domain: options.domain,
+      username: options.username,
+      savedKey: options.savedKey,
+    });
+    if (!readCredentials().configKey) {
+      console.error(pc.dim("未完成登录，已取消启动。"));
+      return;
+    }
+    authReady = true;
+  }
+
   const gatewayPids = findServeProcessIds();
   const consolePids = findUiProcessIds();
   let engine = options.engine ?? registeredGatewayEngine(gatewayPids);
@@ -45,6 +64,7 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
       ...gatewayOptions,
       daemon: true,
       force: options.force === true,
+      ...(authReady ? { authReady: true } : {}),
     });
     if (process.exitCode && process.exitCode !== 0) {
       console.error(
@@ -52,6 +72,30 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
       );
       return;
     }
+  }
+
+  const lanproxy = await waitForLanproxyProcess();
+  if (lanproxy) {
+    const gatewayStatus = await getServeStatus();
+    if (gatewayStatus.state === "running") {
+      console.log(
+        pc.green(
+          `lanproxy 运行中（PID ${lanproxy.pid}，${lanproxy.host ?? "未知主机"}:${lanproxy.port ?? "未知端口"}），Gateway /health 正常。`,
+        ),
+      );
+    } else {
+      console.error(
+        pc.yellow(
+          `[nuwa-cli] lanproxy 进程存在（PID ${lanproxy.pid}），但 Gateway /health 不可用；请查看 ~/.nuwa-cli/logs/serve.log。`,
+        ),
+      );
+    }
+  } else {
+    console.error(
+      pc.yellow(
+        "[nuwa-cli] 未检测到运行中的 lanproxy；请查看 ~/.nuwa-cli/logs/serve.log 或运行 `nuwa-cli doctor`。",
+      ),
+    );
   }
 
   if (consolePids.length > 0 && !options.force) {

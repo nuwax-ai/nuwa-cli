@@ -114,7 +114,36 @@ describe("session discovery", () => {
     });
   });
 
-  it("listClaudeSessions falls back to a placeholder title when no plain-string user message is found within the scan budget", async () => {
+  it("listClaudeSessions extracts a title from Claude array content", async () => {
+    const projectDir = path.join(
+      tmpHome,
+      ".claude",
+      "projects",
+      "-Users-apple-demo",
+    );
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, "array-content.jsonl"),
+      JSON.stringify({
+        type: "user",
+        sessionId: "array-content",
+        cwd: "/Users/apple/demo",
+        message: {
+          role: "user",
+          content: [
+            { type: "text", text: "帮我检查数组消息" },
+            { type: "tool_result", content: "ignored" },
+          ],
+        },
+      }) + "\n",
+    );
+    const { listClaudeSessions } =
+      await import("../src/core/sessions/discovery.js");
+    const sessions = await listClaudeSessions();
+    expect(sessions[0].title).toBe("帮我检查数组消息");
+  });
+
+  it("listClaudeSessions uses an engine-specific placeholder when no user text exists", async () => {
     const projectDir = path.join(
       tmpHome,
       ".claude",
@@ -133,7 +162,7 @@ describe("session discovery", () => {
     const { listClaudeSessions } =
       await import("../src/core/sessions/discovery.js");
     const sessions = await listClaudeSessions();
-    expect(sessions[0].title).toBe("(无标题)");
+    expect(sessions[0].title).toBe("(claude 会话) （无标题）");
   });
 
   it("listClaudeSessions skips files with no discoverable sessionId/cwd", async () => {
@@ -192,6 +221,90 @@ describe("session discovery", () => {
       sessionId: "legacy-id",
       cwd: "/Users/apple/old-project",
     });
+  });
+
+  it("listCodexSessions uses a long user message as the title source", async () => {
+    const dayDir = path.join(tmpHome, ".codex", "sessions", "2026", "07", "06");
+    fs.mkdirSync(dayDir, { recursive: true });
+    const longPrompt = `实现会话标题修复：${"详细要求".repeat(100)}`;
+    fs.writeFileSync(
+      path.join(dayDir, "rollout-long.jsonl"),
+      [
+        JSON.stringify({
+          type: "session_meta",
+          payload: { session_id: "codex-long", cwd: "/Users/apple/demo" },
+        }),
+        JSON.stringify({
+          type: "response_item",
+          payload: {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: longPrompt }],
+          },
+        }),
+      ].join("\n") + "\n",
+    );
+    const { listCodexSessions } =
+      await import("../src/core/sessions/discovery.js");
+    const sessions = await listCodexSessions();
+    expect(sessions[0].title).toMatch(/^实现会话标题修复：详细要求/);
+    expect(sessions[0].title).toHaveLength(81);
+  });
+
+  it("listCodexSessions finds the first real user message after line 80", async () => {
+    const dayDir = path.join(tmpHome, ".codex", "sessions", "2026", "07", "06");
+    fs.mkdirSync(dayDir, { recursive: true });
+    const preamble = Array.from({ length: 100 }, (_, index) =>
+      JSON.stringify({ type: "event_msg", payload: { index } }),
+    );
+    fs.writeFileSync(
+      path.join(dayDir, "rollout-late.jsonl"),
+      [
+        JSON.stringify({
+          type: "session_meta",
+          payload: { session_id: "codex-late", cwd: "/Users/apple/demo" },
+        }),
+        ...preamble,
+        JSON.stringify({
+          type: "response_item",
+          payload: {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "修复延迟出现的标题" }],
+          },
+        }),
+      ].join("\n") + "\n",
+    );
+    const { listCodexSessions } =
+      await import("../src/core/sessions/discovery.js");
+    const sessions = await listCodexSessions();
+    expect(sessions[0].title).toBe("修复延迟出现的标题");
+  });
+
+  it("listCodexSessions labels sessions without real user text as untitled", async () => {
+    const dayDir = path.join(tmpHome, ".codex", "sessions", "2026", "07", "06");
+    fs.mkdirSync(dayDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dayDir, "rollout-untitled.jsonl"),
+      [
+        JSON.stringify({
+          type: "session_meta",
+          payload: { session_id: "codex-untitled", cwd: "/Users/apple/demo" },
+        }),
+        JSON.stringify({
+          type: "response_item",
+          payload: {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "<turn_aborted>aborted</turn_aborted>" }],
+          },
+        }),
+      ].join("\n") + "\n",
+    );
+    const { listCodexSessions } =
+      await import("../src/core/sessions/discovery.js");
+    const sessions = await listCodexSessions();
+    expect(sessions[0].title).toBe("(codex 会话) （无标题）");
   });
 
   it("listLocalSessions merges both engines sorted by recency and respects the engine filter", async () => {

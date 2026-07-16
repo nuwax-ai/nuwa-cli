@@ -26,9 +26,11 @@ describe("codexEngine.resolve", () => {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   });
 
-  it("throws a clear error before resolving the adapter when ~/.codex/auth.json is missing", async () => {
+  it("resolves the packaged adapter without a system codex install or ~/.codex/auth.json", async () => {
     const { codexEngine } = await import("../src/core/engines/codex.js");
-    await expect(codexEngine.resolve()).rejects.toThrow(/auth\.json/);
+    const resolved = await codexEngine.resolve();
+    expect(resolved.command).toBe(process.execPath);
+    expect(resolved.args).toEqual(["/fake/nuwax-codex-acp.js"]);
   });
 
   it("resolves via the package dependency adapter once ~/.codex/auth.json exists", async () => {

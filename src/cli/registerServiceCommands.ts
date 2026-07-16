@@ -45,6 +45,7 @@ export function registerServiceCommands(program: Command): void {
       [
         "",
         "说明：",
+        "  - 未登录时先进入交互式登录流程，登录成功后自动继续启动。",
         "  - 等价于确保 gateway --daemon 和前台 console 同时运行。",
         "  - 默认复用健康实例，只补齐缺失服务；--force 会替换全部实例。",
         "  - Console 会持续占用当前终端；Ctrl+C 只关闭 Console，Gateway 继续运行。",

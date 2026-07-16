@@ -6,11 +6,16 @@ import {
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionConfigOption,
+  type McpServer,
   type SessionModeState,
   type SessionNotification,
 } from "@agentclientprotocol/sdk";
 import { getEngine } from "../engines/registry.js";
-import { buildEngineEnv, type EngineKind } from "../env/inheritEnv.js";
+import {
+  buildEngineEnv,
+  type EngineKind,
+  type ModelOverlay,
+} from "../env/inheritEnv.js";
 import { withEngineConnection } from "../acp/connection.js";
 import {
   wrapNewSession,
@@ -62,6 +67,12 @@ export interface SessionControls {
 export interface SessionRuntimeOptions {
   mode?: string;
   yolo?: boolean;
+  /** Per-session ACP model settings override Gateway flags and local config. */
+  modelOverlay?: ModelOverlay;
+  /** Per-session ACP environment is applied last to the engine process. */
+  engineEnv?: NodeJS.ProcessEnv;
+  /** Forwarded unchanged in ACP session/new or session/load. */
+  mcpServers?: McpServer[];
 }
 
 type Readiness = { ok: true } | { ok: false; error: string };
@@ -89,6 +100,17 @@ interface ManagedSession {
   controls?: SessionControls;
   initialModeId?: string;
   yolo?: boolean;
+  modelOverlay?: ModelOverlay;
+  engineEnv?: NodeJS.ProcessEnv;
+  mcpServers: McpServer[];
+}
+
+function mergeModelOverlay(
+  gateway: ModelOverlay | undefined,
+  session: ModelOverlay | undefined,
+): ModelOverlay | undefined {
+  const merged = { ...gateway, ...session };
+  return Object.values(merged).some(Boolean) ? merged : undefined;
 }
 
 function sendSseEvent(
@@ -247,6 +269,9 @@ export class SessionHub {
       done: Promise.resolve(),
       initialModeId: runtime?.mode,
       yolo: runtime?.yolo,
+      modelOverlay: runtime?.modelOverlay,
+      engineEnv: runtime?.engineEnv,
+      mcpServers: runtime?.mcpServers ?? [],
     };
   }
 
@@ -273,8 +298,12 @@ export class SessionHub {
         this.setReady(session, { ok: false, error: resolved.error });
       } else {
         const env = {
-          ...buildEngineEnv(session.engine, this.overlay),
+          ...buildEngineEnv(
+            session.engine,
+            mergeModelOverlay(this.overlay, session.modelOverlay),
+          ),
           ...resolved.resolved.envOverlay,
+          ...session.engineEnv,
         };
 
         await withEngineConnection(
@@ -547,7 +576,9 @@ export class SessionHub {
     this.spawnRunner(session, async (ctx) => {
       // Read modes/configOptions off the raw ActiveSession before wrapping —
       // SessionHandle only exposes sessionId/modes/prompt.
-      const built = await ctx.buildSession(cwd).start();
+      const built = await ctx
+        .buildSession({ cwd, mcpServers: session.mcpServers })
+        .start();
       session.acpSessionId = built.sessionId;
       session.modes = built.modes;
       session.configOptions = built.newSessionResponse.configOptions ?? null;
@@ -579,7 +610,7 @@ export class SessionHub {
       const loadRes = (await ctx.request(AGENT_METHODS.session_load, {
         sessionId: summary.sessionId,
         cwd: summary.cwd,
-        mcpServers: [],
+        mcpServers: session.mcpServers,
       })) as {
         modes?: SessionModeState | null;
         configOptions?: SessionConfigOption[] | null;

@@ -5,6 +5,24 @@ import * as os from "node:os";
 
 let tmpHome: string;
 
+const lanproxyMocks = vi.hoisted(() => ({
+  resolveBinary: vi.fn(),
+  processes: vi.fn(),
+  serveStatus: vi.fn(),
+}));
+
+vi.mock("../src/core/serve/lanproxyBinary.js", () => ({
+  resolveDefaultLanproxyBinary: () => lanproxyMocks.resolveBinary(),
+}));
+
+vi.mock("../src/core/processes/lanproxyStatus.js", () => ({
+  findLanproxyProcesses: () => lanproxyMocks.processes(),
+}));
+
+vi.mock("../src/core/serve/serveLock.js", () => ({
+  getServeStatus: () => lanproxyMocks.serveStatus(),
+}));
+
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof os>();
   return {
@@ -27,6 +45,9 @@ describe("checkNuwaxLogin", () => {
   beforeEach(() => {
     tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "nuwa-cli-doctor-test-"));
     vi.resetModules();
+    lanproxyMocks.resolveBinary.mockReset().mockReturnValue("/bin/lanproxy");
+    lanproxyMocks.processes.mockReset().mockReturnValue([]);
+    lanproxyMocks.serveStatus.mockReset().mockResolvedValue({ state: "stopped" });
   });
 
   afterEach(() => {
@@ -50,15 +71,20 @@ describe("checkNuwaxLogin", () => {
       credPath,
       JSON.stringify({
         domain: "https://agent.nuwax.com",
+        computerName: "我的电脑001",
         configKey: "abc123",
         savedKey: "abc123",
       }),
     );
-    const { checkNuwaxLogin } =
+    const { checkNuwaxLogin, checkNuwaxComputer } =
       await import("../src/core/detect/doctorChecks.js");
     const result = checkNuwaxLogin();
     expect(result.ok).toBe(true);
     expect(result.detail).toContain("agent.nuwax.com");
+
+    const computer = checkNuwaxComputer();
+    expect(computer.ok).toBe(true);
+    expect(computer.detail).toBe("我的电脑001");
   });
 
   it("reports NOT logged in when only savedKey remains (post-logout) even though a device key exists", async () => {
@@ -97,6 +123,65 @@ describe("checkNuwaxLogin", () => {
     const result = checkNuwaxLogin();
     expect(result.ok).toBe(false);
     expect(result.detail).toContain("损坏");
+  });
+});
+
+describe("checkLanproxy", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    lanproxyMocks.resolveBinary.mockReset().mockReturnValue("C:\\bin\\nuwax-lanproxy.exe");
+    lanproxyMocks.processes.mockReset().mockReturnValue([]);
+    lanproxyMocks.serveStatus.mockReset().mockResolvedValue({ state: "stopped" });
+  });
+
+  it("reports the installed binary and current stopped state", async () => {
+    const { checkLanproxy } =
+      await import("../src/core/detect/doctorChecks.js");
+    const result = await checkLanproxy();
+    expect(result.ok).toBe(true);
+    expect(result.detail).toContain("已安装，当前未运行");
+    expect(result.detail).toContain("nuwax-lanproxy.exe");
+  });
+
+  it("reports live lanproxy process ids", async () => {
+    lanproxyMocks.processes.mockReturnValue([{ pid: 2468 }]);
+    lanproxyMocks.serveStatus.mockResolvedValue({ state: "running" });
+    const { checkLanproxy } =
+      await import("../src/core/detect/doctorChecks.js");
+    expect((await checkLanproxy()).detail).toContain("运行中（PID 2468）");
+    expect((await checkLanproxy()).detail).toContain("/health 正常");
+  });
+
+  it("reports an unhealthy tunnel when Gateway is healthy but lanproxy is absent", async () => {
+    lanproxyMocks.serveStatus.mockResolvedValue({ state: "running" });
+    const { checkLanproxy } =
+      await import("../src/core/detect/doctorChecks.js");
+    const result = await checkLanproxy();
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain("Gateway /health 正常");
+    expect(result.detail).toContain("未检测到 lanproxy 进程");
+  });
+
+  it("reports an unhealthy target when lanproxy lives but Gateway health fails", async () => {
+    lanproxyMocks.processes.mockReturnValue([{ pid: 2468 }]);
+    lanproxyMocks.serveStatus.mockResolvedValue({ state: "unhealthy" });
+    const { checkLanproxy } =
+      await import("../src/core/detect/doctorChecks.js");
+    const result = await checkLanproxy();
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain("Gateway /health 无响应");
+  });
+
+  it("shows an install fix when the platform binary is missing", async () => {
+    lanproxyMocks.resolveBinary.mockImplementation(() => {
+      throw new Error("缺少 Windows 平台包");
+    });
+    const { checkLanproxy } =
+      await import("../src/core/detect/doctorChecks.js");
+    const result = await checkLanproxy();
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain("缺少 Windows 平台包");
+    expect(result.fix).toContain("--omit=optional");
   });
 });
 

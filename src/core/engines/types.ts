@@ -7,6 +7,6 @@ export interface ResolvedEngine {
 
 export interface EngineSpec {
   id: "claude" | "codex";
-  /** Locates/installs whatever is needed and returns the spawn target. Throws with a user-facing message if the prerequisite CLI isn't installed. */
+  /** Resolves the packaged or system engine spawn target. Local account/config files are optional when ACP supplies runtime configuration. */
   resolve(): Promise<ResolvedEngine>;
 }

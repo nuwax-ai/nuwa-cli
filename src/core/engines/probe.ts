@@ -12,8 +12,8 @@ const ENGINE_IDS: EngineKind[] = ["claude", "codex"];
 
 function fixForEngine(id: EngineKind): string {
   return id === "claude"
-    ? "安装并登录 Claude Code CLI：claude login"
-    : "完成 Codex 登录：codex login";
+    ? "重新安装 nuwa-cli，并确认 claude-agent-sdk 当前平台包已安装"
+    : "重新安装 nuwa-cli，并确认 nuwax-codex-acp 当前平台包已安装";
 }
 
 export async function probeEngine(id: EngineKind): Promise<EngineProbeResult> {
@@ -68,7 +68,7 @@ export async function selectEngine(
       )
       .join("\n");
     throw new Error(
-      `未找到可用 Agent 引擎。请先完成 claude 或 codex 本地登录后重试。\n${details}`,
+      `未找到可用 Agent 引擎。请确认 Claude/Codex ACP 的当前平台包已安装。\n${details}`,
     );
   }
 

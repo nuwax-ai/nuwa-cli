@@ -8,11 +8,6 @@ export const claudeEngine: EngineSpec = {
   id: "claude",
   async resolve(): Promise<ResolvedEngine> {
     const claudeBin = findOnPath("claude");
-    if (!claudeBin) {
-      throw new Error(
-        "未找到 claude CLI。请先安装并登录：https://docs.claude.com/claude-code（可运行 `nuwa-cli doctor` 复核）",
-      );
-    }
     const entry = resolveInstalledPackageEntry(
       "claude-code-acp-ts",
       CLAUDE_CODE_ACP_ENTRY,
@@ -20,7 +15,9 @@ export const claudeEngine: EngineSpec = {
     return {
       command: process.execPath,
       args: [entry],
-      envOverlay: { CLAUDE_CODE_EXECUTABLE: claudeBin },
+      // Prefer the user's installed CLI when present. Otherwise the adapter
+      // resolves the native Claude runtime bundled by claude-agent-sdk.
+      envOverlay: claudeBin ? { CLAUDE_CODE_EXECUTABLE: claudeBin } : {},
     };
   },
 };

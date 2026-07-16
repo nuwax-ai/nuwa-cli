@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import * as path from "node:path";
 import { cliProcessesDir, writeFileAtomic } from "../../util/paths.js";
 
-export type NuwaProcessKind = "serve" | "ui" | "chat";
+export type NuwaProcessKind = "serve" | "ui" | "chat" | "lanproxy";
 export type NuwaProcessState = "starting" | "running";
 
 export interface NuwaProcessRecord {
@@ -92,7 +92,7 @@ function isRecord(value: unknown): value is NuwaProcessRecord {
     item.version === 1 &&
     Number.isInteger(item.pid) &&
     (item.pid ?? 0) > 0 &&
-    ["serve", "ui", "chat"].includes(item.kind ?? "") &&
+    ["serve", "ui", "chat", "lanproxy"].includes(item.kind ?? "") &&
     ["starting", "running"].includes(item.state ?? "") &&
     typeof item.daemon === "boolean" &&
     typeof item.startedAt === "string" &&

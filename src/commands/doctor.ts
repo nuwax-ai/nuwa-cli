@@ -53,7 +53,7 @@ export async function doctorCommand(
     }
   }
 
-  const results = runAllDoctorChecks();
+  const results = await runAllDoctorChecks();
   let hasRequiredFailure = false;
   let hasInfoGap = false;
 
