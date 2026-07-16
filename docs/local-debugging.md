@@ -1,13 +1,13 @@
 # 本地调试指南
 
-> 面向 `crates/nuwa-cli` 包本身的开发与联调。
+> 面向 本仓库 包本身的开发与联调。
 > 设计与行为说明见 [`README.zh-CN.md`](../README.zh-CN.md) / [`README.md`](../README.md)；
 > `serve` 生命周期设计见 [`serve-lifecycle.md`](./serve-lifecycle.md)。
 
 ## 前置条件
 
 - Node.js >= 22
-- 已安装依赖：在 `crates/nuwa-cli` 目录执行 `pnpm install`
+- 已安装依赖：在 本仓库 目录执行 `pnpm install`
 - 本机已安装并登录 `claude` 和/或 `codex`
 
 ## 常用脚本
@@ -51,7 +51,7 @@ CLI 入口已经拆成注册层与执行层，新增命令时优先按这个边�
 ### 1. 安装依赖
 
 ```bash
-cd crates/nuwa-cli
+cd 本仓库
 pnpm install
 ```
 
@@ -111,7 +111,7 @@ pnpm run dev:cli account switch --help
 开发期最直接的方式是跑构建产物：
 
 ```bash
-cd crates/nuwa-cli
+cd 本仓库
 pnpm install
 pnpm run build
 pnpm run dev:cli doctor
@@ -121,7 +121,7 @@ pnpm run dev:up --domain https://agent.nuwax.com --saved-key <key> --engine clau
 如果要模拟“用户已经安装了 `nuwa-cli` 命令”的体验，可以用本地 link：
 
 ```bash
-cd crates/nuwa-cli
+cd 本仓库
 pnpm install
 pnpm run build
 npm link
@@ -138,7 +138,7 @@ npm unlink -g nuwa-cli
 如果要更接近 npm 发布后的安装形态，可以先打本地 tarball，再在临时目录安装：
 
 ```bash
-cd crates/nuwa-cli
+cd 本仓库
 pnpm install
 pnpm run build
 mkdir -p /tmp/nuwa-cli-pack
@@ -209,7 +209,7 @@ NUWACLI_PASSWORD='<password>' pnpm run dev:up \
 本地 tarball 方式：
 
 ```bash
-cd crates/nuwa-cli
+cd 本仓库
 pnpm run build
 mkdir -p /tmp/nuwa-cli-pack
 pnpm pack --pack-destination /tmp/nuwa-cli-pack
@@ -365,7 +365,7 @@ pnpm run dev:cli serve --port 60016 --tunnel \
   --lanproxy-port 443
 ```
 
-注意：`nuwax-file-server` 随 CLI 的 npm/pnpm 依赖安装；lanproxy 是 CLI 自己的预置资源，源码目录在 `crates/nuwa-cli/resources/lanproxy`，构建时会复制到 `dist/resources/lanproxy`。`--lanproxy-path`、`config set lanproxy-path` 或 `NUWACLI_LANPROXY_PATH` 只用于覆盖内置资源或调试指定二进制。若注册接口返回 `serverHost`/`serverPort`，可省略 `--lanproxy-host` / `--lanproxy-port`。
+注意：`nuwax-file-server` 随 CLI 的 npm/pnpm 依赖安装；lanproxy 是 CLI 自己的预置资源，源码目录在 `resources/lanproxy`，构建时会复制到 `dist/resources/lanproxy`。`--lanproxy-path`、`config set lanproxy-path` 或 `NUWACLI_LANPROXY_PATH` 只用于覆盖内置资源或调试指定二进制。若注册接口返回 `serverHost`/`serverPort`，可省略 `--lanproxy-host` / `--lanproxy-port`。
 
 工作空间：未传 `--cwd` 时，`serve/up` 使用 `~/.nuwa-cli/workspaces` 作为默认根目录；云端请求里的 `project_id` 会映射到 `~/.nuwa-cli/workspaces/<project_id>`，`agent_work_dir` / `session_id` 仅在缺少 `project_id` 时作为兼容 fallback。`user_id` 只作为请求元数据，不参与本地路径。传了 `--cwd <dir>` 时，`<dir>` 就是当前项目目录本身，不会再追加 `project_id`。file-server 使用同一活动目录/根目录。
 

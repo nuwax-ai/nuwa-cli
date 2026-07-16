@@ -50,5 +50,16 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nuwax-ai/nuwa-cli.git"
+  },
+  "homepage": "https://github.com/nuwax-ai/nuwa-cli#readme",
+  "bugs": {
+    "url": "https://github.com/nuwax-ai/nuwa-cli/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

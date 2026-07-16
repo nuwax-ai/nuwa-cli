@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build / test
+dist/
+coverage/
+*.tsbuildinfo
+
+# Logs / OS
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+# Local pack / debug
+*.tgz
+.tmp/
+tmp/

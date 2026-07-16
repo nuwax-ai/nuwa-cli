@@ -12,7 +12,7 @@ nuwa-cli chat -p "list the files in this directory"
 
 ## Developer Quick Start
 
-For local package development inside `crates/nuwa-cli`:
+For local development in this repository:
 
 ```bash
 pnpm install

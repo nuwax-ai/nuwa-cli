@@ -12,7 +12,7 @@ nuwa-cli chat -p "列出当前目录下的文件"
 
 ## 开发者快速开始
 
-如果你是在 `crates/nuwa-cli` 目录里做本地开发，推荐先跑：
+如果你在本仓库做本地开发，推荐先跑：
 
 ```bash
 pnpm install
