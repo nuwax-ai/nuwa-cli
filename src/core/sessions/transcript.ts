@@ -45,8 +45,9 @@ function applyOptions(
   if (options.offset && options.offset > 0) {
     // Pagination mode: chronological with offset
     slice = messages.slice(options.offset);
+    // Force boolean: `limit && ...` can narrow to number|undefined under TS.
     const hasMore =
-      options.limit && options.limit > 0 && slice.length > options.limit;
+      (options.limit ?? 0) > 0 && slice.length > (options.limit as number);
     if (options.limit && options.limit > 0) {
       slice = slice.slice(0, options.limit);
     }
