@@ -1,0 +1,12 @@
+{
+  "name": "@nuwax-ai/lanproxy-darwin-arm64",
+  "version": "1.0.0",
+  "description": "nuwax-lanproxy binary for macOS arm64",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "files": ["bin"],
+  "bin": { "nuwax-lanproxy": "bin/nuwax-lanproxy" },
+  "exports": { "./package.json": "./package.json" },
+  "license": "MIT",
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org" }
+}

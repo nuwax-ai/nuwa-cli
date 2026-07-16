@@ -5,7 +5,7 @@
 无界面（headless）的多引擎 Agent 命令行工具。`nuwa-cli` 直接挂接到你本机**已经安装并登录**的 `claude` 与 `codex` CLI——无需单独登录、不打包 Claude/Codex 运行时、不使用隔离的配置目录。它读取的就是你终端里 `claude`/`codex` 本身在用的 `~/.claude` / `~/.codex` 状态。
 
 ```bash
-npm install -g @nuwax-ai/nuwa-cli
+npm install -g @nuwax-ai/nuwa-cli@beta
 nuwa-cli doctor
 nuwa-cli chat -p "列出当前目录下的文件"
 ```
@@ -15,11 +15,11 @@ nuwa-cli chat -p "列出当前目录下的文件"
 如果你在本仓库做本地开发，推荐先跑：
 
 ```bash
-pnpm install
-pnpm run build
-pnpm run dev:cli --version
-pnpm run dev:doctor
-pnpm run dev:chat -p "hello"
+npm install
+npm run build
+npm run dev:cli -- --version
+npm run dev:doctor
+npm run dev:chat -- -p "hello"
 ```
 
 更完整的本地调试脚本和分步说明见 [`docs/local-debugging.md`](docs/local-debugging.md)。
@@ -29,7 +29,7 @@ pnpm run dev:chat -p "hello"
 大多数 Agent 封装要么自带一整套模型运行时（体积大，而且看不到你已有的登录态），要么让你重新配置一遍 API key。`nuwa-cli` 两者都不做：
 
 - **继承你的环境。** `HOME`、`~/.claude`、`~/.codex`、MCP server、skills、模型偏好——全部保持原样。引擎看到的，和你自己的 `claude`/`codex` CLI 看到的完全一致。
-- **使用正常包依赖。** ACP 适配器（`claude-code-acp-ts`、`nuwax-codex-acp`）和 `nuwax-file-server` 会随 `nuwa-cli` 通过 npm/pnpm 安装；运行时只解析这些已安装包的入口。lanproxy 是随 CLI 包发布的预置资源。
+- **使用正常包依赖。** ACP 适配器、`nuwax-file-server` 和 `@nuwax-ai/lanproxy` 会随 `nuwa-cli` 通过 npm 安装；lanproxy 使用平台 optional dependencies，每台机器只下载对应 OS/CPU 的二进制。
 - **走 ACP 协议。** 两个引擎都通过 [Agent Client Protocol](https://agentclientprotocol.com) 驱动——和 Zed 等编辑器用的是同一套协议，而不是抓取 CLI 文本输出的那种封装。
 
 ## 命令
@@ -74,15 +74,15 @@ nuwa-cli chat --handoff claude:<sessionId> -p "接着做"
 
 `nuwa-cli sessions summary --engine <claude|codex> --session-id <id> [--limit N]` 输出某个会话完整 transcript 的紧凑、跨引擎通用的 JSON 摘要（`{engine, sessionId, cwd, title, messages, hasMore}`）。这是底层兼容命令；新的跨 Agent 上下文入口见 `nuwa-cli context`。
 
-### `nuwa-cli ui`
+### `nuwa-cli console`
 
 启动一个**仅本机**的轻量 Web 控制台（默认 `127.0.0.1:60017`），自动打开浏览器：在一个页面里查看/续接/新建 claude·codex 会话、切换引擎/模型/ACP 模式，并直接流式聊天。零额外依赖，页面随 CLI 一起打包。
 
 ```bash
-nuwa-cli ui                         # 默认 claude 引擎，自动打开浏览器
-nuwa-cli ui --engine codex          # 默认用 codex（界面内仍可切换）
-nuwa-cli ui --no-open               # 不自动开浏览器，自行打开打印的 URL
-nuwa-cli ui --approve ask           # 每个工具调用都在浏览器内弹审批
+nuwa-cli console                         # 默认 claude 引擎，自动打开浏览器
+nuwa-cli console --engine codex          # 默认用 codex（界面内仍可切换）
+nuwa-cli console --no-open               # 不自动开浏览器，自行打开打印的 URL
+nuwa-cli console --approve ask           # 每个工具调用都在浏览器内弹审批
 ```
 
 打开后会看到：
@@ -106,7 +106,7 @@ nuwa-cli ui --approve ask           # 每个工具调用都在浏览器内弹审
 
 启动时会打印一个带一次性 token 的本地 URL，例如 `http://127.0.0.1:60017/?t=<token>`：该 token 内嵌在页面里，浏览器无需手输，也用于阻挡其它网页的 drive-by 请求。
 
-`ui` 是**前台**进程——关掉终端或 `Ctrl+C` 即停止。它不是后台常驻服务，也不需要是：它面向「你在本机前操作」的场景。需要无人值守的远程/云端调度仍用 `serve`（机器 API，见下文）。完整说明见 [`docs/local-ui.md`](docs/local-ui.md)。
+`console` 是**前台**进程——关掉终端或 `Ctrl+C` 即停止。无人值守的远程/云端调度使用 Gateway。完整说明见 [`docs/console.md`](docs/console.md)。
 
 ### `nuwa-cli context`
 
@@ -175,17 +175,17 @@ nuwa-cli account switch <account-key>
 
 `account list` 会输出可切换账号的 key（形如 `testagent.xspaceagi.com_18011447397`）并用 `*` 标记当前默认账号。`account switch` 会用该账号保存的 savedKey 重新注册并设为当前默认账号。
 
-切换账号会影响 `serve`、file-server、lanproxy、后端注册状态，因此**不做热切换**。如果 `serve` 正在运行，`account switch` 会拒绝执行；请先在运行 `up/serve` 的终端按 `Ctrl-C` 停止所有服务，再切换账号并重新启动。
+切换账号会影响 Gateway、file-server、lanproxy 和后端注册状态，因此**不做热切换**。切换前请先运行 `nuwa-cli stop --all`。
 
-### `nuwa-cli up`
+### `nuwa-cli gateway`
 
 一键检测可用引擎、登录/注册并启动 `serve --tunnel`：
 
 ```bash
-nuwa-cli up --help
-nuwa-cli up --domain https://agent.nuwax.com --saved-key <key>
-nuwa-cli up --domain https://agent.nuwax.com -u <username>
-NUWACLI_PASSWORD='<password>' nuwa-cli up --domain https://agent.nuwax.com -u <username>
+nuwa-cli gateway --help
+nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>
+nuwa-cli gateway --domain https://agent.nuwax.com -u <username>
+NUWACLI_PASSWORD='<password>' nuwa-cli gateway --domain https://agent.nuwax.com -u <username>
 ```
 
 未传 `--engine` 时会检测本机可用的 `claude` / `codex`：只有一个可用就使用它；多个可用时随机选择一个；都不可用则提示先完成 `claude login` 或 `codex login`。`NUWACLI_PASSWORD` 只用于本次账号密码注册，不会写入 credentials，也会从 engine/lanproxy/file-server 子进程环境里清理掉。
@@ -193,15 +193,15 @@ NUWACLI_PASSWORD='<password>' nuwa-cli up --domain https://agent.nuwax.com -u <u
 npm 发布后，干净环境可用零安装入口：
 
 ```bash
-npx -y @nuwax-ai/nuwa-cli@latest up --domain https://agent.nuwax.com --saved-key <key>
+npx -y @nuwax-ai/nuwa-cli@beta gateway --domain https://agent.nuwax.com --saved-key <key>
 ```
 
-本地未发布 npm 时的调试方式见 [`docs/local-debugging.md`](docs/local-debugging.md)，完整设计说明见 [`docs/one-click-up.md`](docs/one-click-up.md)。
+本地未发布 npm 时的调试方式见 [`docs/local-debugging.md`](docs/local-debugging.md)，完整设计说明见 [`docs/gateway.md`](docs/gateway.md)。
 
 常驻运行方式：
 
 ```bash
-nuwa-cli up --engine claude --daemon           # 脱离当前终端后台运行
+nuwa-cli gateway --engine claude --daemon           # 脱离当前终端后台运行
 nuwa-cli service install --engine claude --now # 安装当前用户自启动服务并立即启动
 nuwa-cli service status
 nuwa-cli service stop
@@ -209,6 +209,21 @@ nuwa-cli service uninstall
 ```
 
 `--daemon` 是轻量后台模式：终端关闭后仍运行，但重启/注销后不会自动恢复。`nuwa-cli service` 会安装系统托管的当前用户服务：macOS 用 LaunchAgent，Linux 用 systemd user service，Windows 用计划任务。启动项只保存 engine/port/cwd/lanproxy 等运行参数，**不会**保存密码、savedKey/configKey 或模型 API key；登录态仍只从 `~/.nuwa-cli/credentials.json` 读取。
+
+### 运行生命周期
+
+```bash
+nuwa-cli ps                    # 查看 Gateway、Console 和 chat 进程
+nuwa-cli start                 # Gateway 后台运行，Console 占用当前终端
+nuwa-cli start --force         # 强制替换 Gateway 和 Console
+nuwa-cli stop                  # 默认停止 Gateway
+nuwa-cli stop --console        # 仅停止 Console
+nuwa-cli stop --all            # 停止 Gateway 和 Console
+nuwa-cli restart --all         # Gateway 转后台，Console 占用当前终端
+nuwa-cli doctor --fix          # 修复多实例，但不主动重启
+```
+
+`start` 默认复用健康实例，只补齐缺失服务；`Ctrl+C` 只退出前台 Console，后台 Gateway 继续运行。Gateway 可以前台运行、daemonize 或由系统服务托管；Console 永远不会 daemonize。
 
 ### `nuwa-cli service`
 
@@ -223,21 +238,21 @@ nuwa-cli service status
 nuwa-cli service uninstall
 ```
 
-安装前需要已有 CLI 默认账号：先成功运行一次 `nuwa-cli login` 或 `nuwa-cli up`。macOS 和 Windows 会在当前用户登录时启动；Linux 使用 `systemd --user`，默认也是用户登录后启动，如需未登录也随系统启动，需要在系统上启用 linger（例如允许时运行 `loginctl enable-linger $USER`）。
+安装前需要已有 CLI 默认账号：先成功运行一次 `nuwa-cli login` 或 `nuwa-cli gateway`。macOS 和 Windows 会在当前用户登录时启动；Linux 使用 `systemd --user`，默认也是用户登录后启动，如需未登录也随系统启动，需要在系统上启用 linger（例如允许时运行 `loginctl enable-linger $USER`）。
 
 ### `nuwa-cli update`
 
-升级 npm/pnpm 安装的 CLI 包：
+升级 npm 安装的 CLI 包：
 
 ```bash
 nuwa-cli update --help
-nuwa-cli update                 # 升级到 latest
-nuwa-cli update 0.2.0           # 升级到指定版本
+nuwa-cli update                 # 升级到 beta 通道最新版
+nuwa-cli update 0.1.0-beta.1    # 升级到指定版本
+nuwa-cli update latest          # 显式切换到正式版通道
 nuwa-cli update --check         # 只查询目标版本
-nuwa-cli update --package-manager pnpm
 ```
 
-`update` 只执行包升级，不修改 `~/.nuwa-cli/credentials.json`、savedKey、账号列表或服务锁。若是 `npx` / `pnpm dlx` 临时运行，建议直接使用 `npx -y @nuwax-ai/nuwa-cli@latest ...` 或 `pnpm dlx @nuwax-ai/nuwa-cli@latest ...`。
+`update` 使用 npm 执行包升级，不修改 `~/.nuwa-cli/credentials.json`、savedKey、账号列表或服务锁。当前预发布阶段默认跟随 npm 的 `beta` tag。临时运行时建议直接使用 `npx -y @nuwax-ai/nuwa-cli@beta ...`。
 
 ### `nuwa-cli serve`
 
@@ -268,13 +283,13 @@ nuwa-cli serve --port 60016
 - 引擎死亡的会话会被驱逐，并向 `/computer/progress` 客户端发送终结事件 `session_ended`（SSE `subType` 为 `error` 或 `ended`），让订阅者得知会话已结束，而不是永远等下去。
 - 收到 `SIGINT`/`SIGTERM` 时，服务器会停止所有活动会话（拆除它们的引擎子进程）、停止 `--tunnel` 的 `nuwax-file-server` 与 lanproxy 子进程，然后再关闭 HTTP 监听——引擎子进程和辅助服务不再被遗留成孤儿。
 
-`--tunnel` 需要先 `nuwa-cli login`。它会向后端重新注册 CLI，启动本地 `nuwax-file-server`，再启动随 CLI 包发布的 lanproxy 二进制：
+`--tunnel` 需要先 `nuwa-cli login`。它会向后端重新注册 CLI，启动本地 `nuwax-file-server`，再启动 `@nuwax-ai/lanproxy` 安装的当前平台二进制：
 
 ```bash
 nuwa-cli serve --tunnel --lanproxy-host agent.nuwax.com --lanproxy-port 443
 ```
 
-如果注册响应已包含 `serverHost`/`serverPort`，可以省略显式 host/port。`--lanproxy-path` 仅用于覆盖内置二进制或本地联调。CLI 运行日志对齐客户端形态：结构化 JSONL 写入 `~/.nuwa-cli/logs/main.YYYY-MM-DD.log`，`latest.log` 指向当天活跃日志，`up-debug.log` 保留为兼容别名。`--daemon` 仍会把原始 stdout/stderr 追加到 `serve.log`，用于查看启动输出。
+如果注册响应已包含 `serverHost`/`serverPort`，可以省略显式 host/port。`--lanproxy-path` 仅用于覆盖 npm 平台包或本地联调。CLI 运行日志对齐客户端形态：结构化 JSONL 写入 `~/.nuwa-cli/logs/main.YYYY-MM-DD.log`，`latest.log` 指向当天活跃日志。`--daemon` 仍会把原始 stdout/stderr 追加到 `serve.log`，用于查看启动输出。
 
 ## 已知限制
 
@@ -291,7 +306,7 @@ nuwa-cli serve --tunnel --lanproxy-host agent.nuwax.com --lanproxy-port 443
 - `claude` 引擎：拉起包依赖 [`claude-code-acp-ts`](https://www.npmjs.com/package/claude-code-acp-ts)，并通过 `CLAUDE_CODE_EXECUTABLE` 指向**你自己的** `claude` 二进制。
 - `codex` 引擎：拉起包依赖 [`nuwax-codex-acp`](https://www.npmjs.com/package/nuwax-codex-acp)；该包通过 npm optionalDependencies 拉取匹配平台的二进制。
 - `serve --tunnel`：启动包依赖 [`nuwax-file-server`](https://www.npmjs.com/package/nuwax-file-server)，再用注册得到的 savedKey 拉起随 CLI 包发布的 `nuwax-lanproxy` 二进制。file-server 的 PID/lock 临时目录会按端口放到 `~/.nuwa-cli/tmp/file-server-<port>`，避免误停 Electron 客户端或另一个 CLI tunnel 实例。
-- `service install`：写入当前用户级系统服务，在登录/启动时运行 `nuwa-cli up`；运行时复用 CLI 自己的 credentials，不把密钥嵌入系统服务配置。
+- `service install`：写入当前用户级系统服务，在登录/启动时运行 `nuwa-cli gateway`；运行时复用 CLI 自己的 credentials，不把密钥嵌入系统服务配置。
 - 不会往你 shell 的全局 `node_modules` 里装任何东西，nuwa-cli 自己的 credentials、device id、cache、logs、serve lock 都存放在 `~/.nuwa-cli/` 下。若同时安装了 NuwaClaw Electron 桌面端，两者可在同一台机器共存但不共享 savedKey 或本地状态；`serve` 默认优先使用 CLI 专属端口 60016/60015，冲突时自动寻找后续可用端口，与 Electron 的 60005–60009 范围分开。
 
 ## 运行要求

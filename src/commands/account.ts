@@ -11,7 +11,7 @@ export async function accountListCommand(): Promise<void> {
   const accounts = listStoredAccounts();
   if (accounts.length === 0) {
     console.log(
-      pc.dim("暂无已保存账号。运行 `nuwa-cli login` 或 `nuwa-cli up` 添加。"),
+      pc.dim("暂无已保存账号。运行 `nuwa-cli login` 或 `nuwa-cli gateway` 添加。"),
     );
     return;
   }
@@ -31,7 +31,7 @@ export async function accountSwitchCommand(selector: string): Promise<void> {
     if (serveStatus.state !== "stopped") {
       console.error(
         pc.red(
-          `[nuwa-cli] 当前 serve 正在运行或未健康关闭（端口 ${serveStatus.port}，PID ${serveStatus.pid}）。切换账号需要重启所有服务，请先 Ctrl-C 停止 serve 后再切换。`,
+          `[nuwa-cli] 当前 Gateway 正在运行或未健康关闭（端口 ${serveStatus.port}，PID ${serveStatus.pid}）。切换账号前请运行 \`nuwa-cli stop --all\`。`,
         ),
       );
       process.exitCode = 1;
@@ -57,7 +57,7 @@ export async function accountSwitchCommand(selector: string): Promise<void> {
     });
     console.log(
       pc.green(
-        `已切换当前账号：${resolved.account.username}（${resolved.account.domain}）。请重新启动 \`nuwa-cli up\` 或 \`nuwa-cli serve --tunnel\`。`,
+        `已切换当前账号：${resolved.account.username}（${resolved.account.domain}）。请重新启动 \`nuwa-cli gateway\` 或 \`nuwa-cli serve --tunnel\`。`,
       ),
     );
   } catch (err) {

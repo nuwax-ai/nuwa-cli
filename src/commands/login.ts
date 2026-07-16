@@ -15,6 +15,7 @@ import {
 } from "../core/auth/credentials.js";
 import { getDeviceId } from "../core/auth/deviceId.js";
 import { getServeStatus } from "../core/serve/serveLock.js";
+import { findUiProcessIds } from "../core/processes/uiSingleton.js";
 
 export interface LoginCommandOptions {
   domain?: string;
@@ -161,7 +162,7 @@ export interface StatusCommandOptions {
 }
 
 /**
- * Reports whether a local `serve` is running and on which port, by reading the
+ * Reports whether the local Gateway is running and on which port, by reading the
  * lock `serve` writes on listen and probing `/health` (no secret needed). The
  * X-Nuwax-Internal-Secret itself is never persisted, so this can only say a
  * serve is up — to actually call `/computer/chat` the user must still grab the
@@ -171,7 +172,7 @@ async function printServeStatus(): Promise<void> {
   const status = await getServeStatus();
   if (status.state === "running") {
     console.log(
-      `serve：${pc.green("运行中")}  端口 ${status.port}  PID ${status.pid}  启动于 ${status.startedAt}`,
+      `Gateway：${pc.green("运行中")}  端口 ${status.port}  PID ${status.pid}  启动于 ${status.startedAt}`,
     );
     console.log(
       pc.dim(
@@ -180,15 +181,21 @@ async function printServeStatus(): Promise<void> {
     );
   } else if (status.state === "unhealthy") {
     console.log(
-      `serve：${pc.yellow("异常")}  PID ${status.pid}  端口 ${status.port}（/health 无响应，可能仍在启动或不健康）`,
+      `Gateway：${pc.yellow("异常")}  PID ${status.pid}  端口 ${status.port}（/health 无响应，可能仍在启动或不健康）`,
     );
   } else {
     console.log(
-      `serve：${pc.dim("未运行")}${
+      `Gateway：${pc.dim("未运行")}${
         status.note ? `  ${pc.dim(status.note)}` : ""
-      }（可用 \`nuwa-cli serve\` 启动）`,
+      }（可用 \`nuwa-cli gateway\` 启动）`,
     );
   }
+  const consolePids = findUiProcessIds();
+  console.log(
+    consolePids.length > 0
+      ? `Console：${pc.green("前台运行中")}  PID ${consolePids.join(", ")}`
+      : `Console：${pc.dim("未运行")}（可用 \`nuwa-cli console\` 启动）`,
+  );
 }
 
 export async function statusCommand(

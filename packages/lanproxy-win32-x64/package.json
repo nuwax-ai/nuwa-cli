@@ -1,0 +1,12 @@
+{
+  "name": "@nuwax-ai/lanproxy-win32-x64",
+  "version": "1.0.0",
+  "description": "nuwax-lanproxy binary for Windows x64",
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "files": ["bin"],
+  "bin": { "nuwax-lanproxy": "bin/nuwax-lanproxy.exe" },
+  "exports": { "./package.json": "./package.json" },
+  "license": "MIT",
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org" }
+}

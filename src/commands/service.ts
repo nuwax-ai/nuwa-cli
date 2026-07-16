@@ -1,6 +1,7 @@
 import pc from "picocolors";
 import { readCredentials } from "../core/auth/credentials.js";
 import { getServeStatus } from "../core/serve/serveLock.js";
+import { findUiProcessIds } from "../core/processes/uiSingleton.js";
 import {
   getServiceStatus,
   installService,
@@ -18,7 +19,7 @@ function hasUsableDefaultAccount(): boolean {
 function requireDefaultAccount(): void {
   if (hasUsableDefaultAccount()) return;
   throw new Error(
-    "未找到可用于启动的默认账号。请先运行 `nuwa-cli login --domain <host> --saved-key <key>`，或 `nuwa-cli up --domain <host> -u <username>` 成功注册一次。",
+    "未找到可用于启动的默认账号。请先运行 `nuwa-cli login --domain <host> --saved-key <key>`，或 `nuwa-cli gateway --domain <host> -u <username>` 成功注册一次。",
   );
 }
 
@@ -53,8 +54,8 @@ export async function serviceInstallCommand(
     console.log(
       pc.green(
         options.now
-          ? "nuwa-cli 后台服务已安装并启动。"
-          : "nuwa-cli 后台服务已安装，将在下次用户登录时自动启动。",
+          ? "Gateway 后台服务已安装并启动。"
+          : "Gateway 后台服务已安装，将在下次用户登录时自动启动。",
       ),
     );
     printPlatformNote();
@@ -70,7 +71,7 @@ export async function serviceStartCommand(): Promise<void> {
   try {
     requireDefaultAccount();
     startService();
-    console.log(pc.green("nuwa-cli 后台服务已启动。"));
+    console.log(pc.green("Gateway 后台服务已启动。"));
   } catch (err) {
     console.error(
       pc.red(`[nuwa-cli] 启动后台服务失败：${(err as Error).message}`),
@@ -82,7 +83,7 @@ export async function serviceStartCommand(): Promise<void> {
 export async function serviceStopCommand(): Promise<void> {
   try {
     stopService();
-    console.log(pc.green("nuwa-cli 后台服务已停止。"));
+    console.log(pc.green("Gateway 后台服务已停止。"));
   } catch (err) {
     console.error(
       pc.red(`[nuwa-cli] 停止后台服务失败：${(err as Error).message}`),
@@ -94,7 +95,7 @@ export async function serviceStopCommand(): Promise<void> {
 export async function serviceUninstallCommand(): Promise<void> {
   try {
     uninstallService();
-    console.log(pc.green("nuwa-cli 后台服务已卸载。"));
+    console.log(pc.green("Gateway 后台服务已卸载。"));
   } catch (err) {
     console.error(
       pc.red(`[nuwa-cli] 卸载后台服务失败：${(err as Error).message}`),
@@ -117,17 +118,23 @@ export async function serviceStatusCommand(): Promise<void> {
     const serve = await getServeStatus();
     if (serve.state === "running") {
       console.log(
-        `serve：运行中 http://${serve.host}:${serve.port}（pid ${serve.pid}）`,
+        `Gateway：运行中 http://${serve.host}:${serve.port}（pid ${serve.pid}）`,
       );
     } else if (serve.state === "unhealthy") {
       console.log(
         pc.yellow(
-          `serve：进程存在但 /health 不可用 http://${serve.host}:${serve.port}（pid ${serve.pid}）`,
+          `Gateway：进程存在但 /health 不可用 http://${serve.host}:${serve.port}（pid ${serve.pid}）`,
         ),
       );
     } else {
-      console.log(`serve：未运行${serve.note ? `（${serve.note}）` : ""}`);
+      console.log(`Gateway：未运行${serve.note ? `（${serve.note}）` : ""}`);
     }
+    const consolePids = findUiProcessIds();
+    console.log(
+      consolePids.length > 0
+        ? `Console：前台运行中（pid ${consolePids.join(", ")}）`
+        : "Console：未运行（Console 不由系统后台服务管理）",
+    );
 
     if (service.details.trim()) {
       console.log(pc.dim("\n系统状态详情："));

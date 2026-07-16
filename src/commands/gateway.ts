@@ -9,7 +9,7 @@ import { performReg, resolveDomain, resolveLoginPassword } from "./login.js";
 import { serveCommand, type ServeCommandOptions } from "./serve.js";
 import { debugLog } from "../core/debugLog.js";
 
-export interface UpCommandOptions {
+export interface GatewayCommandOptions {
   domain?: string;
   savedKey?: string;
   username?: string;
@@ -34,7 +34,7 @@ function pushFlag(args: string[], name: string, value?: string): void {
 }
 
 function buildServeDaemonArgs(
-  options: UpCommandOptions,
+  options: GatewayCommandOptions,
   engine: EngineKind,
 ): string[] {
   const args = [process.argv[1], "serve", "--tunnel", "--engine", engine];
@@ -53,7 +53,7 @@ function buildServeDaemonArgs(
   return args;
 }
 
-async function ensureRegistered(options: UpCommandOptions): Promise<void> {
+async function ensureRegistered(options: GatewayCommandOptions): Promise<void> {
   if (options.savedKey) {
     const domain = await resolveDomain(options.domain);
     if (!domain) throw new Error("已取消。");
@@ -96,9 +96,11 @@ async function ensureRegistered(options: UpCommandOptions): Promise<void> {
   );
 }
 
-export async function upCommand(options: UpCommandOptions): Promise<void> {
+export async function gatewayCommand(
+  options: GatewayCommandOptions,
+): Promise<EngineKind | undefined> {
   try {
-    debugLog("up.command", "start", {
+    debugLog("gateway.command", "start", {
       domain: options.domain,
       username: options.username,
       engine: options.engine,
@@ -116,7 +118,7 @@ export async function upCommand(options: UpCommandOptions): Promise<void> {
         `已选择引擎：${engine}${available ? `（可用：${available}）` : ""}`,
       ),
     );
-    debugLog("up.command", "engine selected", {
+    debugLog("gateway.command", "engine selected", {
       engine,
       available,
       probes: probes.map((probe) => ({
@@ -128,7 +130,7 @@ export async function upCommand(options: UpCommandOptions): Promise<void> {
     });
 
     await ensureRegistered(options);
-    debugLog("up.command", "registered");
+    debugLog("gateway.command", "registered");
 
     const serveOptions: ServeCommandOptions = {
       port: options.port,
@@ -150,7 +152,7 @@ export async function upCommand(options: UpCommandOptions): Promise<void> {
       baseUrl: options.baseUrl,
       model: options.model,
     };
-    debugLog("up.command", "serve handoff", {
+    debugLog("gateway.command", "serve handoff", {
       engine,
       tunnel: serveOptions.tunnel,
       daemon: serveOptions.daemon,
@@ -158,11 +160,13 @@ export async function upCommand(options: UpCommandOptions): Promise<void> {
       port: serveOptions.port,
     });
     await serveCommand(serveOptions);
+    return engine;
   } catch (err) {
-    debugLog("up.command", "failed", {
+    debugLog("gateway.command", "failed", {
       message: (err as Error).message,
     });
-    console.error(pc.red(`[nuwa-cli] up 失败：${(err as Error).message}`));
+    console.error(pc.red(`[nuwa-cli] gateway 失败：${(err as Error).message}`));
     process.exitCode = 1;
+    return undefined;
   }
 }

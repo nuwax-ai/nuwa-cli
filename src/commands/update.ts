@@ -1,13 +1,14 @@
 import { spawnSync } from "node:child_process";
-import { CLI_VERSION, PACKAGE_NAME } from "../core/version.js";
+import {
+  CLI_VERSION,
+  DEFAULT_DIST_TAG,
+  PACKAGE_NAME,
+} from "../core/version.js";
 import { findOnPath } from "../util/which.js";
-
-export type PackageManager = "npm" | "pnpm";
 
 export interface UpdateOptions {
   check?: boolean;
   dryRun?: boolean;
-  packageManager?: string;
   registry?: string;
 }
 
@@ -47,10 +48,10 @@ function runCommand(
 }
 
 export function normalizeUpdateTarget(target?: string): string {
-  const value = (target || "latest").trim();
+  const value = (target || DEFAULT_DIST_TAG).trim();
   if (!value || value.startsWith("-")) {
     throw new Error(
-      "升级版本不能为空。示例：nuwa-cli update latest 或 nuwa-cli update 0.2.0",
+      "升级版本不能为空。示例：nuwa-cli update beta 或 nuwa-cli update 0.1.0-beta.1",
     );
   }
   return value.startsWith("v") && /^\d/.test(value.slice(1))
@@ -58,29 +59,11 @@ export function normalizeUpdateTarget(target?: string): string {
     : value;
 }
 
-export function normalizePackageManager(value?: string): PackageManager {
-  if (!value) return inferPackageManager();
-  if (value === "npm" || value === "pnpm") return value;
-  throw new Error("--package-manager 只支持 npm 或 pnpm");
-}
-
-export function inferPackageManager(
-  env: NodeJS.ProcessEnv = process.env,
-): PackageManager {
-  const userAgent = env.npm_config_user_agent || "";
-  if (userAgent.includes("pnpm")) return "pnpm";
-  return "npm";
-}
-
 export function buildInstallArgs(
-  packageManager: PackageManager,
   packageSpec: string,
   registry?: string,
 ): string[] {
-  const args =
-    packageManager === "pnpm"
-      ? ["add", "-g", packageSpec]
-      : ["install", "-g", packageSpec];
+  const args = ["install", "-g", packageSpec];
   if (registry) args.push("--registry", registry);
   return args;
 }
@@ -103,8 +86,8 @@ function buildPackageManagerEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-function resolveCommand(packageManager: PackageManager): string | null {
-  return findOnPath(packageManager);
+function resolveCommand(): string | null {
+  return findOnPath("npm");
 }
 
 function printableCommand(command: string, args: string[]): string {
@@ -118,12 +101,9 @@ export async function updateCommand(
 ): Promise<void> {
   try {
     const target = normalizeUpdateTarget(targetArg);
-    const packageManager = normalizePackageManager(options.packageManager);
-    const command = resolveCommand(packageManager);
+    const command = resolveCommand();
     if (!command) {
-      throw new Error(
-        `未找到 ${packageManager}。请先安装 ${packageManager}，或改用 --package-manager npm|pnpm。`,
-      );
+      throw new Error("未找到 npm。请先安装 Node.js/npm 后重试。");
     }
 
     const packageSpec = `${PACKAGE_NAME}@${target}`;
@@ -150,14 +130,10 @@ export async function updateCommand(
       return;
     }
 
-    const installArgs = buildInstallArgs(
-      packageManager,
-      packageSpec,
-      options.registry,
-    );
+    const installArgs = buildInstallArgs(packageSpec, options.registry);
     console.log(`当前版本：${CLI_VERSION}`);
     console.log(`升级目标：${packageSpec}`);
-    console.log(`执行：${printableCommand(packageManager, installArgs)}`);
+    console.log(`执行：${printableCommand("npm", installArgs)}`);
     if (options.dryRun) return;
 
     const result = runner(command, installArgs, {

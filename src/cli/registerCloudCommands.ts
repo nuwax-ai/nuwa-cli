@@ -29,7 +29,7 @@ export function registerCloudCommands(program: Command): void {
 
   program
     .command("status")
-    .description("查看 Nuwax 登录状态")
+    .description("查看 Nuwax 登录状态以及 Gateway/Console 运行状态")
     .option("--remote", "额外向服务器校验 savedKey 是否仍然有效")
     .action(statusCommand);
 
@@ -71,7 +71,7 @@ export function registerCloudCommands(program: Command): void {
         "",
         "说明：",
         "  切换账号会重新注册当前账号，并要求重新启动 serve/file-server/lanproxy。",
-        "  如果 serve 正在运行，本命令会拒绝执行；请先在 up/serve 终端按 Ctrl-C。",
+        "  如果 Gateway 正在运行，本命令会拒绝执行；请先运行 `nuwa-cli stop --all`。",
       ].join("\n"),
     )
     .action(accountSwitchCommand);

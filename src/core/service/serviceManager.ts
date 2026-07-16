@@ -62,7 +62,7 @@ export function buildServiceProgramArgs(
   const args = [
     context.nodePath ?? process.execPath,
     context.cliPath ?? resolveCliEntryPath(),
-    "up",
+    "gateway",
   ];
   pushFlag(args, "--engine", options.engine);
   pushFlag(args, "--port", options.port);

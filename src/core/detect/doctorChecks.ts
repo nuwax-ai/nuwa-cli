@@ -3,6 +3,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { cliCredentialsPath } from "../../util/paths.js";
 import { findOnPath, getVersion } from "../../util/which.js";
+import { findServeProcessIds } from "../processes/serveSingleton.js";
+import { findUiProcessIds } from "../processes/uiSingleton.js";
 
 export interface DoctorCheckResult {
   id: string;
@@ -220,6 +222,46 @@ export function checkLocalSessions(): DoctorCheckResult {
   };
 }
 
+export function checkServeSingleton(): DoctorCheckResult {
+  const pids = findServeProcessIds();
+  const ok = pids.length <= 1;
+  return {
+    id: "serve-singleton",
+    label: "serve 单例",
+    ok,
+    detail:
+      pids.length === 0
+        ? "未运行（单例状态正常）"
+        : pids.length === 1
+          ? `运行中（PID ${pids[0]}）`
+          : `检测到 ${pids.length} 个实例（PID ${pids.join(", ")}）`,
+    fix: ok
+      ? undefined
+      : "运行 `nuwa-cli doctor --fix` 自动保留一个有效实例并停止其余实例",
+    severity: "info",
+  };
+}
+
+export function checkUiSingleton(): DoctorCheckResult {
+  const pids = findUiProcessIds();
+  const ok = pids.length <= 1;
+  return {
+    id: "ui-singleton",
+    label: "Console 单例",
+    ok,
+    detail:
+      pids.length === 0
+        ? "未运行（单例状态正常）"
+        : pids.length === 1
+          ? `前台运行中（PID ${pids[0]}）`
+          : `检测到 ${pids.length} 个前台实例（PID ${pids.join(", ")}）`,
+    fix: ok
+      ? undefined
+      : "运行 `nuwa-cli doctor --fix` 自动保留一个 Console 并停止其余实例",
+    severity: "info",
+  };
+}
+
 export function runAllDoctorChecks(): DoctorCheckResult[] {
   return [
     checkNodeVersion(),
@@ -229,5 +271,7 @@ export function runAllDoctorChecks(): DoctorCheckResult[] {
     checkTccRisk(),
     checkNuwaxLogin(),
     checkLocalSessions(),
+    checkServeSingleton(),
+    checkUiSingleton(),
   ];
 }

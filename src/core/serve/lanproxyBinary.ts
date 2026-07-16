@@ -1,14 +1,12 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolveBinaryPath as resolvePackageBinaryPath } from "@nuwax-ai/lanproxy";
 
 /**
- * lanproxy is the only component that is expected to come from a preintegrated
- * client resource. ACP adapters and file-server are normal npm package
- * dependencies; lanproxy has no npm package or GitHub Release to fetch from,
- * so the only supported source is an existing binary or the Electron client's
- * resources/lanproxy/binaries/ directory.
+ * The default binary comes from @nuwax-ai/lanproxy, whose optional platform
+ * packages let npm install only the current OS/CPU artifact. Explicit paths
+ * remain supported for local development and Electron resource overrides.
  */
 const RUST_TARGET_MAP: Record<string, string> = {
   "darwin-arm64": "aarch64-apple-darwin",
@@ -18,14 +16,7 @@ const RUST_TARGET_MAP: Record<string, string> = {
   "linux-arm64": "aarch64-unknown-linux-gnu",
 };
 
-const DEFAULT_LANPROXY_PATH_CANDIDATES = [
-  () => process.env.NUWACLI_LANPROXY_PATH,
-  () =>
-    path.join(
-      path.dirname(fileURLToPath(import.meta.url)),
-      "resources",
-      "lanproxy",
-    ),
+const LEGACY_LANPROXY_PATH_CANDIDATES = [
   () => path.join(os.homedir(), ".nuwa-cli", "lanproxy"),
   () => path.join(process.cwd(), "resources", "lanproxy"),
 ];
@@ -66,7 +57,7 @@ export function resolveLanproxyBinary(pathOverride: string): string {
   const found = candidates.find((candidate) => fs.existsSync(candidate));
   if (!found) {
     throw new Error(
-      `在 --lanproxy-path ${pathOverride} 下未找到 ${binaryName}（也未找到 universal 兜底）。可指向 nuwa-cli/resources/lanproxy 或单个 nuwax-lanproxy 二进制。`,
+      `在 --lanproxy-path ${pathOverride} 下未找到 ${binaryName}（也未找到 universal 兜底）。可指向 Electron resources/lanproxy 目录或单个 nuwax-lanproxy 二进制。`,
     );
   }
   return found;
@@ -74,7 +65,16 @@ export function resolveLanproxyBinary(pathOverride: string): string {
 
 export function resolveDefaultLanproxyBinary(): string {
   const tried: string[] = [];
-  for (const candidateFactory of DEFAULT_LANPROXY_PATH_CANDIDATES) {
+  const envOverride = process.env.NUWACLI_LANPROXY_PATH;
+  if (envOverride) return resolveLanproxyBinary(envOverride);
+
+  try {
+    return resolvePackageBinaryPath();
+  } catch (err) {
+    tried.push(`@nuwax-ai/lanproxy: ${(err as Error).message}`);
+  }
+
+  for (const candidateFactory of LEGACY_LANPROXY_PATH_CANDIDATES) {
     const candidate = candidateFactory();
     if (!candidate) continue;
     tried.push(candidate);
@@ -86,6 +86,6 @@ export function resolveDefaultLanproxyBinary(): string {
     }
   }
   throw new Error(
-    `未找到 lanproxy 预置二进制。请通过 --lanproxy-path 指向二进制或 resources/lanproxy 目录，或设置 NUWACLI_LANPROXY_PATH。已尝试：${tried.join(", ")}`,
+    `未找到当前平台的 lanproxy 二进制。请重新运行 npm install（不要使用 --omit=optional），或通过 --lanproxy-path / NUWACLI_LANPROXY_PATH 指定二进制。已尝试：${tried.join(", ")}`,
   );
 }

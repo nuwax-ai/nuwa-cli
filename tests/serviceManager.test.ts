@@ -10,7 +10,7 @@ import {
 } from "../src/core/service/serviceManager.js";
 
 describe("serviceManager", () => {
-  it("builds persistent service args through up without daemonizing inside the service manager", () => {
+  it("builds persistent service args through gateway without daemonizing inside the service manager", () => {
     const args = buildServiceProgramArgs(
       {
         engine: "claude",
@@ -26,7 +26,7 @@ describe("serviceManager", () => {
     expect(args).toEqual([
       "/usr/local/bin/node",
       "/opt/nuwa-cli/dist/cli.js",
-      "up",
+      "gateway",
       "--engine",
       "claude",
       "--port",
@@ -80,7 +80,7 @@ describe("serviceManager", () => {
     expect(plist).toContain("<key>RunAtLoad</key>");
     expect(plist).toContain("<key>KeepAlive</key>");
     expect(plist).toContain("<string>/opt/homebrew/bin/node</string>");
-    expect(plist).toContain("<string>up</string>");
+    expect(plist).toContain("<string>gateway</string>");
     expect(plist).toContain("<string>codex</string>");
     expect(plist).not.toContain("pw");
   });
@@ -98,7 +98,7 @@ describe("serviceManager", () => {
 
     expect(service).toContain("Description=Nuwa CLI headless agent");
     expect(service).toContain('ExecStart="/usr/bin/node"');
-    expect(service).toContain('"up"');
+    expect(service).toContain('"gateway"');
     expect(service).toContain("Restart=always");
     expect(service).toContain("KillMode=control-group");
     expect(service).not.toContain("sk");
@@ -116,7 +116,7 @@ describe("serviceManager", () => {
 
     expect(WINDOWS_TASK_NAME).toBe("NuwaCLI");
     expect(command).toContain('"C:\\Program Files\\nodejs\\node.exe"');
-    expect(command).toContain(" up ");
+    expect(command).toContain(" gateway ");
     expect(command).toContain("--engine claude");
     expect(command).not.toContain("savedKey");
     expect(command).not.toContain("password");

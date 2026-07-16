@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { resolveLanproxyBinary } from "../src/core/serve/lanproxyBinary.js";
+import {
+  resolveDefaultLanproxyBinary,
+  resolveLanproxyBinary,
+} from "../src/core/serve/lanproxyBinary.js";
 
 let tmpDir: string;
 
@@ -25,6 +28,12 @@ describe("resolveLanproxyBinary", () => {
     const file = path.join(tmpDir, "my-lanproxy-binary");
     fs.writeFileSync(file, "");
     expect(resolveLanproxyBinary(file)).toBe(file);
+  });
+
+  it("resolves the npm platform package by default", () => {
+    const binary = resolveDefaultLanproxyBinary();
+    expect(fs.existsSync(binary)).toBe(true);
+    expect(binary).toContain(`lanproxy-${process.platform}-${process.arch}`);
   });
 
   it("finds the platform binary directly inside a directory", () => {
@@ -80,7 +89,7 @@ describe("resolveLanproxyBinary", () => {
   it("throws a clear error when the directory has no matching binary", () => {
     fs.mkdirSync(path.join(tmpDir, "empty"));
     expect(() => resolveLanproxyBinary(path.join(tmpDir, "empty"))).toThrow(
-      /nuwa-cli\/resources\/lanproxy/,
+      /Electron resources\/lanproxy/,
     );
   });
 });

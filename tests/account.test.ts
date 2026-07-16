@@ -135,7 +135,7 @@ describe("account commands", () => {
     expect(registerClientMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
     expect(errSpy).toHaveBeenCalledWith(
-      expect.stringContaining("需要重启所有服务"),
+      expect.stringContaining("nuwa-cli stop --all"),
     );
     errSpy.mockRestore();
   });

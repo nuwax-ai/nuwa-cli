@@ -1,7 +1,58 @@
 import pc from "picocolors";
 import { runAllDoctorChecks } from "../core/detect/doctorChecks.js";
+import { repairServeSingleton } from "../core/processes/serveSingleton.js";
+import { repairUiSingleton } from "../core/processes/uiSingleton.js";
 
-export async function doctorCommand(): Promise<void> {
+export interface DoctorCommandOptions {
+  fix?: boolean;
+}
+
+export async function doctorCommand(
+  options: DoctorCommandOptions = {},
+): Promise<void> {
+  if (options.fix) {
+    try {
+      const serve = await repairServeSingleton();
+      const ui = await repairUiSingleton();
+      if (serve.stoppedPids.length > 0) {
+        console.log(
+          pc.green(
+            `已修复 serve 多实例：保留 PID ${serve.keptPid}，停止 PID ${serve.stoppedPids.join(", ")}。`,
+          ),
+        );
+      } else {
+        console.log(
+          pc.dim(
+            serve.keptPid
+              ? `serve 已是单例（PID ${serve.keptPid}），无需修复。`
+              : "当前没有运行中的 serve，无需修复。",
+          ),
+        );
+      }
+      if (ui.stoppedPids.length > 0) {
+        console.log(
+          pc.green(
+            `已修复 Console 多实例：保留 PID ${ui.keptPid}，停止 PID ${ui.stoppedPids.join(", ")}。`,
+          ),
+        );
+      } else {
+        console.log(
+          pc.dim(
+            ui.keptPid
+              ? `Console 已是单例（PID ${ui.keptPid}），无需修复。`
+              : "当前没有运行中的 Console，无需修复。",
+          ),
+        );
+      }
+      console.log();
+    } catch (err) {
+      console.error(
+        pc.red(`[nuwa-cli] 自动修复服务单例失败：${(err as Error).message}`),
+      );
+      process.exitCode = 1;
+    }
+  }
+
   const results = runAllDoctorChecks();
   let hasRequiredFailure = false;
   let hasInfoGap = false;

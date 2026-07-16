@@ -16,7 +16,6 @@ const SECRET_KEYS = [
 const TTL_MS_DEV = 30 * 24 * 60 * 60 * 1000;
 const TTL_MS_PROD = 7 * 24 * 60 * 60 * 1000;
 const LATEST_LOG_FILENAME = "latest.log";
-const LEGACY_UP_DEBUG_FILENAME = "up-debug.log";
 
 let initialized = false;
 let cleanupTimer: NodeJS.Timeout | undefined;
@@ -68,14 +67,13 @@ function updateLogLinks(): void {
   ensureDir(dir);
   if (!fs.existsSync(target)) fs.closeSync(fs.openSync(target, "a"));
   linkOrCopy(target, path.join(dir, LATEST_LOG_FILENAME));
-  linkOrCopy(target, path.join(dir, LEGACY_UP_DEBUG_FILENAME));
   lastLinkedDate = date;
 }
 
 function isArchiveLogName(name: string): boolean {
   const lower = name.toLowerCase();
   if (!lower.endsWith(".log")) return false;
-  if (lower === LATEST_LOG_FILENAME || lower === LEGACY_UP_DEBUG_FILENAME) {
+  if (lower === LATEST_LOG_FILENAME) {
     return false;
   }
   if (lower === `main.${todayDateStr()}.log`) return false;

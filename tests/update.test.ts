@@ -9,11 +9,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 describe("update command", () => {
-  let savedUserAgent: string | undefined;
-
   beforeEach(() => {
-    savedUserAgent = process.env.npm_config_user_agent;
-    delete process.env.npm_config_user_agent;
     mocks.spawnSync.mockReset();
     mocks.spawnSync.mockImplementation((command: string, args: string[]) => {
       if (command === "which") return { status: 0, stdout: `${args[0]}\n` };
@@ -22,8 +18,6 @@ describe("update command", () => {
   });
 
   afterEach(() => {
-    if (savedUserAgent === undefined) delete process.env.npm_config_user_agent;
-    else process.env.npm_config_user_agent = savedUserAgent;
     process.exitCode = 0;
     vi.restoreAllMocks();
   });
@@ -31,17 +25,17 @@ describe("update command", () => {
   it("normalizes update targets and install args", async () => {
     const { normalizeUpdateTarget, buildInstallArgs } =
       await import("../src/commands/update.js");
-    expect(normalizeUpdateTarget()).toBe("latest");
+    expect(normalizeUpdateTarget()).toBe("beta");
     expect(normalizeUpdateTarget("v0.2.0")).toBe("0.2.0");
-    expect(buildInstallArgs("npm", "@nuwax-ai/nuwa-cli@latest")).toEqual([
+    expect(buildInstallArgs("@nuwax-ai/nuwa-cli@beta")).toEqual([
       "install",
       "-g",
-      "@nuwax-ai/nuwa-cli@latest",
+      "@nuwax-ai/nuwa-cli@beta",
     ]);
     expect(
-      buildInstallArgs("pnpm", "@nuwax-ai/nuwa-cli@0.2.0", "https://r.example"),
+      buildInstallArgs("@nuwax-ai/nuwa-cli@0.2.0", "https://r.example"),
     ).toEqual([
-      "add",
+      "install",
       "-g",
       "@nuwax-ai/nuwa-cli@0.2.0",
       "--registry",
@@ -49,22 +43,12 @@ describe("update command", () => {
     ]);
   });
 
-  it("infers pnpm from npm_config_user_agent", async () => {
-    process.env.npm_config_user_agent = "pnpm/10.0.0 npm/? node/v22";
-    const { inferPackageManager } = await import("../src/commands/update.js");
-    expect(inferPackageManager()).toBe("pnpm");
-  });
-
   it("prints the install command without running it in dry-run mode", async () => {
     const { updateCommand } = await import("../src/commands/update.js");
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const runner = vi.fn(() => ({ status: 0 }));
 
-    await updateCommand(
-      "0.2.0",
-      { dryRun: true, packageManager: "npm" },
-      runner,
-    );
+    await updateCommand("0.2.0", { dryRun: true }, runner);
 
     expect(runner).not.toHaveBeenCalled();
     const printed = logSpy.mock.calls.map((c) => c[0]).join("\n");
@@ -77,31 +61,47 @@ describe("update command", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const runner = vi.fn(() => ({ status: 0, stdout: "0.2.0\n" }));
 
-    await updateCommand(
-      undefined,
-      { check: true, packageManager: "npm" },
-      runner,
-    );
+    await updateCommand(undefined, { check: true }, runner);
 
     expect(runner).toHaveBeenCalledWith(
       "npm",
-      ["view", "@nuwax-ai/nuwa-cli@latest", "version"],
+      ["view", "@nuwax-ai/nuwa-cli@beta", "version"],
       expect.objectContaining({ stdio: "pipe" }),
     );
     const printed = logSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(printed).toContain("@nuwax-ai/nuwa-cli@latest：0.2.0");
+    expect(printed).toContain("@nuwax-ai/nuwa-cli@beta：0.2.0");
   });
 
-  it("runs global install through the selected package manager", async () => {
+  it("runs --check through the real Commander action", async () => {
+    mocks.spawnSync.mockImplementation((command: string, args: string[]) => {
+      if (command === "which") return { status: 0, stdout: `${args[0]}\n` };
+      if (args[0] === "view") {
+        return { status: 0, stdout: "0.1.0-beta.1\n" };
+      }
+      return { status: 0, stdout: "" };
+    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { createProgram } = await import("../src/cli/createProgram.js");
+
+    await createProgram().parseAsync(["node", "nuwa-cli", "update", "--check"]);
+
+    expect(mocks.spawnSync).toHaveBeenCalledWith(
+      "npm",
+      ["view", "@nuwax-ai/nuwa-cli@beta", "version"],
+      expect.objectContaining({ stdio: "pipe" }),
+    );
+  });
+
+  it("runs global install through npm", async () => {
     const { updateCommand } = await import("../src/commands/update.js");
     vi.spyOn(console, "log").mockImplementation(() => {});
     const runner = vi.fn(() => ({ status: 0 }));
 
-    await updateCommand(undefined, { packageManager: "pnpm" }, runner);
+    await updateCommand(undefined, {}, runner);
 
     expect(runner).toHaveBeenCalledWith(
-      "pnpm",
-      ["add", "-g", "@nuwax-ai/nuwa-cli@latest"],
+      "npm",
+      ["install", "-g", "@nuwax-ai/nuwa-cli@beta"],
       expect.objectContaining({ stdio: "inherit" }),
     );
   });

@@ -140,6 +140,50 @@ export function unregisterProcess(pid: number): void {
   }
 }
 
+function signalProcess(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ESRCH") throw err;
+  }
+}
+
+async function waitUntilStopped(
+  pids: number[],
+  timeoutMs: number,
+): Promise<number[]> {
+  const deadline = Date.now() + timeoutMs;
+  let alive = pids.filter(isPidAlive);
+  while (alive.length > 0 && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    alive = alive.filter(isPidAlive);
+  }
+  return alive;
+}
+
+/** Gracefully stops processes, escalating after five seconds. */
+export async function stopProcessIds(pids: number[]): Promise<void> {
+  if (pids.length === 0) return;
+  if (process.platform === "win32") {
+    for (const pid of pids) {
+      spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
+        encoding: "utf8",
+        timeout: 5000,
+        windowsHide: true,
+      });
+    }
+  } else {
+    for (const pid of pids) signalProcess(pid, "SIGTERM");
+    const stubborn = await waitUntilStopped(pids, 5000);
+    for (const pid of stubborn) signalProcess(pid, "SIGKILL");
+    const stillAlive = await waitUntilStopped(stubborn, 1000);
+    if (stillAlive.length > 0) {
+      throw new Error(`无法停止进程：${stillAlive.join(", ")}`);
+    }
+  }
+  for (const pid of pids) unregisterProcess(pid);
+}
+
 function isCurrentProcess(record: NuwaProcessRecord): boolean {
   if (!isPidAlive(record.pid)) return false;
   if (!record.processStartToken) return true;

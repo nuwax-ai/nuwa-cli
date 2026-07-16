@@ -5,7 +5,7 @@
 
 ## 目标
 
-在 `nuwa-cli serve` / `up` 暴露引擎能力后，提供与 NuwaClaw 同构的 **HITL 权限审批总线**，避免 yolo 静默放行一切副作用。本地 sessions 拉取是挂在总线上的**第一块敏感护栏**，不是方案边界。
+在 `nuwa-cli serve` / `gateway` 暴露引擎能力后，提供与 NuwaClaw 同构的 **HITL 权限审批总线**，避免 yolo 静默放行一切副作用。本地 sessions 拉取是挂在总线上的**第一块敏感护栏**，不是方案边界。
 
 ## 分层
 
@@ -72,7 +72,7 @@
 - **无 SSE 订阅**：不干等 120s，立即 `cancelled` / HTTP `503 NO_APPROVAL_CHANNEL`（须先打开 `/computer/progress`）
 - **`sensitive-access/await` 鉴权**：仅 loopback 可无 secret；非本机回环必须带内部 secret
 
-分类器为 best-effort（命令/路径正则）；`node …/dist/cli.js context`、`pnpm exec nuwa-cli` 等也会命中。拷贝到 `/tmp` 再读无法靠正则完备覆盖。
+分类器为 best-effort（命令/路径正则）；直接执行构建产物或经其他包管理器间接执行也会命中。拷贝到 `/tmp` 再读无法靠正则完备覆盖。
 
 ## HTTP 导出
 

@@ -48,6 +48,10 @@ export function cliServeGuardPath(): string {
   );
 }
 
+export function cliUiGuardPath(): string {
+  return process.env.NUWACLI_UI_GUARD_PATH ?? path.join(cliDir(), "ui.guard");
+}
+
 export function enginesDir(): string {
   return path.join(nuwaCliHome(), "engines");
 }

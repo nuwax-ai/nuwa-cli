@@ -12,7 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ACP permission guardrails aligned with NuwaClaw: `PermissionCoordinator`, SSE `acpRequestPermission`, real `POST /computer/notify-resolved`, and pluggable sensitive classifiers (first: local session history). `--approve` now accepts `auto|ask|deny`. See [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).
 - `/computer/local-sessions/list|read` and `/computer/sensitive-access/await` for consented local-session export; non-TTY `context`/`sessions` CLI paths go through the same bus.
 
-## [0.1.0] - 2026-07-07
+## [0.1.0-beta.0] - 2026-07-07
+
+- Moved the ~78 MB bundled lanproxy resource set into the stable `@nuwax-ai/lanproxy@1.0.0` package family. npm now installs only the current OS/CPU binary through exact-version optional dependencies.
+- Added `nuwa-cli start` as the full-runtime entry point: it keeps Gateway in daemon mode and Console in the foreground, reuses healthy instances by default, and supports `--force` replacement.
 
 Initial release.
 
@@ -30,8 +33,8 @@ Initial release.
   - `credentials.json` now supports multiple accounts without SQLite. Each `domain + username` keeps its own savedKey, repeated username/password login for the same account reuses that savedKey to avoid creating another computer, and omitting domain/account uses the current default account.
 - `nuwa-cli account list` / `account switch <account>` — list saved CLI accounts and switch the current default account. Switching re-registers with the selected account and refuses to run while `serve` is active, because serve/file-server/lanproxy/backend registration must be restarted together.
   - `status` also reports whether a local `serve` is running and on which port, via a pid/port lockfile `serve` writes on listen (the `X-Nuwax-Internal-Secret` itself is still never persisted); a stale lock whose PID is dead is auto-cleaned. Covered by `tests/serveLock.test.ts`.
-- `nuwa-cli up` — one command to detect a usable local engine, log in/register with Nuwax, and start `serve --tunnel`. It supports `--saved-key`, `-u/--username` with interactive password, `NUWACLI_PASSWORD` for non-interactive username/password registration, explicit `--engine`, and automatic engine selection when omitted.
-- `nuwa-cli update [version]` — upgrades the npm/pnpm-installed CLI package, with `--check`, `--dry-run`, `--package-manager npm|pnpm`, and `--registry`. It does not touch CLI credentials or service state.
+- `nuwa-cli gateway` — one command to detect a usable local engine, log in/register with Nuwax, and start `serve --tunnel`. It supports `--saved-key`, `-u/--username` with interactive password, `NUWACLI_PASSWORD` for non-interactive username/password registration, explicit `--engine`, and automatic engine selection when omitted.
+- `nuwa-cli update [version]` — upgrades the npm-installed CLI package, with `--check`, `--dry-run`, and `--registry`. It does not touch CLI credentials or service state.
 - `nuwa-cli serve` — local HTTP API (`/computer/chat`, SSE `/computer/progress/:id`, `/computer/agent/status|stop|session/cancel`, `/computer/notify-resolved`, `/health`) for scripting/remote integration; `--tunnel` starts `nuwax-file-server` and a preintegrated lanproxy binary after login.
 
 ### Fixed
@@ -44,7 +47,7 @@ Pre-release review of the `serve` lifecycle and permission model. Design rationa
 - `serve --approve` is validated against `{auto, deny}`; an unrecognized value (e.g. a typo) errors out instead of silently falling through to `yolo` (full auto-approve). When `yolo` is active (the default) the server prints a startup warning that all tool calls — including destructive writes/shell/network — are auto-approved with no path confinement (confinement itself is still pending — see README's Known limitations).
 - `withEngineConnection` accepts an optional `AbortSignal` (4th arg); aborting kills the engine child so a parked `op` (e.g. an in-flight `session/prompt`) stops promptly. `chat` does not use it; `serve` uses it for `/computer/agent/stop` and shutdown.
 - `chat --resume` combined with `--ref-session` is now rejected up front instead of silently prepending the ref-session reminder into a resumed conversation's next turn: the reminder is only meaningful on a brand-new session's first turn, and a resumed session already has real history to continue, so mixing in a reminder about an unrelated third session would pollute it. Covered by `tests/chatRefSessionResumeConflict.test.ts`.
-- `doctor`'s exit code no longer fails on unmet checks that are opt-in by design (`uv`, TCC risk, Nuwax login) — previously *any* unmet check set exit code `1`, so a perfectly working setup that simply hadn't opted into Nuwax cloud login reported failure (and broke non-interactive use, e.g. `pnpm run dev:doctor` exiting nonzero and tripping package-manager lifecycle errors). Only Node version and "at least one of claude/codex usable" now count as blocking; unmet optional checks print `○` instead of `✖` and the summary line distinguishes "blocking problem" from "core passed, some optional items unconfigured." Covered by `tests/doctor.test.ts`.
+- `doctor`'s exit code no longer fails on unmet checks that are opt-in by design (`uv`, TCC risk, Nuwax login) — previously *any* unmet check set exit code `1`, so a perfectly working setup that simply hadn't opted into Nuwax cloud login reported failure (and broke non-interactive use, e.g. `npm run dev:doctor` exiting nonzero and tripping package-manager lifecycle errors). Only Node version and "at least one of claude/codex usable" now count as blocking; unmet optional checks print `○` instead of `✖` and the summary line distinguishes "blocking problem" from "core passed, some optional items unconfigured." Covered by `tests/doctor.test.ts`.
 - `doctor`'s Nuwax-login fix hint now always points at manual CLI login (`--domain`/`--saved-key`) and no longer checks Electron client data.
 
 ### Design notes

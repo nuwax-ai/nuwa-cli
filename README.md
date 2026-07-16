@@ -5,7 +5,7 @@
 Headless multi-engine agent CLI. `nuwa-cli` attaches to the `claude` and `codex` CLIs you've already installed and logged into — no separate login, no bundled Claude/Codex runtime, no isolated config directory. It reads the exact same `~/.claude` / `~/.codex` state your terminal already uses.
 
 ```bash
-npm install -g @nuwax-ai/nuwa-cli
+npm install -g @nuwax-ai/nuwa-cli@beta
 nuwa-cli doctor
 nuwa-cli chat -p "list the files in this directory"
 ```
@@ -15,11 +15,11 @@ nuwa-cli chat -p "list the files in this directory"
 For local development in this repository:
 
 ```bash
-pnpm install
-pnpm run build
-pnpm run dev:cli --version
-pnpm run dev:doctor
-pnpm run dev:chat -p "hello"
+npm install
+npm run build
+npm run dev:cli -- --version
+npm run dev:doctor
+npm run dev:chat -- -p "hello"
 ```
 
 More local debugging scripts and step-by-step workflows live in [`docs/local-debugging.md`](docs/local-debugging.md).
@@ -29,7 +29,7 @@ More local debugging scripts and step-by-step workflows live in [`docs/local-deb
 Most agent wrappers either bundle their own copy of the model runtime (heavy, and it can't see your existing login) or ask you to configure API keys again. `nuwa-cli` does neither:
 
 - **Inherits your environment.** `HOME`, `~/.claude`, `~/.codex`, MCP servers, skills, model preferences — all untouched. The engine sees exactly what your own `claude`/`codex` CLI would see.
-- **Uses normal package dependencies.** ACP adapters (`claude-code-acp-ts`, `nuwax-codex-acp`) and `nuwax-file-server` are installed by npm/pnpm with `nuwa-cli`; runtime code only resolves those installed package entries. lanproxy is the only preintegrated-resource exception.
+- **Uses normal package dependencies.** ACP adapters, `nuwax-file-server`, and `@nuwax-ai/lanproxy` are installed by npm with `nuwa-cli`; lanproxy uses platform-specific optional dependencies so each machine receives only its OS/CPU binary.
 - **Talks ACP.** Both engines are driven over the [Agent Client Protocol](https://agentclientprotocol.com), the same protocol editors like Zed use — not a scraped CLI wrapper.
 
 ## Commands
@@ -74,15 +74,15 @@ Lists local `claude`/`codex` session history (read directly from `~/.claude/proj
 
 `nuwa-cli sessions summary --engine <claude|codex> --session-id <id> [--limit N]` prints a compact, engine-agnostic JSON digest of one session's full transcript (`{engine, sessionId, cwd, title, messages, hasMore}`). This is kept as a low-level compatibility command; the newer cross-agent context surface is `nuwa-cli context`.
 
-### `nuwa-cli ui`
+### `nuwa-cli console`
 
 Starts a **local-only** lightweight web dashboard (default `127.0.0.1:60017`) and opens it in your browser: view / resume / new claude·codex sessions, switch engine / model / ACP mode, and chat with streaming — all from one page. Zero extra dependencies; the page is bundled with the CLI.
 
 ```bash
-nuwa-cli ui                         # default claude engine, opens a browser
-nuwa-cli ui --engine codex          # default to codex (still switchable in-page)
-nuwa-cli ui --no-open               # don't auto-open; open the printed URL yourself
-nuwa-cli ui --approve ask           # approve every tool call in-browser
+nuwa-cli console                         # default claude engine, opens a browser
+nuwa-cli console --engine codex          # default to codex (still switchable in-page)
+nuwa-cli console --no-open               # don't auto-open; open the printed URL yourself
+nuwa-cli console --approve ask           # approve every tool call in-browser
 ```
 
 What you get:
@@ -106,7 +106,7 @@ Flags:
 
 On startup it prints a local URL carrying a one-shot token, e.g. `http://127.0.0.1:60017/?t=<token>`: the token is embedded in the page (no manual entry) and also blocks drive-by requests from other web pages.
 
-`ui` is a **foreground** process — closing the terminal or `Ctrl+C` stops it. It is not a background daemon and doesn't need to be: it's for the "you're sitting at the machine" case. For unattended remote/cloud scheduling use `serve` (the machine API, below). Full notes in [`docs/local-ui.md`](docs/local-ui.md).
+`console` is a **foreground** process — closing the terminal or `Ctrl+C` stops it. For unattended remote/cloud scheduling use Gateway. Full notes in [`docs/console.md`](docs/console.md).
 
 ### `nuwa-cli context`
 
@@ -175,17 +175,17 @@ nuwa-cli account switch <account-key>
 
 `account list` prints switchable account keys such as `testagent.xspaceagi.com_18011447397` and marks the current default with `*`. `account switch` re-registers with that account's savedKey and makes it the current default.
 
-Account switching affects `serve`, file-server, lanproxy, and backend registration, so it is **not hot-swapped**. If `serve` is running, `account switch` refuses to proceed; press `Ctrl-C` in the running `up/serve` terminal first, then switch accounts and start services again.
+Account switching affects Gateway, file-server, lanproxy, and backend registration, so it is **not hot-swapped**. Run `nuwa-cli stop --all` before switching accounts.
 
-### `nuwa-cli up`
+### `nuwa-cli gateway`
 
 One command to detect an available engine, log in/register, and start `serve --tunnel`:
 
 ```bash
-nuwa-cli up --help
-nuwa-cli up --domain https://agent.nuwax.com --saved-key <key>
-nuwa-cli up --domain https://agent.nuwax.com -u <username>
-NUWACLI_PASSWORD='<password>' nuwa-cli up --domain https://agent.nuwax.com -u <username>
+nuwa-cli gateway --help
+nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>
+nuwa-cli gateway --domain https://agent.nuwax.com -u <username>
+NUWACLI_PASSWORD='<password>' nuwa-cli gateway --domain https://agent.nuwax.com -u <username>
 ```
 
 When `--engine` is omitted, nuwa-cli checks local `claude` / `codex` availability: it uses the only available engine, randomly selects one when multiple are available, and fails with `claude login` / `codex login` hints when neither is available. `NUWACLI_PASSWORD` is only read for the current username/password registration, is never written to credentials, and is stripped from engine/lanproxy/file-server child environments.
@@ -193,15 +193,15 @@ When `--engine` is omitted, nuwa-cli checks local `claude` / `codex` availabilit
 After npm publish, clean machines can use the zero-install entry:
 
 ```bash
-npx -y @nuwax-ai/nuwa-cli@latest up --domain https://agent.nuwax.com --saved-key <key>
+npx -y @nuwax-ai/nuwa-cli@beta gateway --domain https://agent.nuwax.com --saved-key <key>
 ```
 
-For local debugging before npm publish, see [`docs/local-debugging.md`](docs/local-debugging.md). Full design notes live in [`docs/one-click-up.md`](docs/one-click-up.md).
+For local debugging before npm publish, see [`docs/local-debugging.md`](docs/local-debugging.md). Full design notes live in [`docs/gateway.md`](docs/gateway.md).
 
 Persistent run modes:
 
 ```bash
-nuwa-cli up --engine claude --daemon          # detach from this terminal
+nuwa-cli gateway --engine claude --daemon          # detach from this terminal
 nuwa-cli service install --engine claude --now # install current-user autostart and start now
 nuwa-cli service status
 nuwa-cli service stop
@@ -209,6 +209,21 @@ nuwa-cli service uninstall
 ```
 
 `--daemon` is the lightweight "keep running after this terminal closes" mode. It still exits on reboot/logoff. `nuwa-cli service` installs an OS-managed current-user service: macOS LaunchAgent, Linux systemd user service, or Windows Scheduled Task. The service config stores only runtime flags such as engine/port/cwd/lanproxy overrides; it does **not** store passwords, savedKey/configKey, or model API keys. Login state remains in `~/.nuwa-cli/credentials.json`.
+
+### Runtime lifecycle
+
+```bash
+nuwa-cli ps                    # list Gateway, Console, and chat processes
+nuwa-cli start                 # daemon Gateway + foreground Console
+nuwa-cli start --force         # replace both Gateway and Console
+nuwa-cli stop                  # stop Gateway by default
+nuwa-cli stop --console        # stop only Console
+nuwa-cli stop --all            # stop Gateway and Console
+nuwa-cli restart --all         # Gateway becomes a daemon; Console owns this terminal
+nuwa-cli doctor --fix          # repair duplicate instances without restarting
+```
+
+`start` reuses healthy instances and only fills in missing services; `Ctrl+C` stops only the foreground Console while Gateway keeps running. Gateway can run in the foreground, daemonize, or be managed by the OS service. Console never daemonizes.
 
 ### `nuwa-cli service`
 
@@ -223,21 +238,21 @@ nuwa-cli service status
 nuwa-cli service uninstall
 ```
 
-Install requires an existing CLI default account. Run `nuwa-cli login` or `nuwa-cli up` successfully once first. On macOS and Windows the service starts when the current user logs in. On Linux it uses `systemd --user`; starting before login requires enabling linger on the machine, for example `loginctl enable-linger $USER` where allowed.
+Install requires an existing CLI default account. Run `nuwa-cli login` or `nuwa-cli gateway` successfully once first. On macOS and Windows the service starts when the current user logs in. On Linux it uses `systemd --user`; starting before login requires enabling linger on the machine, for example `loginctl enable-linger $USER` where allowed.
 
 ### `nuwa-cli update`
 
-Upgrade the npm/pnpm-installed CLI package:
+Upgrade the npm-installed CLI package:
 
 ```bash
 nuwa-cli update --help
-nuwa-cli update                 # upgrade to latest
-nuwa-cli update 0.2.0           # upgrade to a specific version
+nuwa-cli update                 # upgrade to the newest beta
+nuwa-cli update 0.1.0-beta.1    # upgrade to a specific version
+nuwa-cli update latest          # explicitly switch to the stable channel
 nuwa-cli update --check         # only query the target version
-nuwa-cli update --package-manager pnpm
 ```
 
-`update` only upgrades the package. It does not modify `~/.nuwa-cli/credentials.json`, savedKeys, accounts, or service locks. For temporary `npx` / `pnpm dlx` runs, prefer `npx -y @nuwax-ai/nuwa-cli@latest ...` or `pnpm dlx @nuwax-ai/nuwa-cli@latest ...` directly.
+`update` uses npm to upgrade the package. It does not modify `~/.nuwa-cli/credentials.json`, savedKeys, accounts, or service locks. During the prerelease phase it follows npm's `beta` tag by default. For temporary runs, prefer `npx -y @nuwax-ai/nuwa-cli@beta ...` directly.
 
 ### `nuwa-cli serve`
 
@@ -268,14 +283,14 @@ Lifecycle:
 - A session whose engine dies is evicted and emits a terminal `session_ended` event (SSE `subType` `error` or `ended`) to `/computer/progress` clients, so subscribers learn the session is gone instead of waiting forever.
 - On `SIGINT`/`SIGTERM` the server stops every active session (tearing down their engine children), stops the `--tunnel` `nuwax-file-server` and lanproxy child, then closes the HTTP listener — engine children and helper services are no longer orphaned.
 
-`--tunnel` requires `nuwa-cli login` first. It re-registers the CLI with the backend, starts local `nuwax-file-server`, then starts the preintegrated lanproxy binary:
+`--tunnel` requires `nuwa-cli login` first. It re-registers the CLI with the backend, starts local `nuwax-file-server`, then starts the platform binary installed by `@nuwax-ai/lanproxy`:
 
 ```bash
-nuwa-cli config set lanproxy-path /path/to/resources/lanproxy
+nuwa-cli config set lanproxy-path /path/to/nuwax-lanproxy
 nuwa-cli serve --tunnel --lanproxy-host agent.nuwax.com --lanproxy-port 443
 ```
 
-If the register response includes `serverHost`/`serverPort`, the explicit host/port flags can be omitted. CLI runtime logs follow the Electron client's shape: structured JSONL entries go to `~/.nuwa-cli/logs/main.YYYY-MM-DD.log`, and `latest.log` points at today's active log. `up-debug.log` is kept as a compatibility alias. `--daemon` still appends raw stdout/stderr to `serve.log` for startup-output capture.
+If the register response includes `serverHost`/`serverPort`, the explicit host/port flags can be omitted. CLI runtime logs follow the Electron client's shape: structured JSONL entries go to `~/.nuwa-cli/logs/main.YYYY-MM-DD.log`, and `latest.log` points at today's active log. `--daemon` still appends raw stdout/stderr to `serve.log` for startup-output capture.
 
 ## Known limitations
 
@@ -284,7 +299,7 @@ If the register response includes `serverHost`/`serverPort`, the explicit host/p
 - **No path-confinement in `yolo`**: `--approve auto` auto-approves ordinary tool calls regardless of target path; there is no writable-root guard yet. Sensitive access (local sessions) is still forced to ask — see [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).
 - **Autostart is current-user scoped**: `service install` uses LaunchAgent / systemd user service / Scheduled Task. It is not a privileged system-wide daemon. On Linux, true boot-before-login requires systemd linger configured outside the CLI.
 - **Custom/third-party ACP engines** (pi-acp, hermes, kilo, openclaw, ...) aren't supported yet — only `claude` and `codex`.
-- **lanproxy distribution**: lanproxy is still the only preintegrated client resource; point `--lanproxy-path` (or `NUWACLI_LANPROXY_PATH`) at an existing binary or `resources/lanproxy` directory.
+- **Optional dependencies**: installing with `npm install --omit=optional` omits the platform lanproxy binary. Reinstall normally, or use `--lanproxy-path` / `NUWACLI_LANPROXY_PATH` to provide one explicitly.
 - **Cloud session sync/listing**: `sessions`/`status` are local-only for now: there's no confirmed backend API yet for cross-device session history.
 
 ## How it works
@@ -292,8 +307,8 @@ If the register response includes `serverHost`/`serverPort`, the explicit host/p
 - ACP connection: `@agentclientprotocol/sdk`'s `client().connectWith(...)` builder, spawning the engine over stdio NDJSON.
 - `claude` engine: spawns the package dependency [`claude-code-acp-ts`](https://www.npmjs.com/package/claude-code-acp-ts) with `CLAUDE_CODE_EXECUTABLE` pointed at *your* `claude` binary.
 - `codex` engine: spawns the package dependency [`nuwax-codex-acp`](https://www.npmjs.com/package/nuwax-codex-acp); that package pulls the matching platform binary through npm optional dependencies.
-- `serve --tunnel`: starts the package dependency [`nuwax-file-server`](https://www.npmjs.com/package/nuwax-file-server), then launches the preintegrated `nuwax-lanproxy` binary with the registered savedKey. file-server PID/lock temp files are scoped per port under `~/.nuwa-cli/tmp/file-server-<port>`, so CLI shutdown does not target the Electron client's instance or another CLI tunnel instance.
-- `service install`: writes a current-user OS service that runs `nuwa-cli up` on login/startup. It reuses CLI-owned credentials at runtime instead of embedding secrets into the OS service definition.
+- `serve --tunnel`: starts [`nuwax-file-server`](https://www.npmjs.com/package/nuwax-file-server), resolves the current platform binary through `@nuwax-ai/lanproxy`, then launches it with the registered savedKey. file-server PID/lock temp files are scoped per port under `~/.nuwa-cli/tmp/file-server-<port>`, so CLI shutdown does not target the Electron client's instance or another CLI tunnel instance.
+- `service install`: writes a current-user OS service that runs `nuwa-cli gateway` on login/startup. It reuses CLI-owned credentials at runtime instead of embedding secrets into the OS service definition.
 - Nothing is installed into your shell's global `node_modules`, and nuwa-cli stores its own credentials, device id, cache, logs, and serve lock under `~/.nuwa-cli/`. If you also run the NuwaClaw Electron app, the two coexist on the same machine without sharing savedKey or local state; `serve` prefers CLI-only ports 60016/60015 and automatically moves forward on conflicts, separate from Electron's 60005–60009 range.
 
 ## Requirements

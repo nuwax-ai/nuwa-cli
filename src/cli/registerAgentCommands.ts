@@ -11,14 +11,18 @@ import { processesCommand } from "../commands/processes.js";
 export function registerAgentCommands(program: Command): void {
   program
     .command("ps")
-    .description("列出已注册且仍在运行的 nuwa-cli 进程")
+    .description("列出运行中的 Gateway、Console 和 chat 进程")
     .option("--json", "以 JSON 数组格式输出")
     .action(processesCommand);
 
   program
     .command("doctor")
     .description(
-      "检测本机环境：Node、claude/codex CLI、uv、登录态、本地会话历史",
+      "检测环境、登录态、会话历史以及 Gateway/Console 单例状态",
+    )
+    .option(
+      "--fix",
+      "自动修复 Gateway/Console 多实例，各自仅保留一个有效实例",
     )
     .action(doctorCommand);
 

@@ -39,10 +39,14 @@ export function addUiOptions(command: Command): Command {
     command
       .option(
         "--port <port>",
-        "UI 监听端口；占用时自动向后寻找可用端口",
+        "Console 监听端口；占用时自动向后寻找可用端口",
         String(CLI_UI_PORT),
       )
-      .option("--host <host>", "UI 监听地址（仅建议 127.0.0.1）", "127.0.0.1")
+      .option(
+        "--host <host>",
+        "Console 监听地址（仅建议 127.0.0.1）",
+        "127.0.0.1",
+      )
       .option(
         "--engine <engine>",
         "默认引擎：claude 或 codex（界面内仍可切换）",
@@ -56,6 +60,10 @@ export function addUiOptions(command: Command): Command {
         "--approve <policy>",
         "权限策略：auto（默认，自动批准）/ ask（逐个审批）/ deny",
         "auto",
+      )
+      .option(
+        "--force",
+        "发现已有 Console 时，先停止旧的前台实例再启动",
       )
       .option("--no-open", "启动后不自动打开浏览器"),
   );
@@ -81,18 +89,18 @@ export function addServeRuntimeOptions(command: Command): Command {
       )
       .option(
         "--lanproxy-path <path>",
-        "lanproxy 二进制或 resources/lanproxy 目录",
+        "覆盖 npm 平台包：指定 lanproxy 二进制或 Electron resources 目录",
       )
       .option("--lanproxy-host <host>", "覆盖注册返回的 lanproxy serverHost")
       .option("--lanproxy-port <port>", "覆盖注册返回的 lanproxy serverPort")
       .option("--lanproxy-ssl <true|false>", "lanproxy 是否启用 ssl", "true")
       .option(
         "--daemon",
-        "后台启动 serve（stdout/stderr 写入 ~/.nuwa-cli/logs/serve.log）",
+        "后台运行（stdout/stderr 写入 ~/.nuwa-cli/logs/serve.log）",
       )
       .option(
         "--force",
-        "发现已有前台或后台 serve 时，先停止旧实例再启动",
+        "发现已有 Gateway/serve 时，先停止旧实例再启动",
       ),
   );
 }
@@ -101,7 +109,7 @@ export function addServiceInstallOptions(command: Command): Command {
   return command
     .option(
       "--engine <engine>",
-      "服务启动时使用的引擎：claude 或 codex；不传则由 up 自动检测",
+      "服务启动时使用的引擎：claude 或 codex；不传则由 Gateway 自动检测",
     )
     .option(
       "--port <port>",
@@ -120,7 +128,7 @@ export function addServiceInstallOptions(command: Command): Command {
     )
     .option(
       "--lanproxy-path <path>",
-      "lanproxy 二进制或 resources/lanproxy 目录",
+      "覆盖 npm 平台包：指定 lanproxy 二进制或 Electron resources 目录",
     )
     .option("--lanproxy-host <host>", "覆盖注册返回的 lanproxy serverHost")
     .option("--lanproxy-port <port>", "覆盖注册返回的 lanproxy serverPort")

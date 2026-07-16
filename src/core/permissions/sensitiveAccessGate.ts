@@ -114,7 +114,7 @@ export async function withSensitiveAccess<T>(
   const lock = readServeLock();
   if (!lock) {
     throw new ConsentRequiredError(
-      `敏感访问「${args.kind}」需要本机 nuwa-cli serve 审批，但未检测到运行中的 serve。请先 up/serve，或在交互终端手动执行该命令。`,
+      `敏感访问「${args.kind}」需要本机 Gateway 审批，但未检测到运行中的 Gateway。请先运行 nuwa-cli gateway，或在交互终端手动执行该命令。`,
     );
   }
 

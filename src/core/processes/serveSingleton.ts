@@ -8,9 +8,14 @@ import {
 } from "../../util/paths.js";
 import { readServeLock } from "../serve/serveLock.js";
 import {
+  getServiceStatus,
+  stopService,
+} from "../service/serviceManager.js";
+import {
   getProcessStartToken,
   isPidAlive,
   listRegisteredProcesses,
+  stopProcessIds,
   unregisterProcess,
 } from "./processRegistry.js";
 
@@ -23,6 +28,15 @@ interface ServeGuard {
 export interface DiscoveredNuwaProcess {
   pid: number;
   kind: "serve" | "ui" | "chat";
+}
+
+function normalizeDiscoveredKind(
+  command: string,
+): DiscoveredNuwaProcess["kind"] {
+  const value = command.toLowerCase();
+  if (["gateway", "up", "serve"].includes(value)) return "serve";
+  if (["start", "console", "ui"].includes(value)) return "ui";
+  return "chat";
 }
 
 function readGuard(): ServeGuard | null {
@@ -55,6 +69,51 @@ function isGuardAlive(guard: ServeGuard): boolean {
   return !token || token === guard.processStartToken;
 }
 
+function processCwd(pid: number): string | null {
+  try {
+    if (process.platform === "linux")
+      return fs.readlinkSync(`/proc/${pid}/cwd`);
+    if (process.platform === "darwin") {
+      const result = spawnSync(
+        "lsof",
+        ["-a", "-p", String(pid), "-d", "cwd", "-Fn"],
+        {
+          encoding: "utf8",
+          timeout: 1000,
+        },
+      );
+      const cwdLine = result.stdout
+        .split("\n")
+        .find((line) => line.startsWith("n"));
+      return cwdLine ? cwdLine.slice(1) : null;
+    }
+  } catch {
+    // Relative legacy commands are only included when their cwd is verifiable.
+  }
+  return null;
+}
+
+function parseRelativeNuwaProcessKind(
+  commandLine: string,
+  pid: number,
+): DiscoveredNuwaProcess["kind"] | null {
+  const match = commandLine.match(
+    /^\s*(?:\S*[\\/])?node(?:\.exe)?\s+(?:\.[\\/])?dist[\\/]cli\.js\s+(serve|gateway|start|up|console|ui|chat)(?:\s|$)/i,
+  );
+  if (!match) return null;
+  const cwd = processCwd(pid);
+  if (!cwd) return null;
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(cwd, "package.json"), "utf8"),
+    ) as { name?: string };
+    if (pkg.name !== "@nuwax-ai/nuwa-cli") return null;
+  } catch {
+    return null;
+  }
+  return normalizeDiscoveredKind(match[1]);
+}
+
 export function discoverLegacyNuwaProcesses(): DiscoveredNuwaProcess[] {
   if (process.env.VITEST || process.env.NUWACLI_DISABLE_PROCESS_SCAN === "1")
     return [];
@@ -76,7 +135,14 @@ export function discoverLegacyNuwaProcesses(): DiscoveredNuwaProcess[] {
         | { ProcessId?: number; CommandLine?: string }
         | Array<{ ProcessId?: number; CommandLine?: string }>;
       return (Array.isArray(parsed) ? parsed : [parsed]).flatMap((item) => {
-        const kind = parseNuwaProcessKind(item.CommandLine ?? "");
+        const kind =
+          parseNuwaProcessKind(item.CommandLine ?? "") ??
+          (item.ProcessId
+            ? parseRelativeNuwaProcessKind(
+                item.CommandLine ?? "",
+                item.ProcessId,
+              )
+            : null);
         return kind && Number.isInteger(item.ProcessId)
           ? [{ pid: item.ProcessId as number, kind }]
           : [];
@@ -93,8 +159,11 @@ export function discoverLegacyNuwaProcesses(): DiscoveredNuwaProcess[] {
       .map((line) => line.match(/^\s*(\d+)\s+(.*)$/))
       .filter((match): match is RegExpMatchArray => Boolean(match))
       .flatMap((match) => {
-        const kind = parseNuwaProcessKind(match[2]);
-        return kind ? [{ pid: Number(match[1]), kind }] : [];
+        const pid = Number(match[1]);
+        const kind =
+          parseNuwaProcessKind(match[2]) ??
+          parseRelativeNuwaProcessKind(match[2], pid);
+        return kind ? [{ pid, kind }] : [];
       });
   } catch {
     return [];
@@ -109,12 +178,10 @@ export function parseNuwaProcessKind(
   commandLine: string,
 ): DiscoveredNuwaProcess["kind"] | null {
   const match = commandLine.match(
-    /(?:^|\s)(?:nuwa-cli|\S*[\\/](?:nuwa-cli|@nuwax-ai[\\/]nuwa-cli)[\\/]dist[\\/]cli\.js)\s+(serve|up|ui|chat)(?:\s|$)/i,
+    /^\s*(?:(?:\S*[\\/])?node(?:\.exe)?\s+)?(?:nuwa-cli|\S*[\\/](?:nuwa-cli|@nuwax-ai[\\/]nuwa-cli)[\\/]dist[\\/]cli\.js)\s+(serve|gateway|start|up|console|ui|chat)(?:\s|$)/i,
   );
   if (!match) return null;
-  return match[1].toLowerCase() === "up"
-    ? "serve"
-    : (match[1].toLowerCase() as DiscoveredNuwaProcess["kind"]);
+  return normalizeDiscoveredKind(match[1]);
 }
 
 export function findServeProcessIds(excludePid = process.pid): number[] {
@@ -135,49 +202,52 @@ export function findServeProcessIds(excludePid = process.pid): number[] {
   return [...pids].sort((a, b) => a - b);
 }
 
-function signalProcess(pid: number, signal: NodeJS.Signals): void {
-  try {
-    process.kill(pid, signal);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ESRCH") throw err;
-  }
+export interface StopServeProcessOptions {
+  stopSystemService?: boolean;
 }
 
-async function waitUntilStopped(
+export async function stopServeProcesses(
   pids: number[],
-  timeoutMs: number,
-): Promise<number[]> {
-  const deadline = Date.now() + timeoutMs;
-  let alive = pids.filter(isPidAlive);
-  while (alive.length > 0 && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    alive = alive.filter(isPidAlive);
+  options: StopServeProcessOptions = {},
+): Promise<void> {
+  if (options.stopSystemService !== false && !process.env.VITEST) {
+    const service = getServiceStatus();
+    if (service.active) stopService();
   }
-  return alive;
-}
-
-export async function stopServeProcesses(pids: number[]): Promise<void> {
-  if (pids.length === 0) return;
-  if (process.platform === "win32") {
-    for (const pid of pids) {
-      spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
-        encoding: "utf8",
-        timeout: 5000,
-        windowsHide: true,
-      });
-    }
-  } else {
-    for (const pid of pids) signalProcess(pid, "SIGTERM");
-    const stubborn = await waitUntilStopped(pids, 5000);
-    for (const pid of stubborn) signalProcess(pid, "SIGKILL");
-    const stillAlive = await waitUntilStopped(stubborn, 1000);
-    if (stillAlive.length > 0) {
-      throw new Error(`无法停止旧 serve 进程：${stillAlive.join(", ")}`);
-    }
-  }
-  for (const pid of pids) unregisterProcess(pid);
+  await stopProcessIds(pids);
   const guard = readGuard();
   if (guard && pids.includes(guard.pid)) removeGuard();
+}
+
+export interface RepairServeSingletonResult {
+  keptPid?: number;
+  stoppedPids: number[];
+}
+
+/** Reduces any pre-existing multi-instance state to one preferred serve. */
+export async function repairServeSingleton(): Promise<RepairServeSingletonResult> {
+  const pids = findServeProcessIds();
+  if (pids.length <= 1) return { keptPid: pids[0], stoppedPids: [] };
+
+  const lock = readServeLock();
+  const registered = listRegisteredProcesses()
+    .filter((record) => record.kind === "serve" && pids.includes(record.pid))
+    .sort((a, b) => {
+      if (a.state !== b.state) return a.state === "running" ? -1 : 1;
+      return b.startedAt.localeCompare(a.startedAt);
+    });
+  const keptPid =
+    (lock && pids.includes(lock.pid) ? lock.pid : undefined) ??
+    registered[0]?.pid ??
+    pids[pids.length - 1];
+  const stoppedPids = pids.filter((pid) => pid !== keptPid);
+
+  // Do not stop launchd/systemd here: the preferred PID may be the managed
+  // service itself. The singleton guard prevents a killed managed duplicate
+  // from successfully rejoining if its supervisor attempts a restart.
+  await stopServeProcesses(stoppedPids, { stopSystemService: false });
+  claimGuard(keptPid);
+  return { keptPid, stoppedPids };
 }
 
 function claimGuard(pid: number): void {
@@ -215,13 +285,22 @@ function claimGuard(pid: number): void {
 }
 
 export async function acquireServeSingleton(force: boolean): Promise<number[]> {
-  const existing = findServeProcessIds();
+  let existing = findServeProcessIds();
   if (existing.length > 0 && !force) {
     throw new Error(
       `检测到已有 nuwa-cli serve 进程（PID ${existing.join(", ")}）。同一时间只允许一个实例；确认替换时请加 --force。`,
     );
   }
-  if (existing.length > 0) await stopServeProcesses(existing);
+  if (force) {
+    await stopServeProcesses(existing);
+    // Stopping launchd/systemd may expose a replacement PID not present in
+    // the first snapshot. Sweep once more before claiming the guard.
+    existing = [...new Set([...existing, ...findServeProcessIds()])].sort(
+      (a, b) => a - b,
+    );
+    const survivors = existing.filter(isPidAlive);
+    if (survivors.length > 0) await stopServeProcesses(survivors);
+  }
   claimGuard(process.pid);
   return existing;
 }

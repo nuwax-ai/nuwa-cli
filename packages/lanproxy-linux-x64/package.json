@@ -1,0 +1,12 @@
+{
+  "name": "@nuwax-ai/lanproxy-linux-x64",
+  "version": "1.0.0",
+  "description": "nuwax-lanproxy binary for Linux x64",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "files": ["bin"],
+  "bin": { "nuwax-lanproxy": "bin/nuwax-lanproxy" },
+  "exports": { "./package.json": "./package.json" },
+  "license": "MIT",
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org" }
+}

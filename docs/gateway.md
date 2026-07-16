@@ -1,8 +1,8 @@
-# nuwa-cli 一键安装、注册与启动设计
+# nuwa-cli Gateway 设计
 
-本文描述 `nuwa-cli up` 能力：让用户从干净环境或已安装环境中，用尽量少的步骤完成 CLI 获取、Nuwax 注册、可用引擎选择、`serve --tunnel` 启动。
+本文描述 `nuwa-cli gateway` 能力：让用户从干净环境或已安装环境中，用尽量少的步骤完成 CLI 获取、Nuwax 注册、可用引擎选择、`serve --tunnel` 启动。
 
-> 状态：已实现为 CLI 命令。npm 发布前可通过本地构建产物、`npm link` 或 `pnpm pack` 调试，见 [`local-debugging.md`](./local-debugging.md)。
+> 状态：已实现为 CLI 命令。npm 发布前可通过本地构建产物、`npm link` 或 `npm pack` 调试，见 [`local-debugging.md`](./local-debugging.md)。
 
 ## 目标
 
@@ -27,51 +27,48 @@
 首选零安装入口：
 
 ```bash
-npx -y @nuwax-ai/nuwa-cli@latest up --domain https://agent.nuwax.com --saved-key <key>
-```
-
-或：
-
-```bash
-pnpm dlx @nuwax-ai/nuwa-cli@latest up --domain https://agent.nuwax.com --saved-key <key>
+npx -y @nuwax-ai/nuwa-cli@beta gateway --domain https://agent.nuwax.com --saved-key <key>
 ```
 
 账号密码首次注册：
 
 ```bash
-npx -y @nuwax-ai/nuwa-cli@latest up --domain https://agent.nuwax.com -u <username>
+npx -y @nuwax-ai/nuwa-cli@beta gateway --domain https://agent.nuwax.com -u <username>
 ```
 
-此时 `up` 交互式提示密码。密码只用于本次注册请求，不落盘。
+此时 `gateway` 交互式提示密码。密码只用于本次注册请求，不落盘。
 
 ### 已安装 nuwa-cli
 
 ```bash
-nuwa-cli up --domain https://agent.nuwax.com --saved-key <key>
-nuwa-cli up --domain https://agent.nuwax.com -u <username>
-nuwa-cli up --engine codex
-nuwa-cli up --engine claude --daemon
+nuwa-cli start
+nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>
+nuwa-cli gateway --domain https://agent.nuwax.com -u <username>
+nuwa-cli gateway --engine codex
+nuwa-cli gateway --engine claude --daemon
 nuwa-cli service install --engine claude --now
 ```
+
+已有登录态时，`nuwa-cli start` 是完整运行环境入口：确保 Gateway 在后台运行，并在当前终端启动前台 Console。默认复用健康实例，`--force` 会替换两者。
 
 ### 自动化/CI
 
 CI 中不适合交互输入密码时，可允许环境变量：
 
 ```bash
-NUWACLI_PASSWORD='<password>' npx -y @nuwax-ai/nuwa-cli@latest up \
+NUWACLI_PASSWORD='<password>' npx -y @nuwax-ai/nuwa-cli@beta gateway \
   --domain https://agent.nuwax.com \
   -u <username>
 ```
 
-`NUWACLI_PASSWORD` 只在 `up` 注册阶段读取，不写入 credentials。优先推荐 CI 使用 `--saved-key`。
+`NUWACLI_PASSWORD` 只在 `gateway` 注册阶段读取，不写入 credentials。优先推荐 CI 使用 `--saved-key`。
 
 ## 命令形态
 
 命令：
 
 ```bash
-nuwa-cli up
+nuwa-cli gateway
 ```
 
 常用参数：
@@ -109,7 +106,7 @@ nuwa-cli service uninstall
 ```bash
 nuwa-cli --help
 nuwa-cli login --help
-nuwa-cli up --help
+nuwa-cli gateway --help
 nuwa-cli account --help
 nuwa-cli account switch --help
 nuwa-cli service install --help
@@ -119,7 +116,7 @@ nuwa-cli service install --help
 
 ```mermaid
 flowchart TD
-  A["用户运行 npx/pnpm dlx/nuwa-cli up"] --> B["检查 Node 与包依赖"]
+  A["用户运行 npx/nuwa-cli gateway"] --> B["检查 Node 与包依赖"]
   B --> C["检测可用 claude/codex 引擎"]
   C --> D{"是否有可用引擎"}
   D -->|没有| E["失败并提示先登录 claude 或 codex"]
@@ -206,7 +203,7 @@ testagent.xspaceagi.com_18011447397
 - 若有 username，同步更新 `accounts[domain_username]`，后续同账号登录会复用该 savedKey。
 - 密码不落盘。
 
-`up` 不读取：
+`gateway` 不读取：
 
 - `~/.nuwaclaw/nuwaclaw.db`
 - `~/.nuwaclaw/cli/credentials.json`
@@ -219,11 +216,11 @@ nuwa-cli account list
 nuwa-cli account switch <account-key>
 ```
 
-`account switch` 会用目标账号保存的 savedKey 重新注册并设为当前默认账号。切换会影响 serve、file-server、lanproxy、后端注册状态，因此不做热切换；如果 `serve` 正在运行，本命令会拒绝执行，请先在运行 `up/serve` 的终端按 `Ctrl-C` 停掉所有服务，再切换并重启。
+`account switch` 会用目标账号保存的 savedKey 重新注册并设为当前默认账号。切换会影响 serve、file-server、lanproxy、后端注册状态，因此不做热切换；如果 `serve` 正在运行，本命令会拒绝执行，请先在运行 `gateway/serve` 的终端按 `Ctrl-C` 停掉所有服务，再切换并重启。
 
 ## 启动与隔离
 
-注册完成后，`up` 内部等价于：
+注册完成后，`gateway` 内部等价于：
 
 ```bash
 nuwa-cli serve --tunnel --engine <selected-engine>
@@ -243,9 +240,9 @@ nuwa-cli serve --tunnel --engine <selected-engine>
 
 ## 干净环境下的阻塞项
 
-`npx -y @nuwax-ai/nuwa-cli@latest up ...` 可以解决“用户没安装 nuwa-cli”的问题，但不能解决“用户没有任何可用 Agent 登录态”的问题。
+`npx -y @nuwax-ai/nuwa-cli@beta gateway ...` 可以解决“用户没安装 nuwa-cli”的问题，但不能解决“用户没有任何可用 Agent 登录态”的问题。
 
-如果本机既没有可用 Claude，也没有可用 Codex，`up` 必须失败：
+如果本机既没有可用 Claude，也没有可用 Codex，`gateway` 必须失败：
 
 ```text
 未找到可用 Agent 引擎。
@@ -255,7 +252,7 @@ nuwa-cli serve --tunnel --engine <selected-engine>
   codex login
 
 然后重新运行：
-  npx -y @nuwax-ai/nuwa-cli@latest up --domain https://agent.nuwax.com --saved-key <key>
+  npx -y @nuwax-ai/nuwa-cli@beta gateway --domain https://agent.nuwax.com --saved-key <key>
 ```
 
 这是有意设计：Claude/Codex 的账号授权必须由用户在对应官方工具中完成，CLI 不应静默代办。
@@ -278,4 +275,4 @@ nuwa-cli serve --tunnel --engine <selected-engine>
 - `--daemon`：后台启动；结构化运行日志看 `~/.nuwa-cli/logs/latest.log`（指向 `main.YYYY-MM-DD.log`），原始 stdout/stderr 仍追加到 `serve.log`。
 - `service install --now`：安装当前用户级自启动并立即启动；macOS/Linux/Windows 分别使用 LaunchAgent、systemd user service、计划任务。
 - 端口被占用：agent/file-server 自动后移，注册上报最终端口。
-- `--help`：`login` / `up` / `account switch` / `service install` 帮助里说明默认账号、多账号 JSON、密码环境变量、服务重启要求和自启动机制。
+- `--help`：`login` / `gateway` / `account switch` / `service install` 帮助里说明默认账号、多账号 JSON、密码环境变量、服务重启要求和自启动机制。

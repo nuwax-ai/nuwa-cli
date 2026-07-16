@@ -69,14 +69,71 @@ describe("serveSingleton", () => {
     await exited;
   });
 
+  it("doctor repair keeps the lock owner and stops duplicate serves", async () => {
+    const first = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)"],
+      { stdio: "ignore" },
+    );
+    const second = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)"],
+      { stdio: "ignore" },
+    );
+    await Promise.all([once(first, "spawn"), once(second, "spawn")]);
+    const { registerProcess, isPidAlive } =
+      await import("../src/core/processes/processRegistry.js");
+    const { writeServeLock } =
+      await import("../src/core/serve/serveLock.js");
+    const { repairServeSingleton } =
+      await import("../src/core/processes/serveSingleton.js");
+    for (const pid of [first.pid!, second.pid!]) {
+      registerProcess({
+        pid,
+        kind: "serve",
+        state: "running",
+        daemon: true,
+        cwd: "/tmp",
+      });
+    }
+    writeServeLock({
+      pid: first.pid!,
+      port: 60016,
+      host: "127.0.0.1",
+      startedAt: new Date().toISOString(),
+    });
+
+    const secondExited = once(second, "exit");
+    await expect(repairServeSingleton()).resolves.toEqual({
+      keptPid: first.pid,
+      stoppedPids: [second.pid],
+    });
+    await secondExited;
+    expect(isPidAlive(first.pid!)).toBe(true);
+
+    const firstExited = once(first, "exit");
+    first.kill("SIGTERM");
+    await firstExited;
+  });
+
   it("recognises nuwa-cli serve commands without matching another dist/cli", async () => {
     const { isNuwaServeCommand, parseNuwaProcessKind } =
       await import("../src/core/processes/serveSingleton.js");
     expect(isNuwaServeCommand("node /work/nuwa-cli/dist/cli.js serve --daemon")).toBe(true);
+    // Old processes must remain discoverable for cleanup even though the old
+    // command name is no longer accepted by the CLI.
     expect(isNuwaServeCommand("nuwa-cli up --force")).toBe(true);
+    expect(isNuwaServeCommand("nuwa-cli gateway --force")).toBe(true);
     expect(isNuwaServeCommand("node /work/nuwaclaw/dist/cli.js serve")).toBe(false);
     expect(isNuwaServeCommand("node /work/nuwa-cli/dist/cli.js status")).toBe(false);
     expect(parseNuwaProcessKind("node /work/nuwa-cli/dist/cli.js ui")).toBe("ui");
+    expect(parseNuwaProcessKind("nuwa-cli console")).toBe("ui");
+    expect(parseNuwaProcessKind("nuwa-cli start")).toBe("ui");
     expect(parseNuwaProcessKind("nuwa-cli chat --engine claude")).toBe("chat");
+    expect(
+      parseNuwaProcessKind(
+        "/bin/zsh -c node /work/nuwa-cli/dist/cli.js serve",
+      ),
+    ).toBeNull();
   });
 });

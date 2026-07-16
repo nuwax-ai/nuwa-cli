@@ -4,13 +4,9 @@ import { updateCommand } from "../commands/update.js";
 export function registerUpdateCommand(program: Command): void {
   program
     .command("update [version]")
-    .description("升级 nuwa-cli CLI（默认升级到 latest）")
+    .description("升级 nuwa-cli CLI（当前默认跟随 beta 通道）")
     .option("--check", "只查询目标版本，不执行安装")
     .option("--dry-run", "打印升级命令但不执行")
-    .option(
-      "--package-manager <npm|pnpm>",
-      "指定包管理器；默认根据当前环境推断",
-    )
     .option("--registry <url>", "指定 npm registry")
     .addHelpText(
       "after",
@@ -18,14 +14,15 @@ export function registerUpdateCommand(program: Command): void {
         "",
         "示例：",
         "  nuwa-cli update",
-        "  nuwa-cli update 0.2.0",
+        "  nuwa-cli update 0.1.0-beta.1",
+        "  nuwa-cli update latest",
         "  nuwa-cli update --check",
-        "  nuwa-cli update --package-manager pnpm",
         "",
         "说明：",
-        "  - update 只升级 npm/pnpm 安装的 CLI 包，不修改 ~/.nuwa-cli 登录数据。",
-        "  - npx/pnpm dlx 临时运行时，建议直接使用 npx -y @nuwax-ai/nuwa-cli@latest ...。",
+        "  - update 使用 npm 升级全局 CLI 包，不修改 ~/.nuwa-cli 登录数据。",
+        "  - 当前预发布阶段默认跟随 beta；可显式指定版本或 latest tag。",
+        "  - npx 临时运行时，建议直接使用 npx -y @nuwax-ai/nuwa-cli@beta ...。",
       ].join("\n"),
     )
-    .action(updateCommand);
+    .action((version, options) => updateCommand(version, options));
 }

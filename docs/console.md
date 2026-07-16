@@ -1,20 +1,22 @@
-# `nuwa-cli ui` — 本地轻量 Web 控制台
+# `nuwa-cli console` — 本地 Web Console
 
-`nuwa-cli ui` 启动一个**仅本机**（默认 `127.0.0.1:60017`）的 HTTP 服务，自动打开浏览器单页应用，把 `chat` / `sessions` / 引擎与模型/模式切换、以及流式聊天集中到一个可视化界面。零额外运行时依赖——页面用原生 HTML/CSS/JS 写成，由 esbuild 在构建时内联进 `dist/cli.js`。
+`nuwa-cli console` 启动一个**仅本机**（默认 `127.0.0.1:60017`）的 HTTP 服务，自动打开浏览器单页应用，把 `chat` / `sessions` / 引擎与模型/模式切换、以及流式聊天集中到一个可视化界面。零额外运行时依赖——页面用原生 HTML/CSS/JS 写成，由 esbuild 在构建时内联进 `dist/cli.js`。
 
 ## 快速开始
 
 ```bash
-pnpm run build
-node dist/cli.js ui                 # 默认 claude 引擎，自动开浏览器
-node dist/cli.js ui --engine codex  # 默认 codex（界面内仍可切换）
-node dist/cli.js ui --no-open       # 不自动开浏览器，自行打开打印出的 URL
+npm run build
+node dist/cli.js console                 # 默认 claude 引擎，自动开浏览器
+node dist/cli.js console --engine codex  # 默认 codex（界面内仍可切换）
+node dist/cli.js console --no-open       # 不自动开浏览器，自行打开打印出的 URL
 ```
+
+需要同时启动完整运行环境时使用 `nuwa-cli start`：Gateway 会进入后台，Console 留在当前终端前台运行。
 
 启动会打印一行带一次性 token 的本地地址，例如：
 
 ```
-nuwa-cli ui 已启动：http://127.0.0.1:60017/?t=350a8a358178872db9325b2f66b089ba35e37dda53c2a8dc
+nuwa-cli console 已启动：http://127.0.0.1:60017/?t=350a8a358178872db9325b2f66b089ba35e37dda53c2a8dc
 ```
 
 `Ctrl+C` 退出。
@@ -60,7 +62,7 @@ nuwa-cli ui 已启动：http://127.0.0.1:60017/?t=350a8a358178872db9325b2f66b089
 
 ## 与 `serve` 的关系
 
-| | `nuwa-cli ui` | `nuwa-cli serve` |
+| | `nuwa-cli console` | `nuwa-cli serve` |
 |---|---|---|
 | 面向 | 人在本机前的可视化操作 | 脚本 / 云端 / IM 的机器 API |
 | 形态 | 浏览器单页应用 + JSON/SSE | JSON + SSE（无 UI） |
@@ -68,7 +70,9 @@ nuwa-cli ui 已启动：http://127.0.0.1:60017/?t=350a8a358178872db9325b2f66b089
 | 运行方式 | 前台；`Ctrl+C` 退出 | 可 `--daemon` / `service install` 常驻 |
 | 鉴权 | 内嵌一次性 token（用户无感） | `X-Nuwax-Internal-Secret`（需从启动输出取） |
 
-两者独立，可同时运行。`ui` 复用 `serve` 的 `SessionHub` 与权限审批通道（`acpRequestPermission` + `ApprovalPendingService`），但它是**前台**工具，不提供 `--daemon` / `service install`——面向「你在机器前」的场景；无人值守的远程调度请用 `serve`。
+两者独立，可同时运行。Console 复用 Gateway 的 `SessionHub` 与权限审批通道（`acpRequestPermission` + `ApprovalPendingService`），但它是**前台**工具，不提供 `--daemon` / `service install`；无人值守的远程调度使用 Gateway。
+
+`nuwa-cli start` 会编排两者：复用或后台启动 Gateway，然后复用或前台启动 Console。`nuwa-cli start --force` 会强制替换两者。
 
 ## HTTP 接口（参考）
 

@@ -5,9 +5,9 @@ import { addUiOptions } from "./options.js";
 export function registerUiCommand(program: Command): void {
   addUiOptions(
     program
-      .command("ui")
+      .command("console")
       .description(
-        "启动本地轻量 Web 控制台：查看/续接/新建 claude·codex 会话，切换引擎/模型/ACP 模式并直接聊天",
+        "启动本地 Web Console：查看/续接/新建会话并直接聊天（仅前台单例）",
       ),
   ).action(uiCommand);
 }

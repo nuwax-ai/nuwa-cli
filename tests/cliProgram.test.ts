@@ -28,17 +28,35 @@ describe("createProgram", () => {
       "status",
       "config",
       "account",
+      "start",
+      "restart",
       "stop",
       "serve",
-      "up",
+      "gateway",
       "service",
-      "ui",
+      "console",
       "update",
     ]);
   });
 
-  it("registers shared serve/up options exactly once", () => {
-    for (const commandName of ["serve", "up"]) {
+  it("does not expose legacy command aliases", () => {
+    const program = createProgram();
+    const gateway = program.commands.find(
+      (command) => command.name() === "gateway",
+    );
+    const console = program.commands.find(
+      (command) => command.name() === "console",
+    );
+    const start = program.commands.find((command) => command.name() === "start");
+
+    expect(gateway?.aliases()).toEqual([]);
+    expect(console?.aliases()).toEqual([]);
+    expect(start?.aliases()).toEqual([]);
+    expect(commandNames()).not.toEqual(expect.arrayContaining(["up", "ui"]));
+  });
+
+  it("registers shared serve/gateway options exactly once", () => {
+    for (const commandName of ["serve", "gateway"]) {
       const options = optionLongNames(commandName);
       expect(options.filter((name) => name === "--port")).toHaveLength(1);
       expect(options.filter((name) => name === "--host")).toHaveLength(1);
@@ -47,4 +65,18 @@ describe("createProgram", () => {
       expect(options.filter((name) => name === "--api-key")).toHaveLength(1);
     }
   });
+
+  it("registers doctor --fix", () => {
+    expect(optionLongNames("doctor")).toContain("--fix");
+    expect(optionLongNames("console")).toContain("--force");
+  });
+
+  it("registers restart --all", () => {
+    expect(optionLongNames("start")).toContain("--force");
+    expect(optionLongNames("start")).toContain("--no-open");
+    expect(optionLongNames("restart")).toContain("--all");
+    expect(optionLongNames("restart")).toContain("--no-open");
+    expect(optionLongNames("stop")).toContain("--all");
+  });
+
 });

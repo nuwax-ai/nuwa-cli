@@ -13,9 +13,12 @@ import { ensureDir, workspacesDir } from "../util/paths.js";
 import { findOnPath } from "../util/which.js";
 import {
   registerProcess,
-  unregisterProcess,
   updateProcessRecord,
 } from "../core/processes/processRegistry.js";
+import {
+  acquireUiSingleton,
+  releaseUiSingleton,
+} from "../core/processes/uiSingleton.js";
 
 export interface UiCommandOptions {
   port?: string;
@@ -26,6 +29,7 @@ export interface UiCommandOptions {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
+  force?: boolean;
   /** `--no-open` flips this to false so the browser isn't launched. */
   open?: boolean;
 }
@@ -102,15 +106,41 @@ export async function uiCommand(options: UiCommandOptions): Promise<void> {
         }
       : undefined;
 
-  const { token, server, stop } = startUiHttp({
-    port,
-    host,
-    engine: engineId,
-    cwd,
-    permissionMode,
-    policyLabel,
-    overlay,
-  });
+  try {
+    const replaced = await acquireUiSingleton(options.force === true);
+    if (replaced.length > 0) {
+      console.log(
+        pc.yellow(
+          `已通过 --force 停止旧 Console 进程：${replaced.join(", ")}`,
+        ),
+      );
+    }
+  } catch (err) {
+    console.error(pc.red(`[nuwa-cli] ${(err as Error).message}`));
+    process.exitCode = 1;
+    return;
+  }
+
+  let httpHandle: ReturnType<typeof startUiHttp>;
+  try {
+    httpHandle = startUiHttp({
+      port,
+      host,
+      engine: engineId,
+      cwd,
+      permissionMode,
+      policyLabel,
+      overlay,
+    });
+  } catch (err) {
+    releaseUiSingleton();
+    console.error(
+      pc.red(`[nuwa-cli] Console 启动失败：${(err as Error).message}`),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const { token, server, stop } = httpHandle;
   registerProcess({
     pid: process.pid,
     kind: "ui",
@@ -127,7 +157,7 @@ export async function uiCommand(options: UiCommandOptions): Promise<void> {
   else server.once("listening", markRunning);
 
   const url = `http://${host}:${port}/?t=${token}`;
-  console.log(pc.green(`nuwa-cli ui 已启动：${url}`));
+  console.log(pc.green(`nuwa-cli console 已启动：${url}`));
   if (permissionMode === "yolo") {
     console.log(
       pc.yellow(
@@ -157,7 +187,7 @@ export async function uiCommand(options: UiCommandOptions): Promise<void> {
     shuttingDown = true;
     console.log(pc.dim(`\n[nuwa-cli] 收到 ${sig}，关闭中...`));
     await stop().catch(() => {});
-    unregisterProcess(process.pid);
+    releaseUiSingleton();
     process.exit(0);
   };
   process.once("SIGINT", () => void shutdown("SIGINT"));
