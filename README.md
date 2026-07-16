@@ -74,6 +74,40 @@ Lists local `claude`/`codex` session history (read directly from `~/.claude/proj
 
 `nuwa-cli sessions summary --engine <claude|codex> --session-id <id> [--limit N]` prints a compact, engine-agnostic JSON digest of one session's full transcript (`{engine, sessionId, cwd, title, messages, hasMore}`). This is kept as a low-level compatibility command; the newer cross-agent context surface is `nuwa-cli context`.
 
+### `nuwa-cli ui`
+
+Starts a **local-only** lightweight web dashboard (default `127.0.0.1:60017`) and opens it in your browser: view / resume / new claude·codex sessions, switch engine / model / ACP mode, and chat with streaming — all from one page. Zero extra dependencies; the page is bundled with the CLI.
+
+```bash
+nuwa-cli ui                         # default claude engine, opens a browser
+nuwa-cli ui --engine codex          # default to codex (still switchable in-page)
+nuwa-cli ui --no-open               # don't auto-open; open the printed URL yourself
+nuwa-cli ui --approve ask           # approve every tool call in-browser
+```
+
+What you get:
+
+- **Left · session list**: local `claude`/`codex` history (with engine + model badges) plus live sessions. **Resume** does a real ACP `session/load`; **View** browses the transcript read-only; **+ New** starts a fresh session.
+- **Top controls**: engine, **mode** dropdown (from the engine's `modes.availableModes`, e.g. `default`/`acceptEdits`/`plan`/`bypassPermissions`), **model** dropdown (switchable when the engine exposes a model selector via ACP `configOptions`, otherwise read-only).
+- **Center chat**: send a message and stream the reply over SSE; tool calls and thoughts render inline.
+- **Permission prompts**: under `--approve ask` or for sensitive categories, tool calls surface approve/reject buttons in the chat area (reusing `serve`'s `acpRequestPermission` + approval channel).
+
+Flags:
+
+| Flag | Meaning |
+|---|---|
+| `--engine <claude\|codex>` | Default engine (still switchable in-page) |
+| `--port <port>` | Listen port, auto-increments if busy (default `60017`) |
+| `--host <host>` | Listen address (default `127.0.0.1`; loopback only recommended) |
+| `--cwd <dir>` | Default working directory for new sessions; defaults to the workspace dir |
+| `--approve <auto\|ask\|deny>` | Permission policy: `auto` (default; auto-approves ordinary tools, still prompts for sensitive ones) / `ask` (prompt for each) / `deny` (reject all) |
+| `--no-open` | Don't auto-open the browser |
+| `--api-key` / `--base-url` / `--model` | Override model connection (same as `chat`) |
+
+On startup it prints a local URL carrying a one-shot token, e.g. `http://127.0.0.1:60017/?t=<token>`: the token is embedded in the page (no manual entry) and also blocks drive-by requests from other web pages.
+
+`ui` is a **foreground** process — closing the terminal or `Ctrl+C` stops it. It is not a background daemon and doesn't need to be: it's for the "you're sitting at the machine" case. For unattended remote/cloud scheduling use `serve` (the machine API, below). Full notes in [`docs/local-ui.md`](docs/local-ui.md).
+
 ### `nuwa-cli context`
 
 An ACP-adjacent context reference layer. It does not replace ACP session lifecycle and does not perform cross-engine native resume; it only turns local session history into JSON a target agent can read on demand:

@@ -10,6 +10,8 @@ export interface LocalSessionSummary {
   updatedAt: string;
   title: string;
   filePath: string;
+  /** Model used by the session, parsed opportunistically from the transcript. */
+  model?: string;
 }
 
 /**
@@ -55,6 +57,7 @@ async function readClaudeSessionSummary(
   let sessionId: string | undefined;
   let cwd: string | undefined;
   let title: string | undefined;
+  let model: string | undefined;
 
   await scanJsonlHead(filePath, 40, (obj) => {
     if (!sessionId && typeof obj.sessionId === "string")
@@ -68,7 +71,17 @@ async function readClaudeSessionSummary(
     ) {
       title = truncateTitle((obj.message as { content: string }).content);
     }
-    return Boolean(sessionId && cwd && title);
+    // The model name lives on the assistant message object (`message.model`),
+    // not at the top level — keep scanning past the user title line to reach
+    // the first assistant turn.
+    if (
+      !model &&
+      typeof (obj.message as { model?: unknown } | undefined)?.model ===
+        "string"
+    ) {
+      model = (obj.message as { model: string }).model;
+    }
+    return Boolean(sessionId && cwd && title && model);
   });
 
   if (!sessionId || !cwd) return null;
@@ -80,6 +93,7 @@ async function readClaudeSessionSummary(
     title: title ?? "(无标题)",
     updatedAt: stat.mtime.toISOString(),
     filePath,
+    model,
   };
 }
 
@@ -88,8 +102,9 @@ async function readCodexSessionSummary(
 ): Promise<LocalSessionSummary | null> {
   let sessionId: string | undefined;
   let cwd: string | undefined;
+  let model: string | undefined;
 
-  await scanJsonlHead(filePath, 5, (obj) => {
+  await scanJsonlHead(filePath, 25, (obj) => {
     if (
       obj.type === "session_meta" &&
       obj.payload &&
@@ -102,9 +117,18 @@ async function readCodexSessionSummary(
         sessionId = payload.session_id;
       else if (typeof payload.id === "string") sessionId = payload.id;
       if (typeof payload.cwd === "string") cwd = payload.cwd;
-      return true;
     }
-    return false;
+    // The concrete model name lives on a `turn_context` line's payload
+    // (session_meta only carries `model_provider`). Capture it from any line.
+    if (
+      !model &&
+      obj.payload &&
+      typeof obj.payload === "object" &&
+      typeof (obj.payload as Record<string, unknown>).model === "string"
+    ) {
+      model = (obj.payload as Record<string, unknown>).model as string;
+    }
+    return Boolean(sessionId && cwd && model);
   });
 
   if (!sessionId || !cwd) return null;
@@ -116,6 +140,7 @@ async function readCodexSessionSummary(
     title: "(codex 会话)",
     updatedAt: stat.mtime.toISOString(),
     filePath,
+    model,
   };
 }
 

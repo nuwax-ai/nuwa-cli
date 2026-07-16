@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>nuwa-cli · 本地控制台</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #161a21;
+        --panel2: #1d222b;
+        --border: #2a313c;
+        --text: #e6e9ef;
+        --dim: #8b94a3;
+        --accent: #4f8cff;
+        --accent2: #6cf0c8;
+        --warn: #f0c46c;
+        --danger: #ff6b6b;
+        --claude: #d9a567;
+        --codex: #6cf0c8;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+      }
+      #app { display: flex; flex-direction: column; height: 100vh; }
+      header {
+        display: flex; align-items: center; gap: 16px;
+        padding: 10px 16px; background: var(--panel);
+        border-bottom: 1px solid var(--border);
+      }
+      .brand { font-weight: 600; font-size: 15px; white-space: nowrap; }
+      .engines { display: flex; gap: 8px; flex: 1; flex-wrap: wrap; }
+      .engine {
+        display: flex; align-items: center; gap: 6px;
+        padding: 4px 10px; border-radius: 8px; background: var(--panel2);
+        border: 1px solid var(--border); font-size: 12px;
+      }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+      .dot.ok { background: var(--accent2); }
+      .engine .model { color: var(--dim); }
+      header button, .btn {
+        background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+        padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px;
+      }
+      header button:hover, .btn:hover { border-color: var(--accent); }
+      main { flex: 1; display: grid; grid-template-columns: 300px 1fr; min-height: 0; }
+      aside {
+        background: var(--panel); border-right: 1px solid var(--border);
+        overflow-y: auto; padding: 8px;
+      }
+      .section { margin-bottom: 14px; }
+      .section-title {
+        display: flex; align-items: center; justify-content: space-between;
+        color: var(--dim); font-size: 11px; text-transform: uppercase;
+        letter-spacing: 0.5px; margin: 6px 4px;
+      }
+      aside input {
+        width: 100%; padding: 6px 8px; margin: 4px 0;
+        background: var(--panel2); border: 1px solid var(--border);
+        color: var(--text); border-radius: 6px; font-size: 12px;
+      }
+      ul { list-style: none; margin: 0; padding: 0; }
+      li.item {
+        padding: 8px 10px; border-radius: 8px; cursor: pointer; margin: 2px 0;
+        border: 1px solid transparent;
+      }
+      li.item:hover { background: var(--panel2); }
+      li.item.active { background: var(--panel2); border-color: var(--accent); }
+      .item .title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .item .meta { font-size: 11px; color: var(--dim); display: flex; gap: 6px; align-items: center; margin-top: 2px; flex-wrap: wrap; }
+      .badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--panel); border: 1px solid var(--border); }
+      .badge.claude { color: var(--claude); }
+      .badge.codex { color: var(--codex); }
+      .badge.model { color: var(--accent); }
+      .badge.live { color: var(--accent2); border-color: var(--accent2); }
+      .item .row { display: flex; gap: 6px; margin-top: 4px; }
+      .row .btn { padding: 2px 8px; font-size: 11px; }
+      section#main { display: flex; flex-direction: column; min-width: 0; }
+      #controls {
+        display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+        padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--border);
+      }
+      #controls label { font-size: 11px; color: var(--dim); }
+      select {
+        background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; padding: 4px 8px; font-size: 12px; max-width: 240px;
+      }
+      select:disabled { opacity: 0.5; }
+      #policy { font-size: 11px; color: var(--warn); margin-left: auto; }
+      #messages { flex: 1; overflow-y: auto; padding: 16px; }
+      .msg { margin-bottom: 14px; max-width: 900px; }
+      .msg .role { font-size: 11px; color: var(--dim); margin-bottom: 3px; }
+      .msg.user .bubble { background: var(--panel2); border: 1px solid var(--border); }
+      .msg.assistant .bubble { background: transparent; }
+      .bubble { padding: 10px 12px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; }
+      .thought { color: var(--dim); font-style: italic; border-left: 2px solid var(--border); padding-left: 10px; margin: 4px 0; white-space: pre-wrap; }
+      .tool { font-size: 12px; color: var(--warn); background: var(--panel2); border: 1px solid var(--border); padding: 3px 8px; border-radius: 6px; display: inline-block; margin: 2px 4px 2px 0; }
+      .system { color: var(--dim); font-size: 12px; }
+      .perm {
+        background: var(--panel2); border: 1px solid var(--warn); border-radius: 8px;
+        padding: 10px 12px; margin: 8px 0; max-width: 900px;
+      }
+      .perm .ptitle { font-weight: 600; color: var(--warn); }
+      .perm .popts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+      .cursor { display: inline-block; width: 7px; height: 14px; background: var(--accent); animation: blink 1s steps(2) infinite; vertical-align: middle; }
+      @keyframes blink { 50% { opacity: 0; } }
+      #composer {
+        display: flex; gap: 8px; align-items: flex-end; padding: 10px 14px;
+        background: var(--panel); border-top: 1px solid var(--border);
+      }
+      #input {
+        flex: 1; resize: none; min-height: 44px; max-height: 160px;
+        background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+        border-radius: 8px; padding: 10px; font: inherit;
+      }
+      #composer button { padding: 10px 16px; }
+      #composer #stop { color: var(--danger); }
+      .empty { color: var(--dim); text-align: center; padding: 40px; }
+      .err { color: var(--danger); }
+      #statusline { font-size: 11px; color: var(--dim); padding: 0 14px 6px; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <div class="brand">nuwa-cli · 本地控制台</div>
+        <div class="engines" id="engines"></div>
+        <button id="refresh">刷新</button>
+      </header>
+      <main>
+        <aside id="sidebar">
+          <div class="section">
+            <div class="section-title">
+              <span>在线会话</span>
+              <button class="btn" id="new-btn">+ 新建</button>
+            </div>
+            <ul id="live-list"></ul>
+          </div>
+          <div class="section">
+            <div class="section-title"><span>历史会话</span></div>
+            <input id="search" placeholder="搜索标题 / id / 路径..." />
+            <ul id="history-list"></ul>
+          </div>
+        </aside>
+        <section id="main">
+          <div id="controls">
+            <span class="system" id="no-session">选择或新建一个会话开始对话</span>
+          </div>
+          <div id="messages"></div>
+          <div id="composer" style="display:none">
+            <textarea id="input" placeholder="输入消息... (Enter 发送 / Shift+Enter 换行)"></textarea>
+            <button class="btn" id="send">发送</button>
+            <button class="btn" id="stop">停止</button>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script>
+      (function () {
+        "use strict";
+        const TOKEN = new URLSearchParams(location.search).get("t") || "";
+        const apiBase = "";
+        async function fetchJson(path, init) {
+          const url = path.includes("?") ? path + "&t=" + TOKEN : path + "?t=" + TOKEN;
+          const res = await fetch(apiBase + url, init || {});
+          if (!res.ok) throw new Error((path) + " -> HTTP " + res.status);
+          return res.json();
+        }
+        function postJson(path, body) {
+          return fetchJson(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Nuwax-Ui-Token": TOKEN },
+            body: JSON.stringify(body || {}),
+          });
+        }
+
+        const state = {
+          engines: [],
+          history: [],
+          live: {},
+          activeId: null,
+          msgs: {},        // id -> [{role, text, thought, tools:[], done}]
+          perms: {},        // id -> [permission events]
+          info: {},         // id -> live info (modes/configOptions/model/engine)
+          search: "",
+          ess: {},          // id -> EventSource
+          pendingAssistant: {}, // id -> bool (streaming)
+        };
+
+        const $ = (id) => document.getElementById(id);
+        function el(tag, cls, text) {
+          const e = document.createElement(tag);
+          if (cls) e.className = cls;
+          if (text != null) e.textContent = text;
+          return e;
+        }
+        function shortTime(iso) {
+          if (!iso) return "";
+          return iso.slice(5, 16).replace("T", " ");
+        }
+
+        async function loadEngines() {
+          try {
+            const r = await fetchJson("/api/engines");
+            state.engines = r.engines || [];
+            state.policy = r.policy || "";
+          } catch (e) { state.engines = []; }
+          renderEngines();
+        }
+        async function loadHistory() {
+          try {
+            const r = await fetchJson("/api/sessions");
+            state.history = r.sessions || [];
+          } catch (e) { state.history = []; }
+          renderHistory();
+        }
+        async function loadLive() {
+          try {
+            const r = await fetchJson("/api/live");
+            const arr = r.sessions || [];
+            state.live = {};
+            arr.forEach((s) => { state.live[s.sessionId] = s; });
+          } catch (e) {}
+          renderLive();
+        }
+
+        function renderEngines() {
+          const c = $("engines");
+          c.innerHTML = "";
+          state.engines.forEach((en) => {
+            const box = el("div", "engine");
+            const dot = el("span", "dot" + (en.ok ? " ok" : ""));
+            box.appendChild(dot);
+            box.appendChild(el("span", null, en.id));
+            if (en.model) box.appendChild(el("span", "model", en.model));
+            else if (!en.ok && en.fix) box.appendChild(el("span", "model", "未就绪"));
+            if (!en.ok && en.fix) box.title = en.fix;
+            c.appendChild(box);
+          });
+        }
+
+        function renderHistory() {
+          const ul = $("history-list");
+          ul.innerHTML = "";
+          const q = state.search.toLowerCase();
+          const items = state.history.filter((s) =>
+            !q || (s.title + " " + s.sessionId + " " + s.cwd).toLowerCase().includes(q)
+          );
+          if (!items.length) { ul.appendChild(el("li", "empty", "无历史会话")); return; }
+          items.slice(0, 100).forEach((s) => {
+            const li = el("li", "item");
+            li.appendChild(el("div", "title", s.title));
+            const meta = el("div", "meta");
+            meta.appendChild(el("span", "badge " + s.engine, s.engine));
+            if (s.model) meta.appendChild(el("span", "badge model", s.model));
+            meta.appendChild(el("span", null, shortTime(s.updatedAt)));
+            li.appendChild(meta);
+            const row = el("div", "row");
+            const b = el("button", "btn", "续接");
+            b.onclick = (e) => { e.stopPropagation(); resume(s); };
+            row.appendChild(b);
+            const t = el("button", "btn", "查看");
+            t.onclick = (e) => { e.stopPropagation(); viewTranscript(s); };
+            row.appendChild(t);
+            li.appendChild(row);
+            ul.appendChild(li);
+          });
+        }
+
+        function renderLive() {
+          const ul = $("live-list");
+          ul.innerHTML = "";
+          const ids = Object.keys(state.live);
+          if (!ids.length) { ul.appendChild(el("li", "empty", "无在线会话")); return; }
+          ids.forEach((id) => {
+            const s = state.live[id];
+            // Read model/ready from state.info (SSE-driven, never wiped by the
+            // loadLive poll) rather than s.info, which the 4s /api/live poll
+            // reassigns from the server shape (no nested .info field).
+            const info = state.info[id] || {};
+            const li = el("li", "item" + (id === state.activeId ? " active" : ""));
+            li.appendChild(el("div", "title", info.model || (s.engine + " 会话")));
+            const meta = el("div", "meta");
+            meta.appendChild(el("span", "badge " + s.engine, s.engine));
+            meta.appendChild(el("span", "badge live", s.ready ? "ready" : "connecting"));
+            if (info.model) meta.appendChild(el("span", "badge model", info.model));
+            li.appendChild(meta);
+            li.onclick = () => openLive(id);
+            ul.appendChild(li);
+          });
+        }
+
+        async function viewTranscript(s) {
+          openBlank(s.engine, s.model);
+          // Stamp a token so a late-resolving fetch can't yank the user back to
+          // this read-only view if they clicked into a live session meanwhile.
+          const token = (state.__viewToken = (state.__viewToken || 0) + 1);
+          try {
+            const r = await fetchJson("/api/sessions/" + s.engine + "/" + encodeURIComponent(s.sessionId) + "/transcript?file=" + encodeURIComponent(s.filePath));
+            if (token !== state.__viewToken || state.activeId !== "__view") return;
+            const arr = (r && r.messages) || [];
+            state.msgs["__view"] = arr.map((m) => ({ role: m.role, text: m.text, tools: m.toolCalls || [], thought: "", done: true }));
+            renderMessages();
+            setStatus("只读历史会话：" + s.title + "（新建或续接以对话）");
+          } catch (e) { if (token === state.__viewToken) setStatus("读取转录失败：" + e.message, true); }
+        }
+
+        function openBlank(engine, model) {
+          state.activeId = "__view";
+          state.msgs["__view"] = [];
+          const controls = $("controls");
+          controls.innerHTML = "";
+          controls.appendChild(el("span", "system", engine + (model ? " · " + model : "") + " · 只读视图"));
+          $("messages").innerHTML = "";
+        }
+
+        async function startNew(engine) {
+          const cwd = prompt("工作目录 cwd（留空使用默认工作区）", "");
+          if (cwd === null) return;
+          try {
+            const r = await postJson("/api/sessions", { engine: engine, cwd: cwd || undefined });
+            afterStart(r.session, engine);
+          } catch (e) { setStatus("新建失败：" + e.message, true); }
+        }
+
+        async function resume(s) {
+          try {
+            const r = await postJson("/api/sessions/resume", { engine: s.engine, sessionId: s.sessionId, cwd: s.cwd });
+            afterStart(r.session, s.engine);
+          } catch (e) { setStatus("续接失败：" + e.message, true); }
+        }
+
+        function afterStart(session, engine) {
+          const id = session.sessionId;
+          state.live[id] = { sessionId: id, engine: engine, ready: session.ready !== false, info: session };
+          state.msgs[id] = [];
+          state.perms[id] = [];
+          // The POST response's `session` IS the info object (sessionId/modes/
+          // configOptions/model live on it directly — there is no nested .info).
+          state.info[id] = session;
+          renderLive();
+          openLive(id);
+          subscribe(id);
+        }
+
+        function openLive(id) {
+          if (id === "__view") return;
+          state.activeId = id;
+          if (!state.msgs[id]) state.msgs[id] = [];
+          renderLive();
+          renderControls(id);
+          renderMessages();
+          $("composer").style.display = "flex";
+          if (!state.ess[id]) subscribe(id);
+          $("input").focus();
+        }
+
+        function subscribe(id) {
+          if (state.ess[id]) { state.ess[id].close(); }
+          const es = new EventSource("/api/live/" + id + "/events?t=" + TOKEN);
+          state.ess[id] = es;
+          const on = (name, fn) => es.addEventListener(name, (ev) => { try { fn(JSON.parse(ev.data)); } catch (e) {} });
+          on("session_ready", (m) => {
+            if (state.live[id]) state.live[id].ready = (m.data && m.data.ok) ? true : false;
+            if (m.data && !m.data.ok) pushSystem(id, "会话启动失败：" + (m.data.error || ""));
+            renderLive();
+          });
+          on("session_state", (m) => {
+            state.info[id] = m.data || state.info[id];
+            if (state.live[id]) state.live[id].info = state.info[id];
+            if (state.activeId === id) renderControls(id);
+            renderLive();
+          });
+          on("session_prompt_start", (m) => {
+            pushMsg(id, { role: "user", text: (m.data && m.data.prompt) || "", tools: [], thought: "", done: true });
+            state.pendingAssistant[id] = true;
+            pushMsg(id, { role: "assistant", text: "", tools: [], thought: "", done: false });
+            renderMessages();
+          });
+          on("agent_session_update", (m) => handleUpdate(id, m.data));
+          on("end_turn", (m) => {
+            const arr = state.msgs[id]; if (arr && arr.length) arr[arr.length - 1].done = true;
+            state.pendingAssistant[id] = false;
+            if (m.subType === "error") pushSystem(id, "本轮出错：" + ((m.data && m.data.error) || ""));
+            renderMessages();
+          });
+          on("session_ended", (m) => {
+            pushSystem(id, "会话已结束" + (m.data && m.data.error ? "：" + m.data.error : ""));
+            if (state.ess[id]) { state.ess[id].close(); delete state.ess[id]; }
+            delete state.live[id];
+            renderLive();
+          });
+          on("acpRequestPermission", (m) => handlePermission(id, m.data));
+          es.onerror = () => { /* EventSource auto-reconnects */ };
+        }
+
+        function handleUpdate(id, update) {
+          if (!update) return;
+          const arr = state.msgs[id];
+          if (!arr) return;
+          const su = update.sessionUpdate;
+          if (su === "agent_message_chunk" && update.content && update.content.type === "text") {
+            const last = arr[arr.length - 1];
+            if (last && last.role === "assistant") last.text += update.content.text;
+          } else if (su === "agent_thought_chunk" && update.content && update.content.type === "text") {
+            const last = arr[arr.length - 1];
+            if (last && last.role === "assistant") last.thought += update.content.text;
+          } else if (su === "tool_call" || su === "tool_call_update") {
+            const last = arr[arr.length - 1];
+            const tc = update.content && update.content.toolCall;
+            if (last && tc) {
+              const name = tc.title || tc.kind || "tool";
+              if (!last.tools.includes(name)) last.tools.push(name);
+            }
+          }
+          if (state.activeId === id) renderMessages();
+        }
+
+        function handlePermission(id, data) {
+          if (!data) return;
+          const meta = data._meta || {};
+          const interventionId = meta.nuwa_cli_intervention_id;
+          const req = data.request_permission_request;
+          if (!interventionId || !req) return;
+          state.perms[id] = state.perms[id] || [];
+          state.perms[id].push({ interventionId, req });
+          if (state.activeId === id) renderMessages();
+        }
+
+        function pushMsg(id, m) { (state.msgs[id] = state.msgs[id] || []).push(m); }
+        function pushSystem(id, text) { pushMsg(id, { role: "system", text: text, tools: [], thought: "", done: true }); }
+
+        function renderControls(id) {
+          const info = state.info[id] || {};
+          const c = $("controls");
+          c.innerHTML = "";
+          const engine = (state.live[id] && state.live[id].engine) || "?";
+          c.appendChild(el("label", null, "引擎"));
+          c.appendChild(el("span", "badge " + engine, engine));
+
+          // mode
+          c.appendChild(el("label", null, " 模式"));
+          const modeSel = el("select");
+          const modes = (info.modes && info.modes.availableModes) || [];
+          const cur = (info.modes && info.modes.currentModeId) || "";
+          if (!modes.length) { const o = el("option", null, "(引擎未提供)"); o.disabled = true; modeSel.appendChild(o); modeSel.disabled = true; }
+          modes.forEach((m) => {
+            const o = el("option", null, m.name || m.id);
+            o.value = m.id; if (m.id === cur) o.selected = true;
+            modeSel.appendChild(o);
+          });
+          modeSel.onchange = () => postJson("/api/live/" + id + "/mode", { modeId: modeSel.value }).catch((e) => setStatus(e.message, true));
+          c.appendChild(modeSel);
+
+          // model (from configOptions category model)
+          c.appendChild(el("label", null, " 模型"));
+          const modelSel = el("select");
+          const co = info.configOptions || [];
+          const modelOpt = findOption(co, "model") || findOption(co, "model_config");
+          if (modelOpt && modelOpt.options) {
+            const opts = flattenOptions(modelOpt.options);
+            opts.forEach((o) => {
+              const op = el("option", null, o.name || o.value);
+              op.value = o.value; if (o.value === modelOpt.currentValue) op.selected = true;
+              modelSel.appendChild(op);
+            });
+            modelSel.onchange = () => postJson("/api/live/" + id + "/config-option", { configId: modelOpt.id, value: modelSel.value }).catch((e) => setStatus(e.message, true));
+          } else {
+            const o = el("option", null, info.model ? info.model + "（只读）" : "未暴露");
+            o.disabled = true; modelSel.appendChild(o); modelSel.disabled = true;
+            modelSel.title = "该引擎未通过 ACP 暴露可切换模型";
+          }
+          c.appendChild(modelSel);
+
+          const policy = el("span", null);
+          policy.id = "policy";
+          policy.textContent = state.policy || "";
+          c.appendChild(policy);
+        }
+        function findOption(co, category) {
+          for (const o of co) { if (o.category === category && "currentValue" in o) return o; }
+          return null;
+        }
+        function flattenOptions(opts) {
+          // options may be Array<option> or Array<{group, options:[...]}>
+          const out = [];
+          for (const o of opts) { if (o.group && o.options) o.options.forEach((x) => out.push(x)); else out.push(o); }
+          return out;
+        }
+
+        function renderMessages() {
+          const id = state.activeId;
+          const box = $("messages");
+          box.innerHTML = "";
+          const arr = state.msgs[id] || [];
+          if (!arr.length) { box.appendChild(el("div", "empty", id === "__view" ? "（只读视图）" : "开始对话吧 👋")); return; }
+          arr.forEach((m) => {
+            const d = el("div", "msg " + m.role);
+            if (m.role === "system") { d.appendChild(el("div", "system", m.text)); box.appendChild(d); return; }
+            d.appendChild(el("div", "role", m.role === "user" ? "你" : "assistant"));
+            const bubble = el("div", "bubble");
+            if (m.thought) bubble.appendChild(el("div", "thought", m.thought));
+            if (m.tools && m.tools.length) {
+              const tw = el("div");
+              m.tools.forEach((t) => tw.appendChild(el("span", "tool", "🔧 " + t)));
+              bubble.appendChild(tw);
+            }
+            if (m.text) bubble.appendChild(el("span", null, m.text));
+            if (m.role === "assistant" && !m.done && !m.text && !(m.tools && m.tools.length)) bubble.appendChild(el("span", "cursor"));
+            d.appendChild(bubble);
+            box.appendChild(d);
+          });
+          // permission prompts for active live session
+          const perms = state.perms[id] || [];
+          perms.slice().reverse().forEach((p) => {
+            if (p.resolved) return;
+            const req = p.req || {};
+            const tc = req.toolCall || {};
+            const d = el("div", "perm");
+            d.appendChild(el("div", "ptitle", "权限请求：" + (tc.title || tc.kind || "tool")));
+            const opts = el("div", "popts");
+            (req.options || []).forEach((o) => {
+              const b = el("button", "btn", o.name);
+              b.onclick = () => resolvePerm(id, p, o.optionId);
+              opts.appendChild(b);
+            });
+            const cancel = el("button", "btn", "取消");
+            cancel.onclick = () => resolvePerm(id, p, null);
+            opts.appendChild(cancel);
+            d.appendChild(opts);
+            box.appendChild(d);
+          });
+          box.scrollTop = box.scrollHeight;
+        }
+
+        async function resolvePerm(id, p, optionId) {
+          p.resolved = true;
+          renderMessages();
+          try {
+            await postJson("/api/live/" + id + "/permission/" + encodeURIComponent(p.interventionId),
+              optionId ? { optionId: optionId } : { cancelled: true });
+          } catch (e) { setStatus(e.message, true); }
+        }
+
+        function setStatus(text, isErr) {
+          let s = $("statusline");
+          if (!s) { s = el("div"); s.id = "statusline"; $("main").insertBefore(s, $("composer")); }
+          s.textContent = text; s.className = isErr ? "err" : "";
+        }
+
+        function send() {
+          const id = state.activeId;
+          if (!id || id === "__view") return;
+          const inp = $("input");
+          const text = inp.value.trim();
+          if (!text) return;
+          inp.value = "";
+          postJson("/api/live/" + id + "/prompt", { prompt: text }).catch((e) => setStatus(e.message, true));
+        }
+        function stop() {
+          const id = state.activeId;
+          if (!id || id === "__view") return;
+          postJson("/api/live/" + id + "/stop", {}).catch((e) => setStatus(e.message, true));
+        }
+
+        // wire up
+        $("refresh").onclick = () => { loadEngines(); loadHistory(); loadLive(); };
+        $("new-btn").onclick = () => {
+          const ok = state.engines.filter((e) => e.ok).map((e) => e.id);
+          const engine = ok[0] || (state.engines[0] && state.engines[0].id) || "claude";
+          startNew(engine);
+        };
+        $("search").oninput = (e) => { state.search = e.target.value; renderHistory(); };
+        $("send").onclick = send;
+        $("stop").onclick = stop;
+        $("input").addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+        });
+
+        // boot
+        loadEngines();
+        loadHistory();
+        loadLive();
+        setInterval(loadLive, 4000);
+      })();
+    </script>
+  </body>
+</html>

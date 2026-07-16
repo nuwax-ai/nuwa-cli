@@ -21,14 +21,14 @@ export async function applySessionMode(
   session: Pick<SessionHandle, "sessionId" | "modes">,
   requestedModeId: string | undefined,
   yolo: boolean,
-): Promise<void> {
+): Promise<string | undefined> {
   const available = session.modes?.availableModes?.map((m) => m.id) ?? [];
 
   let modeId = requestedModeId;
   if (!modeId && yolo) {
     modeId = YOLO_MODE_PREFERENCE.find((id) => available.includes(id));
   }
-  if (!modeId) return;
+  if (!modeId) return undefined;
 
   if (available.length > 0 && !available.includes(modeId)) {
     console.error(
@@ -36,7 +36,7 @@ export async function applySessionMode(
         `[nuwa-cli] 引擎不支持 mode "${modeId}"，可用：${available.join(", ")}`,
       ),
     );
-    return;
+    return undefined;
   }
 
   try {
@@ -44,11 +44,15 @@ export async function applySessionMode(
       sessionId: session.sessionId,
       modeId,
     });
+    // Return the applied id so callers can mirror it into local state
+    // (SetSessionModeResponse carries no new state).
+    return modeId;
   } catch (err) {
     console.error(
       pc.yellow(
         `[nuwa-cli] 设置 mode "${modeId}" 失败：${(err as Error).message}`,
       ),
     );
+    return undefined;
   }
 }

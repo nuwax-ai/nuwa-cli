@@ -5,6 +5,7 @@ import { registerCloudCommands } from "./registerCloudCommands.js";
 import { registerContextCommands } from "./registerContextCommands.js";
 import { registerServiceCommands } from "./registerServiceCommands.js";
 import { registerUpdateCommand } from "./registerUpdateCommand.js";
+import { registerUiCommand } from "./registerUiCommand.js";
 
 export function createProgram(): Command {
   const program = new Command();
@@ -20,6 +21,7 @@ export function createProgram(): Command {
   registerContextCommands(program);
   registerCloudCommands(program);
   registerServiceCommands(program);
+  registerUiCommand(program);
   registerUpdateCommand(program);
 
   return program;

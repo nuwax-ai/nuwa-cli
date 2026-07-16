@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { CLI_AGENT_PORT } from "../core/ports.js";
+import { CLI_AGENT_PORT, CLI_UI_PORT } from "../core/ports.js";
 
 export function addCloudLoginOptions(command: Command): Command {
   return command
@@ -32,6 +32,33 @@ export function addModelOverlayOptions(command: Command): Command {
     .option("--api-key <key>", "覆盖模型 API key")
     .option("--base-url <url>", "覆盖模型 API base URL")
     .option("--model <model>", "覆盖模型名称");
+}
+
+export function addUiOptions(command: Command): Command {
+  return addModelOverlayOptions(
+    command
+      .option(
+        "--port <port>",
+        "UI 监听端口；占用时自动向后寻找可用端口",
+        String(CLI_UI_PORT),
+      )
+      .option("--host <host>", "UI 监听地址（仅建议 127.0.0.1）", "127.0.0.1")
+      .option(
+        "--engine <engine>",
+        "默认引擎：claude 或 codex（界面内仍可切换）",
+        "claude",
+      )
+      .option(
+        "--cwd <dir>",
+        "新会话的默认工作目录；不传时使用默认工作区",
+      )
+      .option(
+        "--approve <policy>",
+        "权限策略：auto（默认，自动批准）/ ask（逐个审批）/ deny",
+        "auto",
+      )
+      .option("--no-open", "启动后不自动打开浏览器"),
+  );
 }
 
 export function addServeRuntimeOptions(command: Command): Command {

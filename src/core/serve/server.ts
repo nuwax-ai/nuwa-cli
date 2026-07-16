@@ -6,6 +6,13 @@ import type { EngineKind } from "../env/inheritEnv.js";
 import type { PermissionMode } from "../permissions/policy.js";
 import { SessionHub } from "./sessionHub.js";
 import { writeServeLock, clearServeLock } from "./serveLock.js";
+import {
+  readJsonBody,
+  sendJson,
+  httpResult,
+  httpError,
+  textField,
+} from "./httpUtil.js";
 import { parseComputerPermissionResolveRequest } from "../permissions/notifyResolved.js";
 import { listLocalSessions } from "../sessions/discovery.js";
 import { parseTranscript } from "../sessions/transcript.js";
@@ -22,82 +29,6 @@ export interface ServeOptions {
   overlay?: { apiKey?: string; baseUrl?: string; model?: string };
   acceptedSecrets?: string[];
   allowUnauthenticatedComputerRoutes?: boolean;
-}
-
-async function readJsonBody(
-  req: http.IncomingMessage,
-  maxBytes = 10 * 1024 * 1024,
-): Promise<Record<string, unknown>> {
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of req) {
-    const buffer = chunk as Buffer;
-    total += buffer.byteLength;
-    if (total > maxBytes) {
-      throw new Error(`request body too large (max ${maxBytes} bytes)`);
-    }
-    chunks.push(buffer);
-  }
-  const raw = Buffer.concat(chunks).toString("utf-8");
-  if (!raw) return {};
-  return JSON.parse(raw);
-}
-
-function sendJson(
-  res: http.ServerResponse,
-  status: number,
-  body: unknown,
-): void {
-  res.writeHead(status, {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers":
-      "Content-Type, Authorization, X-Nuwax-Internal-Secret",
-  });
-  res.end(JSON.stringify(body));
-}
-
-function httpResult<T>(data: T): {
-  code: "0000";
-  message: "success";
-  data: T;
-  success: true;
-  tid: null;
-} {
-  return { code: "0000", message: "success", data, success: true, tid: null };
-}
-
-function httpError(
-  code: string,
-  message: string,
-): {
-  code: string;
-  message: string;
-  data: null;
-  success: false;
-  tid: null;
-  error: string;
-} {
-  return {
-    code,
-    message,
-    data: null,
-    success: false,
-    tid: null,
-    error: message,
-  };
-}
-
-function textField(
-  body: Record<string, unknown>,
-  ...keys: string[]
-): string | undefined {
-  for (const key of keys) {
-    const value = body[key];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return undefined;
 }
 
 /** 仅本机回环客户端可无 secret 调 sensitive-access（CLI 闸门）；非 loopback 必须带 secret。 */
@@ -464,7 +395,17 @@ export function startServeHttp(options: ServeOptions): {
     }
 
     if (url.pathname === "/computer/agent/status" && method === "GET") {
-      const sessions = hub.listSessions();
+      // Project to the long-standing status shape — listSessions() now also
+      // carries modes/configOptions/model/acpSessionId for the local UI, but
+      // those (acpSessionId in particular) aren't part of this cloud-facing
+      // contract and shouldn't leak here.
+      const sessions = hub.listSessions().map((s) => ({
+        sessionId: s.sessionId,
+        engine: s.engine,
+        cwd: s.cwd,
+        userId: s.userId,
+        projectId: s.projectId,
+      }));
       debugLog("serve.status", "list", { count: sessions.length });
       sendJson(res, 200, { ...httpResult({ sessions }), sessions });
       return;

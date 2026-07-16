@@ -2,14 +2,24 @@ import * as crypto from "node:crypto";
 import type { ServerResponse } from "node:http";
 import {
   AGENT_METHODS,
+  type ClientContext,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
+  type SessionConfigOption,
+  type SessionModeState,
   type SessionNotification,
 } from "@agentclientprotocol/sdk";
 import { getEngine } from "../engines/registry.js";
 import { buildEngineEnv, type EngineKind } from "../env/inheritEnv.js";
 import { withEngineConnection } from "../acp/connection.js";
-import { wrapNewSession } from "../acp/sessionHandle.js";
+import {
+  wrapNewSession,
+  wrapResumedSession,
+  type SessionHandle,
+} from "../acp/sessionHandle.js";
+import { applySessionMode } from "../acp/sessionMode.js";
+import { modelFromConfigOptions } from "../ui/modelInfo.js";
+import type { LocalSessionSummary } from "../sessions/discovery.js";
 import type { PermissionMode } from "../permissions/policy.js";
 import {
   createDefaultCoordinator,
@@ -31,11 +41,30 @@ export interface UnifiedSessionMessage {
     | "sessionPromptEnd"
     | "agentSessionUpdate"
     | "acpRequestPermission"
+    | "sessionReady"
+    | "sessionState"
     | "heartbeat";
   subType: string;
   data: unknown;
   timestamp: string;
 }
+
+/** Control surface for a live session — rides the same ACP connection. */
+export interface SessionControls {
+  setMode(modeId: string): Promise<void>;
+  setConfigOption(
+    configId: string,
+    value: string | boolean,
+  ): Promise<SessionConfigOption[]>;
+}
+
+/** Mode/yolo knobs applied once when a session becomes ready. */
+export interface SessionRuntimeOptions {
+  mode?: string;
+  yolo?: boolean;
+}
+
+type Readiness = { ok: true } | { ok: false; error: string };
 
 interface ManagedSession {
   sessionId: string;
@@ -47,8 +76,19 @@ interface ManagedSession {
   sseClients: Set<ServerResponse>;
   /** Aborted by stopSession/stopAll to interrupt an in-flight prompt. */
   abortController: AbortController;
-  ready: Promise<{ ok: true } | { ok: false; error: string }>;
+  ready: Promise<Readiness>;
+  readyResolve: (v: Readiness) => void;
+  readyOk?: boolean;
+  /** Guards setReady against firing twice (success then later connection-drop). */
+  readySet?: boolean;
   done: Promise<void>;
+  /** ACP session id once the engine session is created/loaded. */
+  acpSessionId?: string;
+  modes?: SessionModeState | null;
+  configOptions?: SessionConfigOption[] | null;
+  controls?: SessionControls;
+  initialModeId?: string;
+  yolo?: boolean;
 }
 
 function sendSseEvent(
@@ -109,6 +149,229 @@ export class SessionHub {
     if (!session) return;
     for (const client of session.sseClients)
       sendSseEvent(client, eventName, message);
+  }
+
+  /** Marks readiness and emits a one-shot `session_ready` SSE event. Idempotent. */
+  private setReady(session: ManagedSession, result: Readiness): void {
+    // Fire only once: on a later connection drop the runner's .catch calls
+    // setReady({ok:false}) again, but the promise is already resolved and the
+    // session is about to be terminated — a second event would just confuse
+    // clients that already saw ok:true (and readyResolve is a no-op anyway).
+    if (session.readySet) {
+      session.readyOk = result.ok;
+      return;
+    }
+    session.readySet = true;
+    session.readyOk = result.ok;
+    this.broadcast(session.sessionId, "session_ready", {
+      sessionId: session.sessionId,
+      acpSessionId: session.acpSessionId,
+      messageType: "sessionReady",
+      subType: result.ok ? "ready" : "error",
+      data: result.ok ? { ok: true } : { ok: false, error: result.error },
+      timestamp: new Date().toISOString(),
+    });
+    session.readyResolve(result);
+  }
+
+  /** Emits a `session_state` snapshot (modes / configOptions / model). */
+  private broadcastState(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    this.broadcast(sessionId, "session_state", {
+      sessionId,
+      acpSessionId: session.acpSessionId,
+      messageType: "sessionState",
+      subType: "state",
+      data: {
+        modes: session.modes ?? null,
+        configOptions: session.configOptions ?? null,
+        model: modelFromConfigOptions(session.configOptions),
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  private buildControls(
+    ctx: ClientContext,
+    acpSessionId: string,
+  ): SessionControls {
+    return {
+      setMode: (modeId) =>
+        ctx
+          .request(AGENT_METHODS.session_set_mode, {
+            sessionId: acpSessionId,
+            modeId,
+          })
+          .then(() => undefined),
+      setConfigOption: (configId, value) =>
+        ctx
+          .request(AGENT_METHODS.session_set_config_option, {
+            sessionId: acpSessionId,
+            configId,
+            // Boolean options carry their value in a typed wrapper; select
+            // options (model/mode/...) send a bare value id.
+            value:
+              typeof value === "boolean" ? { value, type: "boolean" } : value,
+          })
+          .then(
+            (r) =>
+              (r as { configOptions?: SessionConfigOption[] }).configOptions ??
+              [],
+          ),
+    };
+  }
+
+  private createManagedSession(
+    engineId: EngineKind,
+    cwd: string,
+    metadata: { userId?: string; projectId?: string } | undefined,
+    runtime: SessionRuntimeOptions | undefined,
+  ): ManagedSession {
+    const sessionId = crypto.randomUUID();
+    let readyResolve!: (v: Readiness) => void;
+    const ready = new Promise<Readiness>((resolve) => {
+      readyResolve = resolve;
+    });
+    return {
+      sessionId,
+      engine: engineId,
+      cwd,
+      userId: metadata?.userId,
+      projectId: metadata?.projectId,
+      queue: new AsyncQueue<string>(),
+      sseClients: new Set(),
+      abortController: new AbortController(),
+      ready,
+      readyResolve,
+      done: Promise.resolve(),
+      initialModeId: runtime?.mode,
+      yolo: runtime?.yolo,
+    };
+  }
+
+  /**
+   * Shared runner: resolves the engine, opens the ACP connection, calls
+   * `connect` to create-or-load the session (which also stashes
+   * modes/configOptions/controls on `session`), then drives the prompt queue.
+   * Every exit path falls through to terminateSession so a dead session is
+   * always evicted with a terminal SSE event instead of being retained.
+   */
+  private spawnRunner(
+    session: ManagedSession,
+    connect: (ctx: ClientContext) => Promise<SessionHandle>,
+  ): void {
+    const sessionId = session.sessionId;
+    const run = (async () => {
+      let runError: string | undefined;
+      const resolved = await getEngine(session.engine)
+        .resolve()
+        .then((r) => ({ ok: true as const, resolved: r }))
+        .catch((err: Error) => ({ ok: false as const, error: err.message }));
+      if (!resolved.ok) {
+        runError = resolved.error;
+        this.setReady(session, { ok: false, error: resolved.error });
+      } else {
+        const env = {
+          ...buildEngineEnv(session.engine, this.overlay),
+          ...resolved.resolved.envOverlay,
+        };
+
+        await withEngineConnection(
+          {
+            command: resolved.resolved.command,
+            args: resolved.resolved.args,
+            env,
+            cwd: session.cwd,
+          },
+          {
+            permissionMode: this.permissionMode,
+            coordinator: this.coordinator,
+            appSessionId: sessionId,
+            onPermissionAsk: (request, meta) =>
+              this.askPermission(sessionId, request, meta),
+            onAgentText: () => {},
+            onRawUpdate: (notification: SessionNotification) => {
+              this.broadcast(sessionId, "agent_session_update", {
+                sessionId,
+                acpSessionId: notification.sessionId,
+                messageType: "agentSessionUpdate",
+                subType: notification.update.sessionUpdate,
+                data: notification.update,
+                timestamp: new Date().toISOString(),
+              });
+            },
+          },
+          async (ctx) => {
+            const handle = await connect(ctx);
+            this.setReady(session, { ok: true });
+            const appliedMode = await applySessionMode(
+              ctx,
+              { sessionId: handle.sessionId, modes: session.modes },
+              session.initialModeId,
+              Boolean(session.yolo),
+            );
+            // SetSessionModeResponse carries no new state, so mirror the
+            // applied mode locally — otherwise the UI controls and /api/live
+            // would report the stale initial mode (e.g. "default" while the
+            // engine is actually in bypassPermissions under --yolo).
+            if (appliedMode && session.modes) {
+              session.modes = { ...session.modes, currentModeId: appliedMode };
+            }
+            this.broadcastState(sessionId);
+
+            while (true) {
+              const prompt = await session.queue.next();
+              if (prompt === undefined) break; // queue closed -> stop this session
+              this.broadcast(sessionId, "session_prompt_start", {
+                sessionId,
+                acpSessionId: handle.sessionId,
+                messageType: "sessionPromptStart",
+                subType: "start",
+                data: { prompt },
+                timestamp: new Date().toISOString(),
+              });
+              try {
+                const result = await handle.prompt(prompt);
+                this.broadcast(sessionId, "end_turn", {
+                  sessionId,
+                  acpSessionId: handle.sessionId,
+                  messageType: "sessionPromptEnd",
+                  subType: "end_turn",
+                  data: result,
+                  timestamp: new Date().toISOString(),
+                });
+              } catch (err) {
+                this.broadcast(sessionId, "end_turn", {
+                  sessionId,
+                  acpSessionId: handle.sessionId,
+                  messageType: "sessionPromptEnd",
+                  subType: "error",
+                  data: { error: (err as Error).message },
+                  timestamp: new Date().toISOString(),
+                });
+              }
+            }
+            // Best-effort — not every engine implements session/close.
+            await ctx
+              .request(AGENT_METHODS.session_close, {
+                sessionId: handle.sessionId,
+              })
+              .catch(() => {});
+          },
+          session.abortController.signal,
+        ).catch((err: Error) => {
+          // ok:false here is a no-op if the engine already connected (ready
+          // resolved ok:true) — terminateSession below is what actually evicts
+          // the now-dead session in that case.
+          runError = err.message;
+          this.setReady(session, { ok: false, error: err.message });
+        });
+      }
+      this.terminateSession(sessionId, runError);
+    })();
+
+    session.done = run;
   }
 
   /** 当前所有会话 + loose 挂着的 SSE 客户端总数。 */
@@ -277,136 +540,131 @@ export class SessionHub {
     engineId: EngineKind,
     cwd: string,
     metadata?: { userId?: string; projectId?: string },
+    runtime?: SessionRuntimeOptions,
   ): ManagedSession {
-    const sessionId = crypto.randomUUID();
-    const queue = new AsyncQueue<string>();
-    let readyResolve!: (v: { ok: true } | { ok: false; error: string }) => void;
-    const ready = new Promise<{ ok: true } | { ok: false; error: string }>(
-      (resolve) => {
-        readyResolve = resolve;
-      },
+    const session = this.createManagedSession(engineId, cwd, metadata, runtime);
+    this.sessions.set(session.sessionId, session);
+    this.spawnRunner(session, async (ctx) => {
+      // Read modes/configOptions off the raw ActiveSession before wrapping —
+      // SessionHandle only exposes sessionId/modes/prompt.
+      const built = await ctx.buildSession(cwd).start();
+      session.acpSessionId = built.sessionId;
+      session.modes = built.modes;
+      session.configOptions = built.newSessionResponse.configOptions ?? null;
+      session.controls = this.buildControls(ctx, built.sessionId);
+      return wrapNewSession(built);
+    });
+    return session;
+  }
+
+  /**
+   * Resumes an existing local session via ACP `session/load`. The session's
+   * original `cwd` is mandatory and overrides any caller-supplied cwd —
+   * `session/load` correctness depends on it (mirrors `chat --resume`).
+   */
+  resumeSession(
+    engineId: EngineKind,
+    summary: LocalSessionSummary,
+    metadata?: { userId?: string; projectId?: string },
+    runtime?: SessionRuntimeOptions,
+  ): ManagedSession {
+    const session = this.createManagedSession(
+      engineId,
+      summary.cwd,
+      metadata,
+      runtime,
     );
-
-    const session: ManagedSession = {
-      sessionId,
-      engine: engineId,
-      cwd,
-      userId: metadata?.userId,
-      projectId: metadata?.projectId,
-      queue,
-      sseClients: new Set(),
-      abortController: new AbortController(),
-      ready,
-      done: Promise.resolve(),
-    };
-
-    const run = (async () => {
-      // Whether the engine failed to resolve, died after connecting, was
-      // aborted by stopSession, or drained its queue and closed cleanly —
-      // every exit path falls through to terminateSession so the session is
-      // evicted and its SSE clients get a terminal event instead of the
-      // registry silently retaining a dead session forever.
-      let runError: string | undefined;
-      const resolved = await getEngine(engineId)
-        .resolve()
-        .then((r) => ({ ok: true as const, resolved: r }))
-        .catch((err: Error) => ({ ok: false as const, error: err.message }));
-      if (!resolved.ok) {
-        runError = resolved.error;
-        readyResolve({ ok: false, error: resolved.error });
-      } else {
-        const env = {
-          ...buildEngineEnv(engineId, this.overlay),
-          ...resolved.resolved.envOverlay,
-        };
-
-        await withEngineConnection(
-          {
-            command: resolved.resolved.command,
-            args: resolved.resolved.args,
-            env,
-            cwd,
-          },
-          {
-            permissionMode: this.permissionMode,
-            coordinator: this.coordinator,
-            appSessionId: sessionId,
-            onPermissionAsk: (request, meta) =>
-              this.askPermission(sessionId, request, meta),
-            onAgentText: () => {},
-            onRawUpdate: (notification: SessionNotification) => {
-              this.broadcast(sessionId, "agent_session_update", {
-                sessionId,
-                acpSessionId: notification.sessionId,
-                messageType: "agentSessionUpdate",
-                subType: notification.update.sessionUpdate,
-                data: notification.update,
-                timestamp: new Date().toISOString(),
-              });
-            },
-          },
-          async (ctx) => {
-            const active = wrapNewSession(await ctx.buildSession(cwd).start());
-            readyResolve({ ok: true });
-
-            while (true) {
-              const prompt = await queue.next();
-              if (prompt === undefined) break; // queue closed -> stop this session
-              this.broadcast(sessionId, "session_prompt_start", {
-                sessionId,
-                acpSessionId: active.sessionId,
-                messageType: "sessionPromptStart",
-                subType: "start",
-                data: { prompt },
-                timestamp: new Date().toISOString(),
-              });
-              try {
-                const result = await active.prompt(prompt);
-                this.broadcast(sessionId, "end_turn", {
-                  sessionId,
-                  acpSessionId: active.sessionId,
-                  messageType: "sessionPromptEnd",
-                  subType: "end_turn",
-                  data: result,
-                  timestamp: new Date().toISOString(),
-                });
-              } catch (err) {
-                this.broadcast(sessionId, "end_turn", {
-                  sessionId,
-                  acpSessionId: active.sessionId,
-                  messageType: "sessionPromptEnd",
-                  subType: "error",
-                  data: { error: (err as Error).message },
-                  timestamp: new Date().toISOString(),
-                });
-              }
-            }
-            // Best-effort — not every engine implements session/close.
-            await ctx
-              .request(AGENT_METHODS.session_close, {
-                sessionId: active.sessionId,
-              })
-              .catch(() => {});
-          },
-          session.abortController.signal,
-        ).catch((err: Error) => {
-          // ok:false here is a no-op if the engine already connected (ready
-          // resolved ok:true) — terminateSession below is what actually evicts
-          // the now-dead session in that case.
-          runError = err.message;
-          readyResolve({ ok: false, error: err.message });
-        });
-      }
-      this.terminateSession(sessionId, runError);
-    })();
-
-    session.done = run;
-    this.sessions.set(sessionId, session);
+    this.sessions.set(session.sessionId, session);
+    this.spawnRunner(session, async (ctx) => {
+      const loadRes = (await ctx.request(AGENT_METHODS.session_load, {
+        sessionId: summary.sessionId,
+        cwd: summary.cwd,
+        mcpServers: [],
+      })) as {
+        modes?: SessionModeState | null;
+        configOptions?: SessionConfigOption[] | null;
+      };
+      session.acpSessionId = summary.sessionId;
+      session.modes = loadRes.modes ?? null;
+      session.configOptions = loadRes.configOptions ?? null;
+      session.controls = this.buildControls(ctx, summary.sessionId);
+      return wrapResumedSession(ctx, summary.sessionId, loadRes.modes);
+    });
     return session;
   }
 
   getSession(sessionId: string): ManagedSession | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  /** Switches the engine session mode; optimistically updates local state. */
+  async setMode(sessionId: string, modeId: string): Promise<boolean> {
+    const session = this.sessions.get(sessionId);
+    if (!session?.controls) return false;
+    const readiness = await session.ready;
+    if (!readiness.ok) return false;
+    try {
+      await session.controls.setMode(modeId);
+      if (session.modes) {
+        // SetSessionModeResponse carries no new state, so update locally.
+        session.modes = { ...session.modes, currentModeId: modeId };
+      }
+      this.broadcastState(sessionId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Switches a config option (e.g. model); replaces state from the response. */
+  async setConfigOption(
+    sessionId: string,
+    configId: string,
+    value: string | boolean,
+  ): Promise<boolean> {
+    const session = this.sessions.get(sessionId);
+    if (!session?.controls) return false;
+    const readiness = await session.ready;
+    if (!readiness.ok) return false;
+    try {
+      const next = await session.controls.setConfigOption(configId, value);
+      // Only adopt the response if it actually carries the option set; a
+      // non-compliant engine returning no/empty configOptions would otherwise
+      // wipe the controls (incl. the model selector) from the UI.
+      if (next.length > 0) session.configOptions = next;
+      this.broadcastState(sessionId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  getSessionInfo(
+    sessionId: string,
+  ):
+    | {
+        sessionId: string;
+        engine: EngineKind;
+        cwd: string;
+        acpSessionId?: string;
+        modes: SessionModeState | null | undefined;
+        configOptions: SessionConfigOption[] | null | undefined;
+        model: string | undefined;
+        ready: boolean;
+      }
+    | undefined {
+    const session = this.sessions.get(sessionId);
+    if (!session) return undefined;
+    return {
+      sessionId: session.sessionId,
+      engine: session.engine,
+      cwd: session.cwd,
+      acpSessionId: session.acpSessionId,
+      modes: session.modes,
+      configOptions: session.configOptions,
+      model: modelFromConfigOptions(session.configOptions),
+      ready: session.readyOk === true,
+    };
   }
 
   findSessionByProjectId(projectId: string): ManagedSession | undefined {
@@ -491,6 +749,11 @@ export class SessionHub {
     cwd: string;
     userId?: string;
     projectId?: string;
+    acpSessionId?: string;
+    modes: SessionModeState | null | undefined;
+    configOptions: SessionConfigOption[] | null | undefined;
+    model: string | undefined;
+    ready: boolean;
   }> {
     return [...this.sessions.values()].map((s) => ({
       sessionId: s.sessionId,
@@ -498,6 +761,11 @@ export class SessionHub {
       cwd: s.cwd,
       userId: s.userId,
       projectId: s.projectId,
+      acpSessionId: s.acpSessionId,
+      modes: s.modes,
+      configOptions: s.configOptions,
+      model: modelFromConfigOptions(s.configOptions),
+      ready: s.readyOk === true,
     }));
   }
 }

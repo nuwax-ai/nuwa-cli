@@ -74,6 +74,40 @@ nuwa-cli chat --handoff claude:<sessionId> -p "接着做"
 
 `nuwa-cli sessions summary --engine <claude|codex> --session-id <id> [--limit N]` 输出某个会话完整 transcript 的紧凑、跨引擎通用的 JSON 摘要（`{engine, sessionId, cwd, title, messages, hasMore}`）。这是底层兼容命令；新的跨 Agent 上下文入口见 `nuwa-cli context`。
 
+### `nuwa-cli ui`
+
+启动一个**仅本机**的轻量 Web 控制台（默认 `127.0.0.1:60017`），自动打开浏览器：在一个页面里查看/续接/新建 claude·codex 会话、切换引擎/模型/ACP 模式，并直接流式聊天。零额外依赖，页面随 CLI 一起打包。
+
+```bash
+nuwa-cli ui                         # 默认 claude 引擎，自动打开浏览器
+nuwa-cli ui --engine codex          # 默认用 codex（界面内仍可切换）
+nuwa-cli ui --no-open               # 不自动开浏览器，自行打开打印的 URL
+nuwa-cli ui --approve ask           # 每个工具调用都在浏览器内弹审批
+```
+
+打开后会看到：
+
+- **左侧 · 会话列表**：本地 `claude`/`codex` 历史（带引擎与模型徽标）+ 当前在线会话。点「续接」走 ACP `session/load` 真续接；点「查看」只读浏览转录；「+ 新建」开一个新会话。
+- **顶部控制条**：引擎、**模式**下拉（取自引擎的 `modes.availableModes`，如 `default`/`acceptEdits`/`plan`/`bypassPermissions`）、**模型**下拉（若引擎通过 ACP `configOptions` 暴露了模型选择器则可切换，否则只读展示）。
+- **中间聊天区**：发消息后经 SSE 流式接收回复，工具调用与思考片段在线呈现。
+- **权限审批**：`--approve ask` 或命中敏感分类时，工具调用会在聊天区弹出批准/拒绝按钮（复用 `serve` 的 `acpRequestPermission` + 审批通道）。
+
+参数：
+
+| 参数 | 含义 |
+|---|---|
+| `--engine <claude\|codex>` | 默认引擎（界面内仍可随时切换） |
+| `--port <port>` | 监听端口，占用时自动后移（默认 `60017`） |
+| `--host <host>` | 监听地址（默认 `127.0.0.1`，仅建议回环） |
+| `--cwd <dir>` | 新会话的默认工作目录；不传用默认工作区 |
+| `--approve <auto\|ask\|deny>` | 权限策略：`auto`（默认，普通工具自动批准、敏感操作仍弹审批）/ `ask`（逐个审批）/ `deny`（全拒绝） |
+| `--no-open` | 启动后不自动打开浏览器 |
+| `--api-key` / `--base-url` / `--model` | 覆盖模型连接（同 `chat`） |
+
+启动时会打印一个带一次性 token 的本地 URL，例如 `http://127.0.0.1:60017/?t=<token>`：该 token 内嵌在页面里，浏览器无需手输，也用于阻挡其它网页的 drive-by 请求。
+
+`ui` 是**前台**进程——关掉终端或 `Ctrl+C` 即停止。它不是后台常驻服务，也不需要是：它面向「你在本机前操作」的场景。需要无人值守的远程/云端调度仍用 `serve`（机器 API，见下文）。完整说明见 [`docs/local-ui.md`](docs/local-ui.md)。
+
 ### `nuwa-cli context`
 
 ACP 之上的跨 Agent 上下文引用层。它不替代 ACP 会话生命周期，也不做跨引擎原生续接；只把本地会话历史解析成目标 Agent 可以按需读取的 JSON：

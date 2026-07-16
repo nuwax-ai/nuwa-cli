@@ -287,4 +287,49 @@ describe("session discovery", () => {
       expect(result).toHaveLength(0);
     });
   });
+
+  it("listClaudeSessions extracts the model from message.model on an assistant line", async () => {
+    const projectDir = path.join(tmpHome, ".claude", "projects", "-Users-apple-m");
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, "m1.jsonl"),
+      [
+        JSON.stringify({
+          type: "user",
+          sessionId: "m1",
+          cwd: "/m",
+          message: { role: "user", content: "hi" },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          sessionId: "m1",
+          cwd: "/m",
+          message: { role: "assistant", model: "glm-5.2", content: [] },
+        }),
+      ].join("\n") + "\n",
+    );
+    const { listClaudeSessions } =
+      await import("../src/core/sessions/discovery.js");
+    const sessions = await listClaudeSessions();
+    expect(sessions[0]).toMatchObject({ sessionId: "m1", model: "glm-5.2" });
+  });
+
+  it("listCodexSessions extracts the model from a turn_context payload.model line", async () => {
+    const dayDir = path.join(tmpHome, ".codex", "sessions", "2026", "07", "08");
+    fs.mkdirSync(dayDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dayDir, "rollout-2026-07-08T00-00-00-m.jsonl"),
+      [
+        JSON.stringify({
+          type: "session_meta",
+          payload: { session_id: "cx-m", cwd: "/cx" },
+        }),
+        JSON.stringify({ type: "turn_context", payload: { model: "gpt-5.5" } }),
+      ].join("\n") + "\n",
+    );
+    const { listCodexSessions } =
+      await import("../src/core/sessions/discovery.js");
+    const sessions = await listCodexSessions();
+    expect(sessions[0]).toMatchObject({ sessionId: "cx-m", model: "gpt-5.5" });
+  });
 });

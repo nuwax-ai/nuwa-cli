@@ -41,6 +41,12 @@ await esbuild.build({
   // ("Dynamic require of child_process is not supported"). Leave it external
   // so Node's real module loader resolves it at runtime instead.
   external: ["node-machine-id"],
+  // Inline the local UI's single-page HTML as a string at build time, so the
+  // `ui` server can serve it with no asset pipeline or runtime file reads.
+  loader: { ".html": "text" },
+  // Keep the (CJK-heavy) inlined HTML as UTF-8 instead of \u-escaping every
+  // non-ASCII char — smaller bundle, readable output, served verbatim.
+  charset: "utf8",
 });
 
 await cp(lanproxySource, lanproxyTarget, {

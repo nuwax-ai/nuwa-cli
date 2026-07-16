@@ -2,6 +2,8 @@ import * as net from "node:net";
 
 export const CLI_AGENT_PORT = 60016;
 export const CLI_FILE_SERVER_PORT = 60015;
+/** Local-only UI server port (browser dashboard). Distinct from the serve API. */
+export const CLI_UI_PORT = 60017;
 
 export interface FindAvailablePortOptions {
   host?: string;
