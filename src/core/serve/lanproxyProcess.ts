@@ -55,6 +55,7 @@ export function startLanproxy(options: LanproxyStartOptions): LanproxyHandle {
   const proc = spawn(command, args, {
     env: buildCliChildEnv(),
     stdio: "ignore",
+    windowsHide: true,
   }) as ChildProcess;
 
   const ready = new Promise<void>((resolve, reject) => {

@@ -118,6 +118,7 @@ function launchDaemon(argsOverride?: string[]): number {
     detached: true,
     stdio: ["ignore", out, err],
     env: buildCliChildEnv({ NUWACLI_SERVE_DAEMONIZED: "1" }),
+    windowsHide: true,
   });
   if (!child.pid) throw new Error("daemon 子进程启动失败：未取得 PID");
   child.unref();

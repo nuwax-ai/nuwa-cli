@@ -41,12 +41,13 @@ function openBrowser(url: string): void {
       spawn("cmd", ["/c", "start", "", url], {
         detached: true,
         stdio: "ignore",
+        windowsHide: true,
       }).unref();
       return;
     }
     const cmd = process.platform === "darwin" ? "open" : "xdg-open";
     if (findOnPath(cmd)) {
-      spawn(cmd, [url], { detached: true, stdio: "ignore" }).unref();
+      spawn(cmd, [url], { detached: true, stdio: "ignore", windowsHide: true }).unref();
     }
   } catch {
     // ignore — the startup URL is printed for manual opening

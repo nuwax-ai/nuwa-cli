@@ -94,6 +94,7 @@ export async function withEngineConnection<T>(
     cwd: target.cwd,
     env: target.env,
     stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
   }) as ChildProcessWithoutNullStreams;
 
   const getStderrTail = captureStderr(proc);

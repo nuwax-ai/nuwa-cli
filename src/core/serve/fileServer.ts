@@ -51,6 +51,7 @@ export function startFileServer(port: number, baseWorkspaceDir?: string): void {
     env: buildFileServerEnv(port, baseWorkspaceDir),
     stdio: "ignore",
     detached: true,
+    windowsHide: true,
   });
   if (proc.pid) {
     registerProcess({
