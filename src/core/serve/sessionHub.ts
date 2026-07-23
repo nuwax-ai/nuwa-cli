@@ -351,13 +351,15 @@ export class SessionHub {
               if (modelOption) {
                 const optionId = (modelOption as { id?: string }).id;
                 if (optionId) {
+                  // Use the raw model name — codex sends it verbatim to the API.
+                  const targetModel = session.modelOverlay.model!;
                   try {
                     const next = await ctx.request(
                       AGENT_METHODS.session_set_config_option,
                       {
                         sessionId: handle.sessionId,
                         configId: optionId,
-                        value: session.modelOverlay.model,
+                        value: targetModel,
                       },
                     );
                     session.configOptions =
@@ -365,7 +367,7 @@ export class SessionHub {
                         .configOptions ?? session.configOptions;
                     debugLog("serve.chat", "model overlay applied", {
                       sessionId,
-                      model: session.modelOverlay.model,
+                      model: targetModel,
                       configId: optionId,
                     });
                   } catch (err) {

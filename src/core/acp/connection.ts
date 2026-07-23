@@ -42,13 +42,25 @@ export interface EngineSessionHandlers {
 
 const STDERR_BUFFER_LIMIT = 8000;
 
-/** Captures the last N bytes of the engine's stderr for error diagnostics, without ever printing it live (that would corrupt the chat UI). */
+/** Captures the last N bytes of the engine's stderr for error diagnostics, and
+ * also logs each line to debugLog so codex/claude stderr is visible in
+ * ~/.nuwa-cli/logs without having to wait for a crash. */
 function captureStderr(proc: ChildProcessWithoutNullStreams): () => string {
   let buffer = "";
+  let lineBuf = "";
   proc.stderr.on("data", (chunk: Buffer) => {
-    buffer += chunk.toString("utf-8");
+    const text = chunk.toString("utf-8");
+    buffer += text;
     if (buffer.length > STDERR_BUFFER_LIMIT) {
       buffer = buffer.slice(buffer.length - STDERR_BUFFER_LIMIT);
+    }
+    // Stream stderr line-by-line to debugLog for live diagnostics.
+    lineBuf += text;
+    const lines = lineBuf.split("\n");
+    lineBuf = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed) debugLog("engine.stderr", trimmed);
     }
   });
   return () => buffer;
