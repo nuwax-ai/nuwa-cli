@@ -59,16 +59,13 @@ command -v aws  >/dev/null 2>&1 || { echo "aws cli required (brew install awscli
 command -v node >/dev/null 2>&1 || { echo "node required" >&2; exit 1; }
 
 # Map NUWAX_S3_* credentials to AWS_* if AWS_* not already set. We never read
-# or print the values — they stay in the environment.
+# or print the values. If neither env var is set, aws-cli falls back to the
+# ~/.aws profile (e.g. [default]) — that's the recommended local setup.
 if [[ -z "${AWS_ACCESS_KEY_ID:-}" && -n "${NUWAX_S3_ACCESS_KEY_ID:-}" ]]; then
   export AWS_ACCESS_KEY_ID="$NUWAX_S3_ACCESS_KEY_ID"
 fi
 if [[ -z "${AWS_SECRET_ACCESS_KEY:-}" && -n "${NUWAX_S3_SECRET_ACCESS_KEY:-}" ]]; then
   export AWS_SECRET_ACCESS_KEY="$NUWAX_S3_SECRET_ACCESS_KEY"
-fi
-
-if [[ "$DRY_RUN" -eq 0 ]]; then
-  [[ -n "${AWS_ACCESS_KEY_ID:-}" ]] || { echo "AWS_ACCESS_KEY_ID / NUWAX_S3_ACCESS_KEY_ID not set — export credentials first (never commit them)" >&2; exit 1; }
 fi
 
 VERSION="${VERSION:-$(node -p "require('$PKG_JSON').version")}"
