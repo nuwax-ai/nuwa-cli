@@ -1,5 +1,5 @@
 import type { McpServer } from "@agentclientprotocol/sdk";
-import type { ModelOverlay } from "../env/inheritEnv.js";
+import type { ModelOverlay, ModelProtocol } from "../env/inheritEnv.js";
 import type { EngineKind } from "../env/inheritEnv.js";
 
 export interface DownstreamSessionConfig {
@@ -26,6 +26,25 @@ export function resolveDownstreamEngine(command: unknown): EngineKind {
   if (CLAUDE_ENGINE_COMMANDS.has(normalized)) return "claude";
   if (CODEX_ENGINE_COMMANDS.has(normalized)) return "codex";
   return "codex";
+}
+
+export function resolveModelProtocol(
+  sources: Record<string, unknown>[],
+  overlay: Pick<ModelOverlay, "baseUrl" | "model">,
+): ModelProtocol {
+  const explicit = firstText(sources, "api_protocol", "protocol", "provider");
+  if (explicit) {
+    const norm = explicit.trim().toLowerCase();
+    if (norm === "anthropic" || norm === "claude") return "anthropic";
+    if (norm === "openai" || norm === "codex") return "openai";
+  }
+  const url = (overlay.baseUrl ?? "").toLowerCase();
+  if (url.includes("anthropic")) return "anthropic";
+  if (url.includes("openai")) return "openai";
+  const model = overlay.model ?? "";
+  if (/^claude/i.test(model)) return "anthropic";
+  if (/^(gpt|o\d|chatgpt)/i.test(model)) return "openai";
+  return "openai";
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -237,6 +256,9 @@ export function parseDownstreamSessionConfig(
     ),
   };
   const hasModelOverlay = Object.values(modelOverlay).some(Boolean);
+  if (hasModelOverlay) {
+    modelOverlay.protocol = resolveModelProtocol(modelSources, modelOverlay);
+  }
 
   const genericEnvValue =
     acp.engineEnv ??
@@ -267,13 +289,19 @@ export function parseDownstreamSessionConfig(
     [];
   if (!Array.isArray(mcpValue)) throw new Error("mcpServers 必须是数组");
 
+  const engine = hasModelOverlay
+    ? modelOverlay.protocol === "anthropic"
+      ? "claude"
+      : "codex"
+    : resolveDownstreamEngine(
+        agentServer?.command ??
+          agentServer?.engine ??
+          agentServer?.engine_type ??
+          agentServer?.engineType,
+      );
+
   return {
-    engine: resolveDownstreamEngine(
-      agentServer?.command ??
-        agentServer?.engine ??
-        agentServer?.engine_type ??
-        agentServer?.engineType,
-    ),
+    engine,
     modelOverlay: hasModelOverlay ? modelOverlay : undefined,
     engineEnv,
     mcpServers: mcpValue.map(normalizeMcpServer),

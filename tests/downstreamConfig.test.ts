@@ -44,6 +44,7 @@ describe("parseDownstreamSessionConfig", () => {
       apiKey: "session-key",
       baseUrl: "https://model.example.com/v1",
       model: "session-model",
+      protocol: "openai",
     });
     expect(result.engine).toBe("codex");
     expect(result.engineEnv).toEqual({
@@ -86,6 +87,7 @@ describe("parseDownstreamSessionConfig", () => {
         api_key: "provider-key",
         base_url: "https://provider.example.com",
         default_model: "provider-model",
+        api_protocol: "anthropic",
       },
       agent_config: {
         agent_server: {
@@ -115,6 +117,7 @@ describe("parseDownstreamSessionConfig", () => {
       apiKey: "provider-key",
       baseUrl: "https://provider.example.com",
       model: "provider-model",
+      protocol: "anthropic",
     });
     expect(result.engineEnv).toEqual({
       ANTHROPIC_API_KEY: "provider-key",
@@ -165,5 +168,75 @@ describe("parseDownstreamSessionConfig", () => {
         agent_config: { agent_server: { command } },
       }).engine,
     ).toBe(engine);
+  });
+
+  describe("model protocol routing", () => {
+    it("routes an explicit openai protocol to codex", () => {
+      const result = parseDownstreamSessionConfig({
+        model_provider: {
+          api_key: "k",
+          model: "gpt-4o",
+          api_protocol: "openai",
+        },
+      });
+      expect(result.engine).toBe("codex");
+      expect(result.modelOverlay?.protocol).toBe("openai");
+    });
+
+    it("routes an explicit anthropic protocol to claude", () => {
+      const result = parseDownstreamSessionConfig({
+        model_provider: {
+          api_key: "k",
+          model: "claude-3-5-sonnet",
+          api_protocol: "anthropic",
+        },
+      });
+      expect(result.engine).toBe("claude");
+      expect(result.modelOverlay?.protocol).toBe("anthropic");
+    });
+
+    it("infers anthropic from a claude-* model name when protocol is absent", () => {
+      const result = parseDownstreamSessionConfig({
+        acp: { model_config: { model: "claude-3-5-sonnet", api_key: "k" } },
+      });
+      expect(result.engine).toBe("claude");
+      expect(result.modelOverlay?.protocol).toBe("anthropic");
+    });
+
+    it("infers openai from an o-series model name when protocol is absent", () => {
+      const result = parseDownstreamSessionConfig({
+        acp: { model_config: { model: "o4-mini", api_key: "k" } },
+      });
+      expect(result.engine).toBe("codex");
+      expect(result.modelOverlay?.protocol).toBe("openai");
+    });
+
+    it("infers protocol from baseUrl", () => {
+      const result = parseDownstreamSessionConfig({
+        model_provider: {
+          api_key: "k",
+          model: "any",
+          base_url: "https://api.anthropic.com",
+        },
+      });
+      expect(result.modelOverlay?.protocol).toBe("anthropic");
+      expect(result.engine).toBe("claude");
+    });
+
+    it("defaults to openai (codex) when nothing identifies the protocol", () => {
+      const result = parseDownstreamSessionConfig({
+        model_provider: { api_key: "k", model: "custom-model" },
+      });
+      expect(result.modelOverlay?.protocol).toBe("openai");
+      expect(result.engine).toBe("codex");
+    });
+
+    it("does not route by protocol when no model is sent", () => {
+      const result = parseDownstreamSessionConfig({
+        agent_config: { agent_server: { command: "claude-code-acp-ts" } },
+      });
+      expect(result.modelOverlay).toBeUndefined();
+      expect(result.engine).toBe("claude");
+    });
   });
 });

@@ -11,10 +11,13 @@
  */
 
 /** Overlay values only ever come from an explicit user flag/config entry — never a default. */
+export type ModelProtocol = "anthropic" | "openai";
+
 export interface ModelOverlay {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
+  protocol?: ModelProtocol;
 }
 
 /** Vars that belong to nuwa-cli's own process, not the user's shell — never pass these through. */
