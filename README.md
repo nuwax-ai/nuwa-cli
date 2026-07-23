@@ -291,6 +291,31 @@ nuwa-cli serve --port 60016
 
 For a new session, the NuwaClaw-compatible contract uses `agent_config.agent_server.command` to select the engine, `model_provider` for model settings, `agent_config.agent_server.env` for engine environment variables, and `agent_config.context_servers` for MCP. Recognized Claude commands are `claude-code` / `claude-code-acp-ts`; recognized Codex commands are `codex`, `codex-cli`, `codex-acp`, and `nuwax-codex-acp`. Missing or unknown engines fall back to Codex. The generic `acp_config` shape remains accepted. Precedence is: session configuration > Gateway `--api-key/--base-url/--model` > local environment and `~/.claude` / `~/.codex`. Omitting session configuration preserves local behavior exactly.
 
+#### Model protocol routing
+
+When the downstream `model_provider` includes a model, nuwa-cli auto-routes the engine based on protocol:
+
+- `api_protocol: "openai"` (or inferred from model name / base URL) → **codex** engine
+- `api_protocol: "anthropic"` (or model name starts with `claude-`) → **claude** engine
+- No model sent → uses the locally selected engine (default codex)
+
+Protocol is resolved from `model_provider.api_protocol` (or `protocol` / `provider`), falling back to base URL / model name inference, defaulting to `openai`.
+
+When routing to **codex** with an OpenAI-protocol model, nuwa-cli injects:
+- `OPENAI_API_KEY` + `CODEX_API_KEY` (same value)
+- `OPENAI_BASE_URL` + `CODEX_BASE_URL` (same value)
+- `CODEX_MODEL` (raw model name)
+- `CODEX_WIRE_API=chat` (forces Chat Completions API; most third-party providers don't support Responses API)
+- `CODEX_MODEL_CONTEXT_WINDOW=200000`
+
+When routing to **claude** with an anthropic-protocol model, nuwa-cli injects:
+- `ANTHROPIC_API_KEY` + `ANTHROPIC_AUTH_TOKEN` (same value)
+- `ANTHROPIC_BASE_URL`
+- `ANTHROPIC_MODEL`
+- `CLAUDE_CONFIG_DIR` pointing to `~/.nuwa-cli/claude-config` — this prevents `claude` from reading the user's global `~/.claude/settings.json` `env` block, which could override our injected credentials with a different provider's keys.
+
+The model is also applied to the running engine via ACP `session/set_config_option` (configId `model`) after session creation, so the engine uses the downstream model instead of its local default.
+
 If `--cwd` is not provided, the default workspace root is `~/.nuwa-cli/workspaces`, and Cloud/Electron-style requests create project workspaces as `~/.nuwa-cli/workspaces/<project_id>`. `agent_work_dir` / `session_id` are only compatibility fallbacks when `project_id` is missing. `user_id` is kept as request metadata but is not used in the local path. If `--cwd <dir>` is provided, that directory is treated as the project directory itself; nuwa-cli does not append `project_id` under it. `nuwax-file-server` is pointed at the same active directory/root.
 
 For plain local `serve`, every route except `/health` and the read-only SSE `/computer/progress/:session_id` requires authentication. The preferred form is `X-Nuwax-Internal-Secret`, with `Authorization: Bearer <secret>` and `?apiKey=<secret>` accepted for clients that cannot set custom headers. In `--tunnel` mode, `/computer/*` and `/devcomputer/*` follow the Electron client's contract: the lanproxy connection is authenticated with the savedKey/configKey client key, and the forwarded local HTTP calls do not carry another per-request savedKey. The server still prints a fresh local debug secret on startup; it is never written to disk.
@@ -314,13 +339,14 @@ If the register response includes `serverHost`/`serverPort`, the explicit host/p
 
 ## Known limitations
 
-- **codex on Windows/Linux ARM**: only tested on macOS arm64 so far.
 - **Process-tree teardown on exit**: only the direct engine child receives `SIGTERM`; grandchildren (for example, the `claude` binary the `claude-code-acp-ts` adapter spawns) aren't signalled and may be orphaned. `serve` shutdown still stops its own HTTP sessions, but stray grandchildren can linger.
 - **No path-confinement in `yolo`**: `--approve auto` auto-approves ordinary tool calls regardless of target path; there is no writable-root guard yet. Sensitive access (local sessions) is still forced to ask — see [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).
 - **Autostart is current-user scoped**: `service install` uses LaunchAgent / systemd user service / Scheduled Task. It is not a privileged system-wide daemon. On Linux, true boot-before-login requires systemd linger configured outside the CLI.
 - **Custom/third-party ACP engines** (pi-acp, hermes, kilo, openclaw, ...) aren't supported yet — only `claude` and `codex`.
 - **Optional dependencies**: installing with `npm install --omit=optional` omits the platform lanproxy binary. Reinstall normally, or use `--lanproxy-path` / `NUWACLI_LANPROXY_PATH` to provide one explicitly.
 - **Cloud session sync/listing**: `sessions`/`status` are local-only for now: there's no confirmed backend API yet for cross-device session history.
+- **Prompt timeout**: each prompt has a 5-minute timeout. If the engine hangs (e.g. MCP server initialization blocks or API is unreachable), the session reports an error instead of waiting forever.
+- **MCP server startup**: engines (especially claude-code) wait for all MCP servers to initialize before processing the first prompt. If MCP servers require downloading packages (`npm exec`), the first session may take several minutes to start.
 
 ## How it works
 
@@ -328,6 +354,9 @@ If the register response includes `serverHost`/`serverPort`, the explicit host/p
 - `claude` engine: spawns [`claude-code-acp-ts`](https://www.npmjs.com/package/claude-code-acp-ts). It prefers a system `claude` binary when present; otherwise its Claude Agent SDK platform package provides the runtime.
 - `codex` engine: spawns the package dependency [`nuwax-codex-acp`](https://www.npmjs.com/package/nuwax-codex-acp); that package pulls the matching platform binary through npm optional dependencies.
 - `serve --tunnel`: starts [`nuwax-file-server`](https://www.npmjs.com/package/nuwax-file-server), resolves the current platform binary through `@nuwax-ai/lanproxy`, then launches it with the registered savedKey. file-server PID/lock temp files are scoped per port under `~/.nuwa-cli/tmp/file-server-<port>`, so CLI shutdown does not target the Electron client's instance or another CLI tunnel instance.
+- **Health checks**: `serve --tunnel` performs real readiness probes after starting file-server (`GET /health` polling) and lanproxy (process liveness + cloud tunnel endpoint). Failed health checks produce a warning but do not block the local HTTP API.
+- **Engine stderr logging**: all engine child process stderr is streamed line-by-line to `~/.nuwa-cli/logs/main.YYYY-MM-DD.log` under scope `engine.stderr`, so codex/claude errors are visible without waiting for a crash.
+- **Windows**: all child process spawns use `windowsHide: true` to suppress `cmd.exe` console window popups. `.cmd`/`.bat` shims (e.g. `npm.cmd`) are auto-detected and spawned with `shell: true`.
 - `service install`: writes a current-user OS service that runs `nuwa-cli gateway` on login/startup. It reuses CLI-owned credentials at runtime instead of embedding secrets into the OS service definition.
 - Nothing is installed into your shell's global `node_modules`, and nuwa-cli stores its own credentials, device id, cache, logs, and serve lock under `~/.nuwa-cli/`. If you also run the NuwaClaw Electron app, the two coexist on the same machine without sharing savedKey or local state; `serve` prefers CLI-only ports 60016/60015 and automatically moves forward on conflicts, separate from Electron's 60005–60009 range.
 
