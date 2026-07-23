@@ -4,6 +4,21 @@
 
 无界面（headless）的多引擎 Agent 命令行工具。`nuwa-cli` 直接挂接到你本机**已经安装并登录**的 `claude` 与 `codex` CLI——无需单独登录、不打包 Claude/Codex 运行时、不使用隔离的配置目录。它读取的就是你终端里 `claude`/`codex` 本身在用的 `~/.claude` / `~/.codex` 状态。
 
+**一键安装** —— 从 Nuwax 自有 S3 镜像安装（国内可达；无需 GitHub 或 npm 登录），自动配置 PATH（兼容 Windows / macOS / Linux），装完重开终端即可直接用 `nuwa-cli`：
+
+```bash
+# Windows (PowerShell)
+irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.ps1 | iex
+
+# macOS / Linux
+curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.sh | bash
+```
+
+> 依赖 `npm install` 太慢？设个镜像源即可 —— `NUWACLI_REGISTRY=https://registry.npmmirror.com`（bash）或 `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'`（PowerShell），安装器会透传给 `npm install --registry`。
+> S3 是自签证书？设 `NUWAX_S3_INSECURE=1`；安装器也会在证书校验失败时自动降级重试。
+
+或手动用 npm registry 安装（需要 Node.js 22+）：
+
 ```bash
 npm install -g @nuwax-ai/nuwa-cli@beta
 nuwa-cli doctor

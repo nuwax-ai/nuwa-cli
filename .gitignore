@@ -17,3 +17,7 @@ coverage/
 *.tgz
 .tmp/
 tmp/
+
+# S3 publish credentials — NEVER commit
+.env
+.env.*

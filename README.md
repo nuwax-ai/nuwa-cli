@@ -4,6 +4,21 @@
 
 Headless multi-engine agent CLI. `nuwa-cli` attaches to the `claude` and `codex` CLIs you've already installed and logged into — no separate login, no bundled Claude/Codex runtime, no isolated config directory. It reads the exact same `~/.claude` / `~/.codex` state your terminal already uses.
 
+**One-line installer** — installs from the Nuwax S3 mirror (reachable in mainland China; no GitHub or npm login needed) and configures PATH automatically (Windows / macOS / Linux), so `nuwa-cli` works in a new terminal without any manual env editing:
+
+```bash
+# Windows (PowerShell)
+irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.ps1 | iex
+
+# macOS / Linux
+curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.sh | bash
+```
+
+> Slow `npm install` for dependencies? Set a mirror — `NUWACLI_REGISTRY=https://registry.npmmirror.com` (bash) or `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'` (PowerShell); the installer forwards it to `npm install --registry`.
+> Self-signed S3 endpoint? Set `NUWAX_S3_INSECURE=1`; the installer also auto-retries with certificate checks disabled.
+
+Or install manually from the npm registry (requires Node.js 22+):
+
 ```bash
 npm install -g @nuwax-ai/nuwa-cli@beta
 nuwa-cli doctor

@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ACP permission guardrails aligned with NuwaClaw: `PermissionCoordinator`, SSE `acpRequestPermission`, real `POST /computer/notify-resolved`, and pluggable sensitive classifiers (first: local session history). `--approve` now accepts `auto|ask|deny`. See [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).
 - `/computer/local-sessions/list|read` and `/computer/sensitive-access/await` for consented local-session export; non-TTY `context`/`sessions` CLI paths go through the same bus.
 
+## [0.1.0-beta.3] - 2026-07-23
+
+### Changed
+
+- 依赖 `which` / `write-file-atomic` 降级到 v5(engines 覆盖 Node 18.17+/20.5+,消除 v24.13 等版本的 EBADENGINE 警告);`engines.node` 回退为 `>=22.0.0`。
+- serve/console 的 `process.on("exit")` 兜底清理加 `shuttingDown` 守卫,避免正常 SIGINT 退出时与 `shutdown` 重复执行 `stopFileServer` 等。
+
+### Added
+
+- 跨平台一键安装脚本 `scripts/install.sh`(macOS/Linux)与 `scripts/install.ps1`(Windows):自动执行 `npm install -g` + 配置 PATH(Windows 写用户级注册表、Unix 写 shell rc)+ 版本/可用性校验,幂等可重复运行;README 提供一行安装命令。
+
 ## [0.1.0-beta.2] - 2026-07-23
 
 ### Changed
