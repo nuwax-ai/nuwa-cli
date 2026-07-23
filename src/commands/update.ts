@@ -4,7 +4,7 @@ import {
   DEFAULT_DIST_TAG,
   PACKAGE_NAME,
 } from "../core/version.js";
-import { findOnPath } from "../util/which.js";
+import { findOnPath, isBatchShim } from "../util/which.js";
 
 export interface UpdateOptions {
   check?: boolean;
@@ -38,7 +38,10 @@ function runCommand(
     stdio?: "inherit" | "pipe";
   },
 ): CommandResult {
-  const result = spawnSync(command, args, options);
+  const result = spawnSync(command, args, {
+    ...options,
+    ...(isBatchShim(command) ? { shell: true } : {}),
+  });
   return {
     status: result.status,
     stdout: typeof result.stdout === "string" ? result.stdout : undefined,

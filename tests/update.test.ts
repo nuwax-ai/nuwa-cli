@@ -105,4 +105,34 @@ describe("update command", () => {
       expect.objectContaining({ stdio: "inherit" }),
     );
   });
+
+  it("spawns npm via shell on Windows when npm resolves to a .cmd shim", async () => {
+    const realPlatform = process.platform;
+    Object.defineProperty(process, "platform", {
+      value: "win32",
+      configurable: true,
+    });
+    mocks.spawnSync.mockReset();
+    mocks.spawnSync.mockImplementation((command: string) => {
+      if (command === "where") {
+        return { status: 0, stdout: "C:\\nodejs\\npm.cmd\r\n" };
+      }
+      return { status: 0, stdout: "" };
+    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { updateCommand } = await import("../src/commands/update.js");
+      await updateCommand(undefined, {});
+      expect(mocks.spawnSync).toHaveBeenCalledWith(
+        "C:\\nodejs\\npm.cmd",
+        ["install", "-g", "@nuwax-ai/nuwa-cli@beta"],
+        expect.objectContaining({ shell: true, stdio: "inherit" }),
+      );
+    } finally {
+      Object.defineProperty(process, "platform", {
+        value: realPlatform,
+        configurable: true,
+      });
+    }
+  });
 });
