@@ -160,7 +160,7 @@ npx nuwa-cli doctor
 
 ```bash
 npm run dev:cli -- update --dry-run
-npm run dev:cli -- update 0.1.0-beta.1 --dry-run
+npm run dev:cli -- update 0.1.0-beta.2 --dry-run
 ```
 
 只查询远端目标版本：

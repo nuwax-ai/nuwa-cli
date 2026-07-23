@@ -9,9 +9,15 @@ import {
   type PermissionMode,
 } from "../core/permissions/policy.js";
 import { startServeHttp } from "../core/serve/server.js";
-import { startFileServer, stopFileServer } from "../core/serve/fileServer.js";
+import {
+  startFileServer,
+  stopFileServer,
+  waitForFileServerHealth,
+} from "../core/serve/fileServer.js";
 import {
   startLanproxy,
+  confirmLanproxyHealthy,
+  waitForLanproxyTunnel,
   type LanproxyHandle,
 } from "../core/serve/lanproxyProcess.js";
 import {
@@ -232,6 +238,17 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
   let fileServerStarted = false;
   let activeFileServerPort: number | undefined;
   let lanproxyHandle: LanproxyHandle | undefined;
+  // 必须在 tunnel 健康检查（最长约 26s）之前挂上信号处理器：
+  // file-server 是 detached 子进程，若等 idle 循环再注册，Ctrl+C 会走默认退出
+  // 且跳过 stopFileServer，留下占端口的游离进程。
+  let shuttingDown = false;
+  let resolveIdle: (() => void) | undefined;
+  const idle = new Promise<void>((resolve) => {
+    resolveIdle = resolve;
+  });
+  // shutdown 时 abort，打断健康检查轮询，避免 Ctrl+C 后仍卡满 10s/15s。
+  const shutdownAbort = new AbortController();
+  const shutdownSignal = shutdownAbort.signal;
   const credentials = options.tunnel ? readCredentials() : {};
   const acceptedSecrets = options.tunnel
     ? [
@@ -263,6 +280,31 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
     allowUnauthenticatedComputerRoutes: options.tunnel === true,
   });
   const { secret, stop, addAcceptedSecret } = httpHandle;
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    process.off("SIGINT", shutdown);
+    process.off("SIGTERM", shutdown);
+    // 先 abort 健康检查，再停子进程，缩短 Ctrl+C 到进程退出的等待。
+    if (!shutdownAbort.signal.aborted) shutdownAbort.abort();
+    console.log(pc.dim("\n正在关闭..."));
+    debugLog("serve.command", "shutdown start", {
+      fileServerStarted,
+      activeFileServerPort,
+      lanproxyPid: lanproxyHandle?.pid,
+    });
+    await stop();
+    lanproxyHandle?.stop();
+    if (lanproxyHandle) debugLog("serve.lanproxy", "stopped");
+    if (fileServerStarted && activeFileServerPort !== undefined) {
+      stopFileServer(activeFileServerPort, cwd);
+      debugLog("serve.fileServer", "stopped", {
+        port: activeFileServerPort,
+      });
+    }
+    debugLog("serve.command", "shutdown done");
+    resolveIdle?.();
+  };
   const markRunning = () => {
     updateProcessRecord(process.pid, {
       state: "running",
@@ -288,6 +330,10 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
         : "（仅本次进程有效，不会持久化，每个请求需带此 header）",
     ),
   );
+
+  // HTTP 已起来就注册：覆盖后续 register / 健康检查等待窗口。
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
 
   if (permissionMode === "yolo") {
     // yolo has no path confinement (unlike the Electron client's strict gate):
@@ -410,75 +456,113 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
           );
         }
 
-        startFileServer(fileServerPort, cwd);
-        debugLog("serve.fileServer", "started", {
-          port: fileServerPort,
-          workspaceRoot: cwd,
-        });
-        fileServerStarted = true;
-        activeFileServerPort = fileServerPort;
-        console.log(
-          pc.green(`nuwax-file-server 已启动（端口 ${fileServerPort}）。`),
-        );
-        lanproxyHandle = startLanproxy({
-          pathOverride:
-            options.lanproxyPath ?? credentials.lanproxyPath ?? undefined,
-          serverHost: lanproxyHost,
-          serverPort: lanproxyPort,
-          clientKey: reg.configKey,
-          ssl,
-        });
-        await lanproxyHandle.ready;
-        debugLog("serve.lanproxy", "started", {
-          pid: lanproxyHandle.pid,
-          serverHost: lanproxyHost,
-          serverPort: lanproxyPort,
-          ssl,
-        });
-        console.log(
-          pc.green(
-            `lanproxy 已启动（pid ${lanproxyHandle.pid ?? "unknown"}，${lanproxyHost}:${lanproxyPort}，ssl=${ssl}）。`,
-          ),
-        );
+        // register / 解析端口期间若已 Ctrl+C，禁止再 spawn detached file-server。
+        if (shuttingDown) {
+          // shutdown 已跑完；跳过隧道拉起。
+        } else {
+          startFileServer(fileServerPort, cwd);
+          // 立刻标记：健康检查等待中若收到 SIGINT，shutdown 才能 stopFileServer。
+          fileServerStarted = true;
+          activeFileServerPort = fileServerPort;
+
+          // 用标签块在 await 后快速退出，避免 Ctrl+C 清理后继续拉起 lanproxy。
+          bringUpTunnel: {
+            if (shuttingDown) break bringUpTunnel;
+
+            const fileServerHealthy = await waitForFileServerHealth(
+              fileServerPort,
+              10_000,
+              200,
+              shutdownSignal,
+            );
+            if (shuttingDown) break bringUpTunnel;
+
+            debugLog("serve.fileServer", "started", {
+              port: fileServerPort,
+              workspaceRoot: cwd,
+              healthy: fileServerHealthy,
+            });
+            if (fileServerHealthy) {
+              console.log(
+                pc.green(
+                  `nuwax-file-server 已启动（端口 ${fileServerPort}）。`,
+                ),
+              );
+            } else {
+              console.error(
+                pc.yellow(
+                  `[nuwa-cli] nuwax-file-server 健康检查未通过（端口 ${fileServerPort}），文件相关接口可能不可用。`,
+                ),
+              );
+            }
+
+            lanproxyHandle = startLanproxy({
+              pathOverride:
+                options.lanproxyPath ?? credentials.lanproxyPath ?? undefined,
+              serverHost: lanproxyHost,
+              serverPort: lanproxyPort,
+              clientKey: reg.configKey,
+              ssl,
+            });
+            await lanproxyHandle.ready;
+            if (shuttingDown) break bringUpTunnel;
+
+            const lanproxyAlive = await confirmLanproxyHealthy(
+              lanproxyHandle.pid,
+              1000,
+              shutdownSignal,
+            );
+            if (shuttingDown) break bringUpTunnel;
+
+            const lanproxyHealthy = lanproxyAlive
+              ? await waitForLanproxyTunnel(
+                  credentials.domain,
+                  reg.configKey,
+                  15_000,
+                  500,
+                  shutdownSignal,
+                )
+              : false;
+            if (shuttingDown) break bringUpTunnel;
+
+            debugLog("serve.lanproxy", "started", {
+              pid: lanproxyHandle.pid,
+              serverHost: lanproxyHost,
+              serverPort: lanproxyPort,
+              ssl,
+              healthy: lanproxyHealthy,
+            });
+            if (lanproxyHealthy) {
+              console.log(
+                pc.green(
+                  `lanproxy 已启动（pid ${lanproxyHandle.pid ?? "unknown"}，${lanproxyHost}:${lanproxyPort}，ssl=${ssl}）。`,
+                ),
+              );
+            } else {
+              console.error(
+                pc.yellow(
+                  `[nuwa-cli] lanproxy 健康检查未通过（pid ${lanproxyHandle.pid ?? "unknown"}），隧道可能未建立，请查看 ~/.nuwa-cli/logs/serve.log。`,
+                ),
+              );
+            }
+          }
+        }
       } catch (err) {
-        const message =
-          err instanceof RegError ? err.message : (err as Error).message;
-        debugLog("serve.tunnel", "failed", { message });
-        console.error(
-          pc.red(
-            `[nuwa-cli] --tunnel 注册失败：${message}；本次仅提供本地 API。`,
-          ),
-        );
+        // shutdown 期间 stop() 可能导致 ready reject，勿再刷注册失败红字。
+        if (!shuttingDown) {
+          const message =
+            err instanceof RegError ? err.message : (err as Error).message;
+          debugLog("serve.tunnel", "failed", { message });
+          console.error(
+            pc.red(
+              `[nuwa-cli] --tunnel 注册失败：${message}；本次仅提供本地 API。`,
+            ),
+          );
+        }
       }
     }
   }
 
-  await new Promise<void>((resolve) => {
-    let shuttingDown = false;
-    const shutdown = async () => {
-      if (shuttingDown) return;
-      shuttingDown = true;
-      process.off("SIGINT", shutdown);
-      process.off("SIGTERM", shutdown);
-      console.log(pc.dim("\n正在关闭..."));
-      debugLog("serve.command", "shutdown start", {
-        fileServerStarted,
-        activeFileServerPort,
-        lanproxyPid: lanproxyHandle?.pid,
-      });
-      await stop();
-      lanproxyHandle?.stop();
-      if (lanproxyHandle) debugLog("serve.lanproxy", "stopped");
-      if (fileServerStarted && activeFileServerPort !== undefined) {
-        stopFileServer(activeFileServerPort, cwd);
-        debugLog("serve.fileServer", "stopped", {
-          port: activeFileServerPort,
-        });
-      }
-      debugLog("serve.command", "shutdown done");
-      resolve();
-    };
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
-  });
+  // 信号已在 HTTP 启动后注册；此处只阻塞到 shutdown resolve。
+  await idle;
 }

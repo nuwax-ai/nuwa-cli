@@ -71,12 +71,20 @@ describe("createProgram", () => {
     expect(optionLongNames("console")).toContain("--force");
   });
 
-  it("registers restart --all", () => {
+  it("registers start/restart/stop --all for optional Console scope", () => {
     expect(optionLongNames("start")).toContain("--force");
     expect(optionLongNames("start")).toContain("--no-open");
+    expect(optionLongNames("start")).toContain("--all");
     expect(optionLongNames("restart")).toContain("--all");
     expect(optionLongNames("restart")).toContain("--no-open");
     expect(optionLongNames("stop")).toContain("--all");
+
+    // --all 均为可选；默认不含 Console
+    for (const name of ["start", "restart", "stop"] as const) {
+      const command = createProgram().commands.find((c) => c.name() === name);
+      const allOption = command?.options.find((o) => o.long === "--all");
+      expect(allOption?.required).toBe(false);
+    }
   });
 
 });

@@ -214,16 +214,18 @@ nuwa-cli service uninstall
 
 ```bash
 nuwa-cli ps                    # 查看 Gateway、Console 和 chat 进程
-nuwa-cli start                 # Gateway 后台运行，Console 占用当前终端
-nuwa-cli start --force         # 强制替换 Gateway 和 Console
+nuwa-cli start                 # 仅后台 Gateway
+nuwa-cli start --all           # Gateway + 前台 Console
+nuwa-cli start --force         # 强制替换 Gateway（加 --all 才一并替换 Console）
 nuwa-cli stop                  # 默认停止 Gateway
 nuwa-cli stop --console        # 仅停止 Console
 nuwa-cli stop --all            # 停止 Gateway 和 Console
-nuwa-cli restart --all         # Gateway 转后台，Console 占用当前终端
+nuwa-cli restart               # 仅强制重启 Gateway（daemon）
+nuwa-cli restart --all         # 强制重启 Gateway + 前台 Console
 nuwa-cli doctor --fix          # 修复多实例，但不主动重启
 ```
 
-`start` 默认复用健康实例，只补齐缺失服务；`Ctrl+C` 只退出前台 Console，后台 Gateway 继续运行。Gateway 可以前台运行、daemonize 或由系统服务托管；Console 永远不会 daemonize。
+`start` / `restart` / `stop` 默认只作用于 Gateway；加 `--all` 才包含前台 Console。`Ctrl+C` 只退出前台 Console，后台 Gateway 继续运行。Gateway 可以前台运行、daemonize 或由系统服务托管；Console 永远不会 daemonize。
 
 ### `nuwa-cli service`
 
@@ -247,7 +249,7 @@ nuwa-cli service uninstall
 ```bash
 nuwa-cli update --help
 nuwa-cli update                 # 升级到 beta 通道最新版
-nuwa-cli update 0.1.0-beta.1    # 升级到指定版本
+nuwa-cli update 0.1.0-beta.2    # 升级到指定版本
 nuwa-cli update latest          # 显式切换到正式版通道
 nuwa-cli update --check         # 只查询目标版本
 ```

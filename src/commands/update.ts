@@ -54,7 +54,7 @@ export function normalizeUpdateTarget(target?: string): string {
   const value = (target || DEFAULT_DIST_TAG).trim();
   if (!value || value.startsWith("-")) {
     throw new Error(
-      "升级版本不能为空。示例：nuwa-cli update beta 或 nuwa-cli update 0.1.0-beta.1",
+      "升级版本不能为空。示例：nuwa-cli update beta 或 nuwa-cli update 0.1.0-beta.2",
     );
   }
   return value.startsWith("v") && /^\d/.test(value.slice(1))

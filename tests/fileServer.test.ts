@@ -109,3 +109,83 @@ describe("fileServer", () => {
     expect(mocks.spawnSync).not.toHaveBeenCalled();
   });
 });
+
+describe("waitForFileServerHealth", () => {
+  it("resolves true when /health returns status ok", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: "ok" }),
+    } as Response);
+    const { waitForFileServerHealth } =
+      await import("../src/core/serve/fileServer.js");
+
+    const ok = await waitForFileServerHealth(60015, 1000, 10);
+
+    expect(ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:60015/health",
+      expect.any(Object),
+    );
+    fetchMock.mockRestore();
+  });
+
+  it("retries until the server becomes healthy", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new Error("ECONNREFUSED"))
+      .mockRejectedValueOnce(new Error("ECONNREFUSED"))
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({ status: "ok" }),
+      } as Response);
+    const { waitForFileServerHealth } =
+      await import("../src/core/serve/fileServer.js");
+
+    const ok = await waitForFileServerHealth(60015, 5000, 10);
+
+    expect(ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    fetchMock.mockRestore();
+  });
+
+  it("resolves false when health never becomes ok within the timeout", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("ECONNREFUSED"));
+    const { waitForFileServerHealth } =
+      await import("../src/core/serve/fileServer.js");
+
+    const ok = await waitForFileServerHealth(60015, 100, 10);
+
+    expect(ok).toBe(false);
+    fetchMock.mockRestore();
+  });
+
+  it("resolves false immediately when the abort signal fires", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          const signal = init?.signal;
+          if (signal?.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
+          }
+          signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+    const { waitForFileServerHealth } =
+      await import("../src/core/serve/fileServer.js");
+    const ac = new AbortController();
+
+    const pending = waitForFileServerHealth(60015, 10_000, 200, ac.signal);
+    ac.abort();
+    const ok = await pending;
+
+    expect(ok).toBe(false);
+    fetchMock.mockRestore();
+  });
+});

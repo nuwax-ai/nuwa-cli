@@ -11,7 +11,7 @@ node dist/cli.js console --engine codex  # 默认 codex（界面内仍可切换�
 node dist/cli.js console --no-open       # 不自动开浏览器，自行打开打印出的 URL
 ```
 
-需要同时启动完整运行环境时使用 `nuwa-cli start`：Gateway 会进入后台，Console 留在当前终端前台运行。
+需要同时启动 Gateway + Console 时使用 `nuwa-cli start --all`：Gateway 进入后台，Console 留在当前终端前台。仅需 Gateway 时用 `nuwa-cli start`。
 
 启动会打印一行带一次性 token 的本地地址，例如：
 

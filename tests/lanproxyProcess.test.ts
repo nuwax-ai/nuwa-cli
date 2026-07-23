@@ -110,3 +110,160 @@ describe("startLanproxy", () => {
     expect(mocks.unregister).toHaveBeenCalledWith(4321);
   });
 });
+
+describe("confirmLanproxyHealthy", () => {
+  it("returns false when pid is undefined", async () => {
+    const { confirmLanproxyHealthy } =
+      await import("../src/core/serve/lanproxyProcess.js");
+    expect(await confirmLanproxyHealthy(undefined, 0)).toBe(false);
+  });
+
+  it("returns true when the pid stays alive across the stabilize window", async () => {
+    const killSpy = vi.spyOn(process, "kill").mockReturnValue(true);
+    const { confirmLanproxyHealthy } =
+      await import("../src/core/serve/lanproxyProcess.js");
+
+    expect(await confirmLanproxyHealthy(9999, 0)).toBe(true);
+    killSpy.mockRestore();
+  });
+
+  it("returns false when the pid dies during the stabilize window", async () => {
+    // 用调用次数区分「稳定窗口前存活 / 窗口后死亡」，避免 setTimeout 竞态。
+    let calls = 0;
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) return true;
+      const err = new Error("ESRCH") as NodeJS.ErrnoException;
+      err.code = "ESRCH";
+      throw err;
+    });
+    const { confirmLanproxyHealthy } =
+      await import("../src/core/serve/lanproxyProcess.js");
+
+    expect(await confirmLanproxyHealthy(9999, 5)).toBe(false);
+    expect(calls).toBe(2);
+    killSpy.mockRestore();
+  });
+});
+
+describe("waitForLanproxyTunnel", () => {
+  it("resolves true when the cloud reports the tunnel online (code 0000)", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ code: "0000", success: true, data: {} }),
+    } as Response);
+    const { waitForLanproxyTunnel } =
+      await import("../src/core/serve/lanproxyProcess.js");
+
+    const ok = await waitForLanproxyTunnel(
+      "https://example.com",
+      "config-key",
+      1000,
+      10,
+    );
+
+    expect(ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.com/api/sandbox/config/health/config-key",
+      expect.any(Object),
+    );
+    fetchMock.mockRestore();
+  });
+
+  it("retries until the tunnel comes online", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new Error("ECONNREFUSED"))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ code: "9999", success: false }),
+      } as Response)
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({ code: "0000", success: true, data: { online: true } }),
+      } as Response);
+    const { waitForLanproxyTunnel } =
+      await import("../src/core/serve/lanproxyProcess.js");
+
+    const ok = await waitForLanproxyTunnel(
+      "https://example.com/",
+      "config-key",
+      5000,
+      10,
+    );
+
+    expect(ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.com/api/sandbox/config/health/config-key",
+      expect.any(Object),
+    );
+    fetchMock.mockRestore();
+  });
+
+  it("resolves false when the tunnel never comes online within the timeout", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({ code: "9999", success: false }),
+      } as Response);
+    const { waitForLanproxyTunnel } =
+      await import("../src/core/serve/lanproxyProcess.js");
+
+    const ok = await waitForLanproxyTunnel(
+      "https://example.com",
+      "config-key",
+      100,
+      10,
+    );
+
+    expect(ok).toBe(false);
+    fetchMock.mockRestore();
+  });
+
+  it("resolves false without a request when domain or configKey is missing", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const { waitForLanproxyTunnel } =
+      await import("../src/core/serve/lanproxyProcess.js");
+
+    expect(await waitForLanproxyTunnel("", "config-key", 100, 10)).toBe(false);
+    expect(await waitForLanproxyTunnel("https://example.com", "", 100, 10)).toBe(
+      false,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it("resolves false immediately when the abort signal fires", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          const signal = init?.signal;
+          if (signal?.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
+          }
+          signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+    const { waitForLanproxyTunnel } =
+      await import("../src/core/serve/lanproxyProcess.js");
+    const ac = new AbortController();
+
+    const pending = waitForLanproxyTunnel(
+      "https://example.com",
+      "config-key",
+      15_000,
+      500,
+      ac.signal,
+    );
+    ac.abort();
+    expect(await pending).toBe(false);
+    fetchMock.mockRestore();
+  });
+});

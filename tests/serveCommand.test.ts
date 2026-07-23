@@ -17,8 +17,11 @@ const mocks = vi.hoisted(() => ({
   addAcceptedSecret: vi.fn(),
   startFileServer: vi.fn(),
   stopFileServer: vi.fn(),
+  waitForFileServerHealth: vi.fn(() => Promise.resolve(true)),
   startLanproxy: vi.fn(),
   stopLanproxy: vi.fn(),
+  confirmLanproxyHealthy: vi.fn(() => Promise.resolve(true)),
+  waitForLanproxyTunnel: vi.fn(() => Promise.resolve(true)),
   getDeviceId: vi.fn(() => "device-id"),
 }));
 
@@ -42,10 +45,16 @@ vi.mock("../src/core/serve/server.js", () => ({
 vi.mock("../src/core/serve/fileServer.js", () => ({
   startFileServer: (...args: unknown[]) => mocks.startFileServer(...args),
   stopFileServer: (...args: unknown[]) => mocks.stopFileServer(...args),
+  waitForFileServerHealth: (...args: unknown[]) =>
+    mocks.waitForFileServerHealth(...args),
 }));
 
 vi.mock("../src/core/serve/lanproxyProcess.js", () => ({
   startLanproxy: (...args: unknown[]) => mocks.startLanproxy(...args),
+  confirmLanproxyHealthy: (...args: unknown[]) =>
+    mocks.confirmLanproxyHealthy(...args),
+  waitForLanproxyTunnel: (...args: unknown[]) =>
+    mocks.waitForLanproxyTunnel(...args),
 }));
 
 async function waitFor(predicate: () => boolean): Promise<void> {
@@ -67,8 +76,11 @@ describe("serveCommand", () => {
     mocks.addAcceptedSecret.mockReset();
     mocks.startFileServer.mockReset();
     mocks.stopFileServer.mockReset();
+    mocks.waitForFileServerHealth.mockReset().mockResolvedValue(true);
     mocks.startLanproxy.mockReset();
     mocks.stopLanproxy.mockReset();
+    mocks.confirmLanproxyHealthy.mockReset().mockResolvedValue(true);
+    mocks.waitForLanproxyTunnel.mockReset().mockResolvedValue(true);
     mocks.startServeHttp.mockReturnValue({
       secret: "serve-secret",
       stop: mocks.stopHttp,
@@ -160,5 +172,112 @@ describe("serveCommand", () => {
       path.join(tmpHome, ".nuwa-cli", "workspaces"),
     );
     expect(mocks.stopLanproxy).toHaveBeenCalled();
+  });
+
+  it("stops detached file-server when SIGINT arrives during health wait", async () => {
+    const { writeCredentials } = await import("../src/core/auth/credentials.js");
+    writeCredentials({
+      domain: "https://example.com",
+      username: "alice",
+      computerName: "Alice Mac",
+      configKey: "cfg",
+      savedKey: "cfg",
+      serverHost: "lanproxy.example.com",
+      serverPort: 443,
+    });
+    mocks.registerClient.mockResolvedValue({
+      id: 1,
+      configKey: "cfg",
+      name: "Alice Mac",
+      online: true,
+      configValue: {},
+      token: "token",
+    });
+
+    // 卡住健康检查；收到 abort signal 时立即结束，模拟真实 waitFor* 行为。
+    mocks.waitForFileServerHealth.mockImplementation(
+      (_port, _timeoutMs, _intervalMs, signal?: AbortSignal) =>
+        new Promise<boolean>((resolve) => {
+          if (signal?.aborted) {
+            resolve(false);
+            return;
+          }
+          signal?.addEventListener("abort", () => resolve(false), {
+            once: true,
+          });
+        }),
+    );
+
+    const { serveCommand } = await import("../src/commands/serve.js");
+    const running = serveCommand({
+      engine: "claude",
+      tunnel: true,
+      approve: "deny",
+    });
+
+    await waitFor(() => mocks.startFileServer.mock.calls.length > 0);
+    await waitFor(() => mocks.waitForFileServerHealth.mock.calls.length > 0);
+
+    process.emit("SIGINT");
+    await running;
+
+    expect(mocks.stopHttp).toHaveBeenCalled();
+    expect(mocks.stopFileServer).toHaveBeenCalledWith(
+      60015,
+      path.join(tmpHome, ".nuwa-cli", "workspaces"),
+    );
+    expect(mocks.startLanproxy).not.toHaveBeenCalled();
+    expect(mocks.waitForFileServerHealth.mock.calls[0]?.[3]).toBeInstanceOf(
+      AbortSignal,
+    );
+  });
+
+  it("does not start file-server when SIGINT arrives during registerClient", async () => {
+    const { writeCredentials } = await import("../src/core/auth/credentials.js");
+    writeCredentials({
+      domain: "https://example.com",
+      username: "alice",
+      computerName: "Alice Mac",
+      configKey: "cfg",
+      savedKey: "cfg",
+      serverHost: "lanproxy.example.com",
+      serverPort: 443,
+    });
+
+    let releaseRegister!: (value: unknown) => void;
+    mocks.registerClient.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseRegister = resolve;
+        }),
+    );
+
+    const { serveCommand } = await import("../src/commands/serve.js");
+    const running = serveCommand({
+      engine: "claude",
+      tunnel: true,
+      approve: "deny",
+    });
+
+    await waitFor(() => mocks.registerClient.mock.calls.length > 0);
+    process.emit("SIGINT");
+    await waitFor(() => mocks.stopHttp.mock.calls.length > 0);
+
+    // 注册晚到：shutdown 已完成，不得再 spawn detached file-server。
+    releaseRegister({
+      id: 1,
+      configKey: "cfg",
+      name: "Alice Mac",
+      online: true,
+      configValue: {},
+      token: "token",
+      serverHost: "lanproxy.example.com",
+      serverPort: 443,
+    });
+    await running;
+
+    expect(mocks.startFileServer).not.toHaveBeenCalled();
+    expect(mocks.startLanproxy).not.toHaveBeenCalled();
+    expect(mocks.stopFileServer).not.toHaveBeenCalled();
   });
 });

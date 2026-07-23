@@ -13,6 +13,10 @@ import { uiCommand } from "./ui.js";
 import { loginCommand } from "./login.js";
 
 export interface StartCommandOptions extends GatewayCommandOptions {
+  /**
+   * 为 true 时额外启动前台 Console；默认只启动/复用 Gateway（daemon）。
+   */
+  all?: boolean;
   open?: boolean;
 }
 
@@ -23,9 +27,8 @@ function registeredGatewayEngine(pids: number[]): string | undefined {
 }
 
 /**
- * Converges the complete local runtime to the desired state: one daemon
- * Gateway plus one foreground Console. Healthy existing instances are reused
- * unless --force is supplied.
+ * 收敛本地运行环境：默认只保证 Gateway daemon 就绪；
+ * 传入 --all 时再启动/复用前台 Console。健康实例默认复用，除非 --force。
  */
 export async function startCommand(options: StartCommandOptions): Promise<void> {
   let authReady = false;
@@ -46,6 +49,8 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
   const gatewayPids = findServeProcessIds();
   const consolePids = findUiProcessIds();
   let engine = options.engine ?? registeredGatewayEngine(gatewayPids);
+  // --all 才包含前台 Console；默认仅 Gateway
+  const includeConsole = options.all === true;
 
   if (gatewayPids.length > 0 && !options.force) {
     console.log(
@@ -59,7 +64,8 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
           : "正在启动 Gateway Server（daemon）...",
       ),
     );
-    const { open: _open, ...gatewayOptions } = options;
+    // 剥离 start 专属选项，避免传给 gatewayCommand
+    const { open: _open, all: _all, ...gatewayOptions } = options;
     engine = await gatewayCommand({
       ...gatewayOptions,
       daemon: true,
@@ -68,7 +74,11 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
     });
     if (process.exitCode && process.exitCode !== 0) {
       console.error(
-        pc.red("[nuwa-cli] Gateway 启动失败，已取消 Console 启动。"),
+        pc.red(
+          includeConsole
+            ? "[nuwa-cli] Gateway 启动失败，已取消 Console 启动。"
+            : "[nuwa-cli] Gateway 启动失败。",
+        ),
       );
       return;
     }
@@ -96,6 +106,14 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
         "[nuwa-cli] 未检测到运行中的 lanproxy；请查看 ~/.nuwa-cli/logs/serve.log 或运行 `nuwa-cli doctor`。",
       ),
     );
+  }
+
+  // 默认（无 --all）只保证 Gateway，不占用当前终端
+  if (!includeConsole) {
+    console.log(
+      pc.dim("Gateway 已就绪。需要 Console 时请运行 `nuwa-cli start --all` 或 `nuwa-cli console`。"),
+    );
+    return;
   }
 
   if (consolePids.length > 0 && !options.force) {

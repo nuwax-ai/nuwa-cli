@@ -101,3 +101,85 @@ export function startLanproxy(options: LanproxyStartOptions): LanproxyHandle {
     },
   };
 }
+
+/** 可被 AbortSignal 打断的 sleep；abort 时立即结束，不抛错。 */
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0 || signal?.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * 进程稳定存活检查。signal abort（serve shutdown）时提前返回 false。
+ */
+export async function confirmLanproxyHealthy(
+  pid: number | undefined,
+  stabilizeMs = 1000,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (!pid || signal?.aborted) return false;
+  const isAlive = (p: number): boolean => {
+    try {
+      process.kill(p, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (!isAlive(pid)) return false;
+  if (stabilizeMs > 0) {
+    await delay(stabilizeMs, signal);
+  }
+  if (signal?.aborted) return false;
+  return isAlive(pid);
+}
+
+/**
+ * 轮询云端隧道 health。signal abort 时立即结束，避免 Ctrl+C 后仍卡满 timeoutMs。
+ */
+export async function waitForLanproxyTunnel(
+  domain: string,
+  configKey: string,
+  timeoutMs = 15_000,
+  intervalMs = 500,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (!domain || !configKey || signal?.aborted) return false;
+  const base = domain.replace(/\/+$/, "");
+  const url = `${base}/api/sandbox/config/health/${encodeURIComponent(configKey)}`;
+  const deadline = Date.now() + timeoutMs;
+  do {
+    if (signal?.aborted) return false;
+    try {
+      const requestSignal = signal
+        ? AbortSignal.any([AbortSignal.timeout(5000), signal])
+        : AbortSignal.timeout(5000);
+      const res = await fetch(url, { signal: requestSignal });
+      if (res.ok) {
+        const envelope = (await res.json()) as {
+          code?: string;
+          success?: boolean;
+          data?: { online?: boolean };
+        };
+        if (
+          envelope.code === "0000" ||
+          envelope.success === true ||
+          envelope.data?.online === true
+        ) {
+          return true;
+        }
+      }
+    } catch {
+      // tunnel not reachable yet / aborted
+    }
+    if (signal?.aborted) return false;
+    await delay(intervalMs, signal);
+  } while (Date.now() < deadline);
+  return false;
+}

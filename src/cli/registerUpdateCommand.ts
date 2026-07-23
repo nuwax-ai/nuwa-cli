@@ -14,7 +14,7 @@ export function registerUpdateCommand(program: Command): void {
         "",
         "示例：",
         "  nuwa-cli update",
-        "  nuwa-cli update 0.1.0-beta.1",
+        "  nuwa-cli update 0.1.0-beta.2",
         "  nuwa-cli update latest",
         "  nuwa-cli update --check",
         "",

@@ -215,16 +215,18 @@ nuwa-cli service uninstall
 
 ```bash
 nuwa-cli ps                    # list Gateway, Console, and chat processes
-nuwa-cli start                 # daemon Gateway + foreground Console
-nuwa-cli start --force         # replace both Gateway and Console
+nuwa-cli start                 # daemon Gateway only
+nuwa-cli start --all           # Gateway + foreground Console
+nuwa-cli start --force         # replace Gateway (add --all to replace Console too)
 nuwa-cli stop                  # stop Gateway by default
 nuwa-cli stop --console        # stop only Console
 nuwa-cli stop --all            # stop Gateway and Console
-nuwa-cli restart --all         # Gateway becomes a daemon; Console owns this terminal
+nuwa-cli restart               # force-restart Gateway daemon only
+nuwa-cli restart --all         # force-restart Gateway + foreground Console
 nuwa-cli doctor --fix          # repair duplicate instances without restarting
 ```
 
-`start` reuses healthy instances and only fills in missing services; `Ctrl+C` stops only the foreground Console while Gateway keeps running. Gateway can run in the foreground, daemonize, or be managed by the OS service. Console never daemonizes.
+`start` / `restart` / `stop` default to Gateway only; pass `--all` to include the foreground Console. `Ctrl+C` on Console stops only Console while Gateway keeps running. Gateway can run in the foreground, daemonize, or be managed by the OS service. Console never daemonizes.
 
 ### `nuwa-cli service`
 
@@ -248,7 +250,7 @@ Upgrade the npm-installed CLI package:
 ```bash
 nuwa-cli update --help
 nuwa-cli update                 # upgrade to the newest beta
-nuwa-cli update 0.1.0-beta.1    # upgrade to a specific version
+nuwa-cli update 0.1.0-beta.2    # upgrade to a specific version
 nuwa-cli update latest          # explicitly switch to the stable channel
 nuwa-cli update --check         # only query the target version
 ```

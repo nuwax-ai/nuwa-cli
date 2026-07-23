@@ -24,9 +24,10 @@ export function registerServiceCommands(program: Command): void {
       program
         .command("start")
         .description(
-          "启动完整运行环境：Gateway 在后台运行，Console 在当前终端前台运行",
+          "启动 Gateway（daemon）；加 --all 时再启动前台 Console",
         ),
     )
+      .option("--all", "同时启动 Gateway 和前台 Console")
       .option(
         "--engine <engine>",
         "Gateway/Console 使用的默认引擎：claude 或 codex",
@@ -37,18 +38,19 @@ export function registerServiceCommands(program: Command): void {
         "权限策略：auto（默认）/ ask（逐个审批）/ deny",
         "auto",
       )
-      .option("--force", "强制替换现有 Gateway 和 Console")
-      .option("--no-open", "Console 启动后不自动打开浏览器"),
+      .option("--force", "强制替换现有实例（默认仅 Gateway；--all 时含 Console）")
+      .option("--no-open", "仅 --all 时有效：Console 启动后不自动打开浏览器"),
   )
     .addHelpText(
       "after",
       [
         "",
         "说明：",
+        "  - 默认只启动/复用 Gateway（daemon），不占用当前终端。",
+        "  - `--all` 才会额外启动前台 Console；也可单独用 `nuwa-cli console`。",
         "  - 未登录时先进入交互式登录流程，登录成功后自动继续启动。",
-        "  - 等价于确保 gateway --daemon 和前台 console 同时运行。",
-        "  - 默认复用健康实例，只补齐缺失服务；--force 会替换全部实例。",
-        "  - Console 会持续占用当前终端；Ctrl+C 只关闭 Console，Gateway 继续运行。",
+        "  - 默认复用健康实例，只补齐缺失服务；--force 会强制替换。",
+        "  - 带 --all 时 Console 占用当前终端；Ctrl+C 只关闭 Console，Gateway 继续运行。",
       ].join("\n"),
     )
     .action(startCommand);
@@ -56,21 +58,22 @@ export function registerServiceCommands(program: Command): void {
   program
     .command("restart")
     .description(
-      "强制重启全部服务：Gateway 后台运行，Console 在当前终端前台运行",
+      "强制重启 Gateway（daemon）；加 --all 时再重启前台 Console",
     )
-    .requiredOption("--all", "重启 Gateway 和 Console")
+    .option("--all", "同时强制重启 Gateway 和前台 Console")
     .option(
       "--engine <engine>",
       "Gateway/Console 使用的默认引擎：claude 或 codex",
     )
-    .option("--no-open", "Console 启动后不自动打开浏览器")
+    .option("--no-open", "仅 --all 时有效：Console 启动后不自动打开浏览器")
     .addHelpText(
       "after",
       [
         "",
         "说明：",
-        "  - Gateway 会通过 gateway --daemon --force 在后台重启。",
-        "  - Console 只允许前台运行，因此本命令会持续占用当前终端；Ctrl+C 可关闭 Console。",
+        "  - 默认只强制重启 Gateway（gateway --daemon --force）。",
+        "  - `--all` 才会额外强制重启前台 Console。",
+        "  - 带 --all 时 Console 占用当前终端；Ctrl+C 可关闭 Console。",
         "  - 如果 Gateway 重启失败，不会继续重启 Console。",
       ].join("\n"),
     )
@@ -78,10 +81,19 @@ export function registerServiceCommands(program: Command): void {
 
   program
     .command("stop")
-    .description("停止 Gateway 或 Console；不传范围时默认停止 Gateway")
-    .option("--all", "停止 Gateway 和 Console")
+    .description("停止 Gateway 或 Console；不传范围时默认只停止 Gateway")
+    .option("--all", "同时停止 Gateway 和 Console")
     .option("--gateway", "仅停止 Gateway")
     .option("--console", "仅停止 Console")
+    .addHelpText(
+      "after",
+      [
+        "",
+        "说明：",
+        "  - 默认只停止 Gateway（含关联的 tunnel/lanproxy）。",
+        "  - `--all` 才会同时停止前台 Console。",
+      ].join("\n"),
+    )
     .action(stopCommand);
 
   addServeRuntimeOptions(

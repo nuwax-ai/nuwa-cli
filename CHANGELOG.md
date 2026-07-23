@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ACP permission guardrails aligned with NuwaClaw: `PermissionCoordinator`, SSE `acpRequestPermission`, real `POST /computer/notify-resolved`, and pluggable sensitive classifiers (first: local session history). `--approve` now accepts `auto|ask|deny`. See [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).
 - `/computer/local-sessions/list|read` and `/computer/sensitive-access/await` for consented local-session export; non-TTY `context`/`sessions` CLI paths go through the same bus.
 
+## [0.1.0-beta.2] - 2026-07-23
+
+### Changed
+
+- `start` / `restart` / `stop` 默认只作用于 Gateway；加 `--all` 才包含前台 Console（`stop` 原本即如此，现与 start/restart 语义统一）。
+
 ## [0.1.0-beta.0] - 2026-07-07
 
 - Moved the ~78 MB bundled lanproxy resource set into the stable `@nuwax-ai/lanproxy@1.0.0` package family. npm now installs only the current OS/CPU binary through exact-version optional dependencies.

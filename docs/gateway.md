@@ -49,7 +49,7 @@ nuwa-cli gateway --engine claude --daemon
 nuwa-cli service install --engine claude --now
 ```
 
-已有登录态时，`nuwa-cli start` 是完整运行环境入口：确保 Gateway 在后台运行，并在当前终端启动前台 Console。默认复用健康实例，`--force` 会替换两者。
+已有登录态时，`nuwa-cli start` 默认只启动/复用后台 Gateway；加 `--all` 才会在当前终端再启动前台 Console。默认复用健康实例，`--force` 强制替换（仅 Gateway，或与 `--all` 一并替换 Console）。
 
 ### 自动化/CI
 

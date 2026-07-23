@@ -73,7 +73,7 @@ describe("startCommand", () => {
     process.exitCode = 0;
   });
 
-  it("guides an unauthenticated user through login before starting services", async () => {
+  it("guides an unauthenticated user through login before starting Gateway", async () => {
     mocks.credentials
       .mockReturnValueOnce({})
       .mockReturnValue({ configKey: "fresh-login" });
@@ -93,7 +93,8 @@ describe("startCommand", () => {
     expect(mocks.gateway).toHaveBeenCalledWith(
       expect.objectContaining({ authReady: true }),
     );
-    expect(mocks.ui).toHaveBeenCalled();
+    // 默认不含 Console
+    expect(mocks.ui).not.toHaveBeenCalled();
     expect(mocks.waitLanproxy).toHaveBeenCalled();
   });
 
@@ -108,9 +109,32 @@ describe("startCommand", () => {
     expect(mocks.ui).not.toHaveBeenCalled();
   });
 
-  it("starts Gateway as a daemon before the foreground Console", async () => {
+  it("starts only Gateway as a daemon by default", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const { startCommand } = await import("../src/commands/start.js");
     await startCommand({ engine: "codex", open: false, approve: "ask" });
+
+    expect(mocks.gateway).toHaveBeenCalledWith({
+      engine: "codex",
+      approve: "ask",
+      daemon: true,
+      force: false,
+    });
+    expect(mocks.ui).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("nuwa-cli start --all"),
+    );
+    logSpy.mockRestore();
+  });
+
+  it("starts Gateway then foreground Console when --all is set", async () => {
+    const { startCommand } = await import("../src/commands/start.js");
+    await startCommand({
+      all: true,
+      engine: "codex",
+      open: false,
+      approve: "ask",
+    });
 
     expect(mocks.gateway).toHaveBeenCalledWith({
       engine: "codex",
@@ -131,7 +155,7 @@ describe("startCommand", () => {
     );
   });
 
-  it("reuses healthy Gateway and Console instances", async () => {
+  it("reuses healthy Gateway without starting Console by default", async () => {
     mocks.findGateway.mockReturnValue([101]);
     mocks.findConsole.mockReturnValue([202]);
     mocks.records.mockReturnValue([
@@ -146,7 +170,22 @@ describe("startCommand", () => {
     expect(mocks.ui).not.toHaveBeenCalled();
   });
 
-  it("forces replacement of both services", async () => {
+  it("with --all reuses healthy Gateway and Console instances", async () => {
+    mocks.findGateway.mockReturnValue([101]);
+    mocks.findConsole.mockReturnValue([202]);
+    mocks.records.mockReturnValue([
+      { pid: 101, kind: "serve", engine: "claude" },
+    ]);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { startCommand } = await import("../src/commands/start.js");
+
+    await startCommand({ all: true });
+
+    expect(mocks.gateway).not.toHaveBeenCalled();
+    expect(mocks.ui).not.toHaveBeenCalled();
+  });
+
+  it("forces Gateway replacement by default without Console", async () => {
     mocks.findGateway.mockReturnValue([101]);
     mocks.findConsole.mockReturnValue([202]);
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -158,12 +197,27 @@ describe("startCommand", () => {
       daemon: true,
       force: true,
     });
+    expect(mocks.ui).not.toHaveBeenCalled();
+  });
+
+  it("forces replacement of both services with --all --force", async () => {
+    mocks.findGateway.mockReturnValue([101]);
+    mocks.findConsole.mockReturnValue([202]);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { startCommand } = await import("../src/commands/start.js");
+
+    await startCommand({ all: true, force: true, open: false });
+
+    expect(mocks.gateway).toHaveBeenCalledWith({
+      daemon: true,
+      force: true,
+    });
     expect(mocks.ui).toHaveBeenCalledWith(
       expect.objectContaining({ force: true, open: false }),
     );
   });
 
-  it("does not start Console when Gateway fails", async () => {
+  it("does not start Console when Gateway fails even with --all", async () => {
     mocks.gateway.mockImplementation(async () => {
       process.exitCode = 1;
     });
@@ -171,7 +225,7 @@ describe("startCommand", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { startCommand } = await import("../src/commands/start.js");
 
-    await startCommand({});
+    await startCommand({ all: true });
 
     expect(mocks.ui).not.toHaveBeenCalled();
   });

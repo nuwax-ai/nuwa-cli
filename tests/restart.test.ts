@@ -20,7 +20,24 @@ describe("restartCommand", () => {
     process.exitCode = 0;
   });
 
-  it("restarts Gateway as a daemon before replacing the foreground Console", async () => {
+  it("restarts only Gateway as a daemon by default", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { restartCommand } = await import("../src/commands/restart.js");
+    await restartCommand({ engine: "codex", open: false });
+
+    expect(mocks.gateway).toHaveBeenCalledWith({
+      engine: "codex",
+      daemon: true,
+      force: true,
+    });
+    expect(mocks.ui).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("nuwa-cli restart --all"),
+    );
+    logSpy.mockRestore();
+  });
+
+  it("restarts Gateway then Console when --all is set", async () => {
     const { restartCommand } = await import("../src/commands/restart.js");
     await restartCommand({ all: true, engine: "codex", open: false });
 
@@ -39,7 +56,7 @@ describe("restartCommand", () => {
     );
   });
 
-  it("does not replace Console when Gateway restart fails", async () => {
+  it("does not replace Console when Gateway restart fails with --all", async () => {
     mocks.gateway.mockImplementation(async () => {
       process.exitCode = 1;
     });
