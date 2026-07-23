@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { resolveInstalledPackageEntry } from "../engines/packageResolve.js";
 import { buildCliChildEnv } from "../env/inheritEnv.js";
 import { ensureDir, logsDir, tmpDir, workspacesDir } from "../../util/paths.js";
+import { registerProcess } from "../processes/processRegistry.js";
 
 const NUWAX_FILE_SERVER_ENTRY = "nuwax-file-server/dist/cli.js";
 
@@ -51,6 +52,16 @@ export function startFileServer(port: number, baseWorkspaceDir?: string): void {
     stdio: "ignore",
     detached: true,
   });
+  if (proc.pid) {
+    registerProcess({
+      pid: proc.pid,
+      kind: "file-server",
+      state: "running",
+      daemon: true,
+      cwd: process.cwd(),
+      port,
+    });
+  }
   proc.unref();
 }
 

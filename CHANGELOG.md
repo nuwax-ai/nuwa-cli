@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `start` / `restart` / `stop` 默认只作用于 Gateway；加 `--all` 才包含前台 Console（`stop` 原本即如此，现与 start/restart 语义统一）。
+- 依赖改为直接使用 `which` / `write-file-atomic`；`engines.node` 提升为 `>=22.22.2`。
+
+### Fixed
+
+- serve/console 在 process `exit` 时尽力清理 file-server、lanproxy 与 UI 单例锁。
+- file-server 进程注册进 process registry，便于 `ps` 识别。
 
 ## [0.1.0-beta.0] - 2026-07-07
 

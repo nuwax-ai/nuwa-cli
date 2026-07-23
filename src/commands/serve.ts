@@ -334,6 +334,21 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
   // HTTP 已起来就注册：覆盖后续 register / 健康检查等待窗口。
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
+  process.on("exit", () => {
+    if (shuttingDown) return;
+    try {
+      if (fileServerStarted && activeFileServerPort !== undefined) {
+        stopFileServer(activeFileServerPort, cwd);
+      }
+    } catch {
+      // Synchronous best-effort cleanup on Windows console-close / crash.
+    }
+    try {
+      lanproxyHandle?.stop();
+    } catch {
+      // Best-effort.
+    }
+  });
 
   if (permissionMode === "yolo") {
     // yolo has no path confinement (unlike the Electron client's strict gate):

@@ -1,6 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
+import writeAtomicLib from "write-file-atomic";
 
 export function nuwaCliHome(): string {
   return path.join(os.homedir(), ".nuwa-cli");
@@ -72,14 +73,11 @@ export function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-/** Atomic write: write to a temp file in the same dir, then rename over the target. */
 export function writeFileAtomic(
   filePath: string,
   data: string,
   mode?: number,
 ): void {
   ensureDir(path.dirname(filePath));
-  const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmpPath, data, { mode });
-  fs.renameSync(tmpPath, filePath);
+  writeAtomicLib.sync(filePath, data, mode !== undefined ? { mode } : {});
 }

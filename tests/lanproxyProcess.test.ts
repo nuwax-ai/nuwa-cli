@@ -18,6 +18,14 @@ vi.mock("node:child_process", () => ({
 vi.mock("../src/core/processes/processRegistry.js", () => ({
   registerProcess: (...args: unknown[]) => mocks.register(...args),
   unregisterProcess: (...args: unknown[]) => mocks.unregister(...args),
+  isPidAlive: (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (err) {
+      return (err as NodeJS.ErrnoException).code === "EPERM";
+    }
+  },
 }));
 
 describe("startLanproxy", () => {

@@ -2,19 +2,23 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   spawnSync: vi.fn(),
+  whichSync: vi.fn(),
 }));
 
 vi.mock("node:child_process", () => ({
   spawnSync: mocks.spawnSync,
 }));
 
+vi.mock("which", () => ({
+  default: { sync: mocks.whichSync },
+}));
+
 describe("update command", () => {
   beforeEach(() => {
     mocks.spawnSync.mockReset();
-    mocks.spawnSync.mockImplementation((command: string, args: string[]) => {
-      if (command === "which") return { status: 0, stdout: `${args[0]}\n` };
-      return { status: 0, stdout: "" };
-    });
+    mocks.spawnSync.mockImplementation(() => ({ status: 0, stdout: "" }));
+    mocks.whichSync.mockReset();
+    mocks.whichSync.mockReturnValue("npm");
   });
 
   afterEach(() => {
@@ -112,13 +116,9 @@ describe("update command", () => {
       value: "win32",
       configurable: true,
     });
+    mocks.whichSync.mockReturnValue("C:\\nodejs\\npm.cmd");
     mocks.spawnSync.mockReset();
-    mocks.spawnSync.mockImplementation((command: string) => {
-      if (command === "where") {
-        return { status: 0, stdout: "C:\\nodejs\\npm.cmd\r\n" };
-      }
-      return { status: 0, stdout: "" };
-    });
+    mocks.spawnSync.mockImplementation(() => ({ status: 0, stdout: "" }));
     vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       const { updateCommand } = await import("../src/commands/update.js");

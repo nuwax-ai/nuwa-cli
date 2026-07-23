@@ -4,6 +4,7 @@ import { buildCliChildEnv } from "../env/inheritEnv.js";
 import {
   registerProcess,
   unregisterProcess,
+  isPidAlive,
 } from "../processes/processRegistry.js";
 import {
   resolveDefaultLanproxyBinary,
@@ -124,20 +125,12 @@ export async function confirmLanproxyHealthy(
   signal?: AbortSignal,
 ): Promise<boolean> {
   if (!pid || signal?.aborted) return false;
-  const isAlive = (p: number): boolean => {
-    try {
-      process.kill(p, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  if (!isAlive(pid)) return false;
+  if (!isPidAlive(pid)) return false;
   if (stabilizeMs > 0) {
     await delay(stabilizeMs, signal);
   }
   if (signal?.aborted) return false;
-  return isAlive(pid);
+  return isPidAlive(pid);
 }
 
 /**

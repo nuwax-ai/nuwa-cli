@@ -192,4 +192,8 @@ export async function uiCommand(options: UiCommandOptions): Promise<void> {
   };
   process.once("SIGINT", () => void shutdown("SIGINT"));
   process.once("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("exit", () => {
+    if (shuttingDown) return;
+    releaseUiSingleton();
+  });
 }

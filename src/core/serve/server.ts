@@ -854,6 +854,20 @@ export function startServeHttp(options: ServeOptions): {
     sendJson(res, 404, httpError("NOT_FOUND", "not found"));
   });
 
+  const stop = async (): Promise<void> => {
+    debugLog("serve.http", "stopping");
+    await hub.stopAll().catch(() => {});
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    clearServeLock(process.pid);
+    debugLog("serve.http", "stopped");
+  };
+
+  server.on("error", (err) => {
+    console.error(`[nuwa-cli] Serve server error: ${(err as Error).message}`);
+    void stop();
+  });
+
   server.listen(options.port, options.host);
 
   // Write a pid/port/host lock on listen so `status` can report a running
@@ -886,18 +900,6 @@ export function startServeHttp(options: ServeOptions): {
         acceptedSecretCount: acceptedSecrets.size,
       });
     },
-    stop: async () => {
-      debugLog("serve.http", "stopping");
-      // Tear down every active engine session first so their child processes
-      // don't outlive the server, then close the HTTP server.
-      // closeAllConnections() is what lets server.close(cb) actually fire —
-      // otherwise a lingering SSE stream or keepalive socket keeps cb pending
-      // forever and shutdown hangs.
-      await hub.stopAll().catch(() => {});
-      server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-      clearServeLock(process.pid);
-      debugLog("serve.http", "stopped");
-    },
+    stop,
   };
 }
