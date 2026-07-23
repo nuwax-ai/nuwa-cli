@@ -10,6 +10,10 @@
  * leak from *this* process into the spawned engine.
  */
 
+import * as os from "node:os";
+import * as path from "node:path";
+import { ensureDir } from "../../util/paths.js";
+
 /** Overlay values only ever come from an explicit user flag/config entry — never a default. */
 export type ModelProtocol = "anthropic" | "openai";
 
@@ -89,6 +93,21 @@ export function buildEngineEnv(
     }
     if (overlay.baseUrl) env.ANTHROPIC_BASE_URL = overlay.baseUrl;
     if (overlay.model) env.ANTHROPIC_MODEL = overlay.model;
+    // claude-code's ~/.claude/settings.json has an `env` block whose
+    // priority is HIGHER than the process environment. If the user has
+    // a different provider configured there (e.g. kimi), it overrides
+    // our overlay and causes 401. When an explicit overlay is provided
+    // we isolate claude-code into a clean config dir so only our env
+    // vars take effect.
+    if (overlay.apiKey || overlay.baseUrl || overlay.model) {
+      const isolatedDir = path.join(
+        os.homedir(),
+        ".nuwa-cli",
+        "claude-config",
+      );
+      ensureDir(isolatedDir);
+      env.CLAUDE_CONFIG_DIR = isolatedDir;
+    }
   } else {
     // codex: set OPENAI_API_KEY + OPENAI_BASE_URL so codex uses the
     // openai-compatible provider instead of ChatGPT auth.

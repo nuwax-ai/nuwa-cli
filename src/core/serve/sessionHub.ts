@@ -407,7 +407,19 @@ export class SessionHub {
                 timestamp: new Date().toISOString(),
               });
               try {
-                const result = await handle.prompt(prompt);
+                // Prompt timeout: if the engine hangs (e.g. MCP server init
+                // blocks, or API is unreachable), don't make the user wait
+                // forever. 5 minutes is generous for long tool chains.
+                const PROMPT_TIMEOUT_MS = 5 * 60 * 1000;
+                const result = await Promise.race([
+                  handle.prompt(prompt),
+                  new Promise<never>((_, reject) =>
+                    setTimeout(
+                      () => reject(new Error("引擎响应超时（5 分钟无输出）")),
+                      PROMPT_TIMEOUT_MS,
+                    ),
+                  ),
+                ]);
                 this.broadcast(sessionId, "end_turn", {
                   sessionId,
                   acpSessionId: handle.sessionId,

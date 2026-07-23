@@ -1,24 +1,40 @@
 import pc from "picocolors";
 import { gatewayCommand } from "./gateway.js";
 import { uiCommand } from "./ui.js";
+import { findServeProcessIds } from "../core/processes/serveSingleton.js";
+import { findUiProcessIds } from "../core/processes/uiSingleton.js";
+import { stopProcessIds } from "../core/processes/processRegistry.js";
+import { debugLog } from "../core/debugLog.js";
 
 export interface RestartCommandOptions {
-  /**
-   * 为 true 时额外强制重启前台 Console；默认只强制重启 Gateway（daemon）。
-   */
   all?: boolean;
   engine?: string;
   open?: boolean;
 }
 
-/**
- * 强制重启本地运行环境：默认只重启 Gateway daemon；
- * 传入 --all 时再强制重启前台 Console。
- */
 export async function restartCommand(
   options: RestartCommandOptions,
 ): Promise<void> {
   const includeConsole = options.all === true;
+
+  // Kill ALL existing serve + console processes for a clean restart.
+  console.log(pc.dim("正在清理所有已运行的 Gateway / Console 进程..."));
+  const servePids = findServeProcessIds(0); // 0 = don't exclude self
+  const uiPids = findUiProcessIds();
+  const allPids = [...servePids, ...uiPids].filter(
+    (pid) => pid !== process.pid,
+  );
+  if (allPids.length > 0) {
+    debugLog("restart.command", "killing existing processes", {
+      pids: allPids,
+    });
+    await stopProcessIds(allPids);
+    // Give OS a moment to release ports.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    console.log(pc.green(`已停止 ${allPids.length} 个旧进程。`));
+  } else {
+    console.log(pc.dim("没有需要清理的旧进程。"));
+  }
 
   console.log(pc.dim("正在强制重启 Gateway Server..."));
   await gatewayCommand({
@@ -29,11 +45,7 @@ export async function restartCommand(
 
   if (process.exitCode && process.exitCode !== 0) {
     console.error(
-      pc.red(
-        includeConsole
-          ? "[nuwa-cli] Gateway 重启失败，已取消 Console 重启，避免进入部分可用状态。"
-          : "[nuwa-cli] Gateway 重启失败。",
-      ),
+      pc.red("[nuwa-cli] Gateway 重启失败。"),
     );
     return;
   }
