@@ -30,12 +30,20 @@ await esbuild.build({
     __NUWACLI_VERSION__: JSON.stringify(pkg.version),
     __NUWACLI_DIST_TAG__: JSON.stringify(pkg.publishConfig?.tag || "latest"),
   },
-  // node-machine-id does a runtime `require("child_process")` inside its own
-  // CJS module body to shell out to platform-specific commands; esbuild's
-  // CJS-in-ESM interop shim can't resolve that dynamically at bundle time
-  // ("Dynamic require of child_process is not supported"). Leave it external
-  // so Node's real module loader resolves it at runtime instead.
-  external: ["node-machine-id", "@nuwax-ai/lanproxy"],
+  // These are CJS packages that do runtime `require("node:*")` inside their
+  // own module bodies (node-machine-id -> child_process; which -> isexe ->
+  // node:fs; write-file-atomic -> signal-exit). esbuild's CJS-in-ESM interop
+  // shim can't resolve those dynamically at bundle time ("Dynamic require of X
+  // is not supported"), so a bundled copy crashes at runtime. Keep them
+  // external and let Node's real loader resolve them from node_modules at
+  // runtime. All three are runtime dependencies, so `npm install -g` provides
+  // them alongside the tarball.
+  external: [
+    "node-machine-id",
+    "@nuwax-ai/lanproxy",
+    "which",
+    "write-file-atomic",
+  ],
   // Inline the local UI's single-page HTML as a string at build time, so the
   // `ui` server can serve it with no asset pipeline or runtime file reads.
   loader: { ".html": "text" },

@@ -21,7 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- 跨平台一键安装脚本 `scripts/install.sh`(macOS/Linux)与 `scripts/install.ps1`(Windows):自动执行 `npm install -g` + 配置 PATH(Windows 写用户级注册表、Unix 写 shell rc)+ 版本/可用性校验,幂等可重复运行;README 提供一行安装命令。
+- **Nuwax S3 分发**:`scripts/publish-s3.sh` 把 npm tarball + 安装器发布到 `s3.nuwax.com:9443`(`nuwax-packages` 桶,`agent-engines/nuwa-cli` 前缀),维护 `channels/{stable,beta}.json` 指针与 `latest.json`,并覆盖 prefix 根的 bootstrap 安装器;凭证只从环境 / `~/.aws` profile 读取(`.env` 已 gitignore)。详见 [`docs/distribution-s3.md`](docs/distribution-s3.md)。
+- `scripts/install-from-s3.sh`(macOS/Linux)与 `scripts/install-from-s3.ps1`(Windows):从公开 S3 读 channel 指针 → 下载 tarball → `npm install -g` → 配置 PATH;零凭证(公开读)、无需 aws-cli、自签证书自动降级 `-k`;支持 `NUWACLI_CHANNEL` / `NUWACLI_VERSION` / `NUWACLI_REGISTRY`。
+- 跨平台一键安装脚本 `scripts/install.sh`(macOS/Linux)与 `scripts/install.ps1`(Windows,走 npm registry):自动 `npm install -g` + 配置 PATH(Windows 写用户级注册表、Unix 写 shell rc)+ 校验,幂等;支持 `NUWACLI_REGISTRY` 镜像透传。
+- README(中英)安装段以 S3 一键命令为主(国内可达、无需 npm 登录),npm registry / jsDelivr 作为备选。
 
 ## [0.1.0-beta.2] - 2026-07-23
 
