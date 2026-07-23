@@ -23,6 +23,7 @@ import {
   type SessionHandle,
 } from "../acp/sessionHandle.js";
 import { applySessionMode } from "../acp/sessionMode.js";
+import { debugLog } from "../debugLog.js";
 import { modelFromConfigOptions } from "../ui/modelInfo.js";
 import type { LocalSessionSummary } from "../sessions/discovery.js";
 import type { PermissionMode } from "../permissions/policy.js";
@@ -334,6 +335,49 @@ export class SessionHub {
           async (ctx) => {
             const handle = await connect(ctx);
             this.setReady(session, { ok: true });
+
+            // Apply downstream model overlay via ACP configOption so the engine
+            // uses the model the cloud sent, not the local config.toml default.
+            if (
+              session.modelOverlay?.model &&
+              session.configOptions &&
+              session.engine === "codex"
+            ) {
+              const modelOption = session.configOptions.find(
+                (o) =>
+                  (o as { category?: string }).category === "model" ||
+                  (o as { category?: string }).category === "model_config",
+              );
+              if (modelOption) {
+                const optionId = (modelOption as { id?: string }).id;
+                if (optionId) {
+                  try {
+                    const next = await ctx.request(
+                      AGENT_METHODS.session_set_config_option,
+                      {
+                        sessionId: handle.sessionId,
+                        configId: optionId,
+                        value: session.modelOverlay.model,
+                      },
+                    );
+                    session.configOptions =
+                      (next as { configOptions?: SessionConfigOption[] })
+                        .configOptions ?? session.configOptions;
+                    debugLog("serve.chat", "model overlay applied", {
+                      sessionId,
+                      model: session.modelOverlay.model,
+                      configId: optionId,
+                    });
+                  } catch (err) {
+                    debugLog("serve.chat", "model overlay failed", {
+                      sessionId,
+                      error: (err as Error).message,
+                    });
+                  }
+                }
+              }
+            }
+
             const appliedMode = await applySessionMode(
               ctx,
               { sessionId: handle.sessionId, modes: session.modes },

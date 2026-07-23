@@ -70,6 +70,7 @@ describe("fileServer", () => {
         }),
         stdio: "ignore",
         detached: true,
+        windowsHide: true,
       },
     );
     expect(mocks.ensureDir).toHaveBeenCalledWith(

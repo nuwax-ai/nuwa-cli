@@ -73,6 +73,11 @@ info "下载 $TARBALL ..."
 fetch "$base/versions/$VERSION/artifacts/$TARBALL" "$TMP/$TARBALL" || fail "tarball 下载失败: $base/versions/$VERSION/artifacts/$TARBALL"
 ok "下载完成"
 
+# Stop running lanproxy so its binary isn't locked (npm EPERM on Windows).
+if [ "$(uname -s 2>/dev/null)" != "Darwin" ] && command -v taskkill >/dev/null 2>&1; then
+  taskkill //F //IM nuwax-lanproxy.exe >/dev/null 2>&1 || true
+fi
+
 # --- npm install -g <tarball> (deps resolved via npm registry) ---
 REGISTRY="${NUWACLI_REGISTRY:-}"
 INSTALL_ARGS=(install -g "$TMP/$TARBALL")

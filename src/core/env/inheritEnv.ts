@@ -87,9 +87,29 @@ export function buildEngineEnv(
     if (overlay.baseUrl) env.ANTHROPIC_BASE_URL = overlay.baseUrl;
     if (overlay.model) env.ANTHROPIC_MODEL = overlay.model;
   } else {
-    if (overlay.apiKey) env.CODEX_API_KEY = overlay.apiKey;
-    if (overlay.baseUrl) env.CODEX_BASE_URL = overlay.baseUrl;
-    if (overlay.model) env.CODEX_MODEL = overlay.model;
+    // codex: when the downstream sends an OpenAI-protocol model, we must:
+    // 1. Set OPENAI_API_KEY + OPENAI_BASE_URL so codex's built-in openai
+    //    provider picks them up (codex checks OPENAI_API_KEY before its own
+    //    ChatGPT auth).
+    // 2. Prefix the model with "openai-compatible/" so codex routes the
+    //    request through its openai-compatible provider instead of the
+    //    ChatGPT subscription auth. Without this prefix codex keeps using
+    //    config.toml's model + ChatGPT auth, ignoring the overlay.
+    if (overlay.apiKey) {
+      env.OPENAI_API_KEY = overlay.apiKey;
+      env.CODEX_API_KEY = overlay.apiKey;
+    }
+    if (overlay.baseUrl) {
+      env.OPENAI_BASE_URL = overlay.baseUrl;
+      env.CODEX_BASE_URL = overlay.baseUrl;
+    }
+    if (overlay.model) {
+      const model = overlay.model;
+      const isOpenAICompat = overlay.protocol === "openai";
+      env.CODEX_MODEL = isOpenAICompat && !model.includes("/")
+        ? `openai-compatible/${model}`
+        : model;
+    }
   }
   return env;
 }

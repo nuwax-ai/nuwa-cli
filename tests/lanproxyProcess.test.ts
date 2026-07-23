@@ -77,6 +77,7 @@ describe("startLanproxy", () => {
       {
         env: expect.not.objectContaining({ NUWAX_SAVED_KEY: "electron-key" }),
         stdio: "ignore",
+        windowsHide: true,
       },
     );
     expect(mocks.register).toHaveBeenCalledWith(

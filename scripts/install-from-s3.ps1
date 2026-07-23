@@ -78,6 +78,10 @@ $tarballPath = Join-Path $tmpDir $tarball
 try { Fetch "$base/versions/$version/artifacts/$tarball" $tarballPath } catch { Fail "Tarball download failed: $base/versions/$version/artifacts/$tarball" }
 Ok "Download complete"
 
+# --- Stop running lanproxy (its .exe is locked by a live process and blocks
+#     npm's temp-dir cleanup with EPERM on Windows) ---
+Get-Process -Name "nuwax-lanproxy" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
 # --- npm install -g <tarball> (deps resolved via npm registry) ---
 $registry = $env:NUWACLI_REGISTRY
 $installArgs = @("install", "-g", $tarballPath)

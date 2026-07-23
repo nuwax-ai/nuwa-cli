@@ -15,6 +15,7 @@ import type { PermissionMode } from "../permissions/policy.js";
 import { decidePermission } from "../permissions/policy.js";
 import type { PermissionCoordinator } from "../permissions/coordinator.js";
 import { CLI_VERSION } from "../version.js";
+import { debugLog } from "../debugLog.js";
 
 export interface SpawnTarget {
   command: string;
