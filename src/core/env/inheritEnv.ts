@@ -83,7 +83,10 @@ export function buildEngineEnv(
   if (!overlay) return env;
 
   if (engine === "claude") {
-    if (overlay.apiKey) env.ANTHROPIC_API_KEY = overlay.apiKey;
+    if (overlay.apiKey) {
+      env.ANTHROPIC_API_KEY = overlay.apiKey;
+      env.ANTHROPIC_AUTH_TOKEN = overlay.apiKey;
+    }
     if (overlay.baseUrl) env.ANTHROPIC_BASE_URL = overlay.baseUrl;
     if (overlay.model) env.ANTHROPIC_MODEL = overlay.model;
   } else {
