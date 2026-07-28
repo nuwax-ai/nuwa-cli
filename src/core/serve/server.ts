@@ -134,14 +134,32 @@ function resolveChatCwd(
   }
 
   if (projectKey) {
-    const userId =
-      textField(body, "user_id", "userId") ?? "unknown";
-    const cwd = path.join(
-      path.resolve(defaultCwd),
-      "computer-project-workspace",
-      workspaceSegment(userId, "unknown"),
-      workspaceSegment(projectKey, "default"),
+    const root = path.resolve(defaultCwd);
+    const userSegment = workspaceSegment(
+      textField(body, "user_id", "userId") ?? "unknown",
+      "unknown",
     );
+    const projectSegment = workspaceSegment(projectKey, "default");
+    const cwd = path.join(root, userSegment, projectSegment);
+    const beta14Cwd = path.join(
+      root,
+      "computer-project-workspace",
+      userSegment,
+      projectSegment,
+    );
+    if (!fs.existsSync(cwd) && fs.existsSync(beta14Cwd)) {
+      ensureDir(path.dirname(cwd));
+      try {
+        fs.renameSync(beta14Cwd, cwd);
+      } catch {
+        fs.cpSync(beta14Cwd, cwd, { recursive: true });
+        fs.rmSync(beta14Cwd, { recursive: true, force: true });
+      }
+      debugLog("serve.chat", "migrated beta.14 workspace", {
+        from: beta14Cwd,
+        to: cwd,
+      });
+    }
     ensureDir(cwd);
     return { ok: true, cwd, projectKey };
   }
@@ -288,18 +306,10 @@ export function startServeHttp(options: ServeOptions): {
           });
 
           const session = existingId ? hub.getSession(existingId) : undefined;
-          if (existingId && !session) {
-            debugLog("serve.chat", "session not found", { existingId });
-            sendJson(
-              res,
-              404,
-              httpError(
-                "ERR_SESSION_NOT_FOUND",
-                `session ${existingId} not found`,
-              ),
-            );
-            return;
-          }
+          if (existingId && !session)
+            debugLog("serve.chat", "restoring logical session", {
+              existingId,
+            });
           const downstream = parseDownstreamSessionConfig(body);
           debugLog("serve.chat", "runtime config resolved", {
             existingId,
@@ -319,18 +329,22 @@ export function startServeHttp(options: ServeOptions): {
               )
             : hub.startSession(
                 downstream.engine,
-              cwdResult.cwd,
-              {
-                userId,
-                projectId: cwdResult.projectKey ?? projectId,
-              },
+                cwdResult.cwd,
+                {
+                  userId,
+                  projectId: cwdResult.projectKey ?? projectId,
+                },
                 downstream,
+                existingId,
               );
           if (!target) {
             sendJson(
               res,
               404,
-              httpError("ERR_SESSION_NOT_FOUND", `session ${existingId} not found`),
+              httpError(
+                "ERR_SESSION_NOT_FOUND",
+                `session ${existingId} not found`,
+              ),
             );
             return;
           }

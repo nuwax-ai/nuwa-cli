@@ -21,10 +21,6 @@ export function buildFileServerEnv(
   const dir = path.join(tmpDir(), `file-server-${port}`);
   const workspaceBase = path.resolve(baseWorkspaceDir);
   const projectSourceDir = path.join(workspaceBase, "project_workspace");
-  const computerWorkspaceDir = path.join(
-    workspaceBase,
-    "computer-project-workspace",
-  );
   const uploadProjectDir = path.join(tmpDir(), "file-server-project-zips");
   const distTargetDir = path.join(tmpDir(), "file-server-dist");
   const projectLogDir = path.join(logsDir(), "file-server", "project_logs");
@@ -32,7 +28,6 @@ export function buildFileServerEnv(
   ensureDir(dir);
   ensureDir(workspaceBase);
   ensureDir(projectSourceDir);
-  ensureDir(computerWorkspaceDir);
   ensureDir(uploadProjectDir);
   ensureDir(distTargetDir);
   ensureDir(projectLogDir);
@@ -41,7 +36,7 @@ export function buildFileServerEnv(
     TMPDIR: dir,
     TMP: dir,
     TEMP: dir,
-    COMPUTER_WORKSPACE_DIR: computerWorkspaceDir,
+    COMPUTER_WORKSPACE_DIR: workspaceBase,
     PROJECT_SOURCE_DIR: projectSourceDir,
     UPLOAD_PROJECT_DIR: uploadProjectDir,
     DIST_TARGET_DIR: distTargetDir,

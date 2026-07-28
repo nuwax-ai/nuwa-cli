@@ -257,8 +257,9 @@ export class SessionHub {
     cwd: string,
     metadata: { userId?: string; projectId?: string } | undefined,
     runtime: SessionRuntimeOptions | undefined,
+    requestedSessionId?: string,
   ): ManagedSession {
-    const sessionId = crypto.randomUUID();
+    const sessionId = requestedSessionId ?? crypto.randomUUID();
     let readyResolve!: (v: Readiness) => void;
     const ready = new Promise<Readiness>((resolve) => {
       readyResolve = resolve;
@@ -684,8 +685,15 @@ export class SessionHub {
     cwd: string,
     metadata?: { userId?: string; projectId?: string },
     runtime?: SessionRuntimeOptions,
+    requestedSessionId?: string,
   ): ManagedSession {
-    const session = this.createManagedSession(engineId, cwd, metadata, runtime);
+    const session = this.createManagedSession(
+      engineId,
+      cwd,
+      metadata,
+      runtime,
+      requestedSessionId,
+    );
     this.sessions.set(session.sessionId, session);
     this.spawnRunner(session, async (ctx) => {
       // Read modes/configOptions off the raw ActiveSession before wrapping —

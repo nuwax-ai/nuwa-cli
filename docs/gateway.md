@@ -241,7 +241,7 @@ nuwa-cli serve --tunnel --engine <selected-engine>
 - credentials：`~/.nuwa-cli/credentials.json`
 - serve lock：`~/.nuwa-cli/serve.lock`
 - logs：`~/.nuwa-cli/logs`
-- 默认工作空间根目录：`~/.nuwa-cli/workspaces`；云端会话优先使用 `agent_work_dir`，并映射到 `~/.nuwa-cli/workspaces/computer-project-workspace/<user_id>/<agent_work_dir>`，缺少时再回退到 `project_id` / `session_id`。该布局与 `nuwax-file-server` 的文件列表、预览、上传和打包接口一致。传 `--cwd <dir>` 时，`<dir>` 就是当前项目目录本身，不会再追加这些层级。
+- 默认工作空间根目录：`~/.nuwa-cli/workspaces`；云端会话优先使用 `agent_work_dir`，并映射到 `~/.nuwa-cli/workspaces/<user_id>/<agent_work_dir>`，缺少时再回退到 `project_id` / `session_id`。该布局与 `nuwax-file-server` 的文件列表、预览、上传和打包接口一致。传 `--cwd <dir>` 时，`<dir>` 就是当前项目目录本身，不会再追加这些层级。
 - file-server PID/lock 临时目录：`~/.nuwa-cli/tmp/file-server-<port>`
 - agentPort 默认优先 `60016`，占用时自动后移。
 - fileServerPort 默认优先 `60015`，占用时自动后移。

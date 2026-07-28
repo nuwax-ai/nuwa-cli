@@ -108,7 +108,7 @@ nuwa-cli serve --port 60016
 云端会话生成的本地文件位于：
 
 ```text
-~/.nuwa-cli/workspaces/computer-project-workspace/<user_id>/<agent_work_dir>/
+~/.nuwa-cli/workspaces/<user_id>/<agent_work_dir>/
 ```
 
 运行 `nuwa-cli status` 可查看“我的电脑”名称和服务状态。

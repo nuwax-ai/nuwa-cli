@@ -108,7 +108,7 @@ Accepts NuwaClaw-compatible `model_provider` / `agent_config` / `context_servers
 Cloud-session files are stored under:
 
 ```text
-~/.nuwa-cli/workspaces/computer-project-workspace/<user_id>/<agent_work_dir>/
+~/.nuwa-cli/workspaces/<user_id>/<agent_work_dir>/
 ```
 
 Use `nuwa-cli status` to view the registered computer name and service state.

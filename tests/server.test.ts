@@ -46,7 +46,6 @@ describe("serve HTTP server", () => {
   const workspaceProject = "nuwa-cli-test-project-id";
   const workspacePath = path.join(
     serverCwd,
-    "computer-project-workspace",
     workspaceUser,
     agentWorkDir,
   );
@@ -215,6 +214,43 @@ describe("serve HTTP server", () => {
     expect(fs.existsSync(workspacePath)).toBe(true);
   });
 
+  it("migrates the beta.14 workspace layout back to the file-server-compatible path", async () => {
+    const migrationWorkDir = "beta14-migration-workdir";
+    const beta14Path = path.join(
+      serverCwd,
+      "computer-project-workspace",
+      workspaceUser,
+      migrationWorkDir,
+    );
+    const canonicalPath = path.join(
+      serverCwd,
+      workspaceUser,
+      migrationWorkDir,
+    );
+    fs.rmSync(canonicalPath, { recursive: true, force: true });
+    fs.mkdirSync(beta14Path, { recursive: true });
+    fs.writeFileSync(path.join(beta14Path, "generated.txt"), "keep me");
+
+    const res = await fetch(url("/computer/chat"), {
+      method: "POST",
+      headers: {
+        "X-Nuwax-Internal-Secret": handle.secret,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        prompt: "hi",
+        user_id: workspaceUser,
+        agent_work_dir: migrationWorkDir,
+      }),
+    });
+
+    expect(res.status).toBe(502);
+    expect(fs.readFileSync(path.join(canonicalPath, "generated.txt"), "utf8")).toBe(
+      "keep me",
+    );
+    expect(fs.existsSync(beta14Path)).toBe(false);
+  });
+
   it("uses an explicitly configured cwd as the project directory itself", async () => {
     const projectDir = path.join(serverCwd, "explicit-project-dir");
     fs.mkdirSync(projectDir, { recursive: true });
@@ -271,6 +307,32 @@ describe("serve HTTP server", () => {
       code: "0000",
       data: { sessions: [] },
       sessions: [],
+    });
+  });
+
+  it("recreates a logical session after Gateway restart instead of returning 404", async () => {
+    const res = await fetch(url("/computer/chat"), {
+      method: "POST",
+      headers: {
+        "X-Nuwax-Internal-Secret": handle.secret,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        prompt: "continue after restart",
+        session_id: "276a9b1c-3d89-4081-8981-b0d5b5a6afc4",
+        user_id: workspaceUser,
+        agent_work_dir: agentWorkDir,
+        project_id: workspaceProject,
+      }),
+    });
+
+    // Engine resolution is intentionally mocked to fail in this suite. The
+    // important regression signal is that the stale public session id reaches
+    // engine startup rather than being rejected as ERR_SESSION_NOT_FOUND.
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({
+      code: "ENGINE_START_FAILED",
+      success: false,
     });
   });
 

@@ -61,8 +61,7 @@ describe("fileServer", () => {
           TMPDIR: "/tmp/nuwa-cli-test/file-server-60015",
           TMP: "/tmp/nuwa-cli-test/file-server-60015",
           TEMP: "/tmp/nuwa-cli-test/file-server-60015",
-          COMPUTER_WORKSPACE_DIR:
-            "/tmp/nuwa-cli-workspaces/computer-project-workspace",
+          COMPUTER_WORKSPACE_DIR: "/tmp/nuwa-cli-workspaces",
           PROJECT_SOURCE_DIR: "/tmp/nuwa-cli-workspaces/project_workspace",
           UPLOAD_PROJECT_DIR: "/tmp/nuwa-cli-test/file-server-project-zips",
           DIST_TARGET_DIR: "/tmp/nuwa-cli-test/file-server-dist",
@@ -78,9 +77,6 @@ describe("fileServer", () => {
       "/tmp/nuwa-cli-test/file-server-60015",
     );
     expect(mocks.ensureDir).toHaveBeenCalledWith("/tmp/nuwa-cli-workspaces");
-    expect(mocks.ensureDir).toHaveBeenCalledWith(
-      "/tmp/nuwa-cli-workspaces/computer-project-workspace",
-    );
     expect(mocks.unref).toHaveBeenCalled();
   });
 
@@ -97,8 +93,7 @@ describe("fileServer", () => {
           TMPDIR: "/tmp/nuwa-cli-test/file-server-60015",
           TMP: "/tmp/nuwa-cli-test/file-server-60015",
           TEMP: "/tmp/nuwa-cli-test/file-server-60015",
-          COMPUTER_WORKSPACE_DIR:
-            "/tmp/nuwa-cli-workspaces/computer-project-workspace",
+          COMPUTER_WORKSPACE_DIR: "/tmp/nuwa-cli-workspaces",
         }),
         stdio: "ignore",
       },

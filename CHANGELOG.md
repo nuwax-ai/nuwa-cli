@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ACP permission guardrails aligned with NuwaClaw: `PermissionCoordinator`, SSE `acpRequestPermission`, real `POST /computer/notify-resolved`, and pluggable sensitive classifiers (first: local session history). `--approve` now accepts `auto|ask|deny`. See [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).
 - `/computer/local-sessions/list|read` and `/computer/sensitive-access/await` for consented local-session export; non-TTY `context`/`sessions` CLI paths go through the same bus.
 
+## [0.1.0-beta.15] - 2026-07-28
+
+### Fixed
+
+- Recreate an in-memory logical session with the cloud-provided `session_id` after Gateway restart instead of rejecting the first continued message with `ERR_SESSION_NOT_FOUND` / SSE 404.
+- Restore the established file-server workspace layout at `<workspace>/<user_id>/<agent_work_dir>`. Automatically migrate files created under beta.14's accidental extra `computer-project-workspace` directory.
+
 ## [0.1.0-beta.14] - 2026-07-28
 
 ### Fixed
