@@ -378,15 +378,15 @@ export class SessionHub {
                 data: notification.update,
                 timestamp: new Date().toISOString(),
               };
-              // Cloud/Electron compatibility: SSE event names are the ACP
-              // update subtype (`tool_call`, `agent_message_chunk`, ...).
-              // Keep the aggregate event for the bundled local Console.
+              // SSE event name is the ACP update subtype (`agent_message_chunk`,
+              // `tool_call`, ...). Do NOT also emit an `agent_session_update`
+              // aggregate with the same payload — clients that consume both
+              // (e.g. codex via serve) render the text twice (叠词).
               this.broadcast(
                 sessionId,
                 notification.update.sessionUpdate,
                 message,
               );
-              this.broadcast(sessionId, "agent_session_update", message);
             },
           },
           async (ctx) => {
