@@ -19,9 +19,52 @@ fi
 ok()   { printf "%s[OK]%s %s\n" "$GREEN" "$NC" "$1"; }
 warn() { printf "%s[!]%s  %s\n" "$YELLOW" "$NC" "$1" >&2; }
 info() { printf "%s->%s %s\n" "$CYAN" "$NC" "$1"; }
+step() { printf "%s[%s/%s]%s %s\n" "$CYAN" "$1" "$2" "$NC" "$3"; }
 fail() { printf "%s[X]%s  %s\n" "$RED" "$NC" "$1" >&2; exit 1; }
 
+progress_bar() {
+  local percent="$1" label="$2" width=30 filled empty bar
+  if [ ! -t 1 ] && [ "${LAST_PROGRESS_PERCENT:-}" = "$percent" ]; then return; fi
+  LAST_PROGRESS_PERCENT="$percent"
+  filled=$((percent * width / 100))
+  empty=$((width - filled))
+  printf -v bar '%*s' "$filled" ''
+  bar="${bar// /#}"
+  printf -v empty '%*s' "$empty" ''
+  if [ -t 1 ]; then
+    printf '\r[%s%s] %3d%% %s' "$bar" "$empty" "$percent" "$label"
+  else
+    printf '[%s%s] %3d%% %s\n' "$bar" "$empty" "$percent" "$label"
+  fi
+}
+
+run_npm_with_progress() {
+  local start_percent="$1"; shift
+  local log_file started pid elapsed percent status
+  log_file="$(mktemp)"
+  started=$SECONDS
+  npm "$@" >"$log_file" 2>&1 &
+  pid=$!
+
+  while kill -0 "$pid" 2>/dev/null; do
+    elapsed=$((SECONDS - started))
+    percent=$((start_percent + (95 - start_percent) * elapsed / (elapsed + 20)))
+    progress_bar "$percent" "正在下载并安装依赖（估算）"
+    sleep 0.5
+  done
+
+  if wait "$pid"; then status=0; else status=$?; fi
+  progress_bar 100 "依赖安装完成"
+  printf '\n'
+  if [ "$status" -ne 0 ]; then
+    cat "$log_file" >&2
+  fi
+  rm -f "$log_file"
+  return "$status"
+}
+
 # --- Node/npm check ---
+step 1 3 "检查 Node.js 与 npm ..."
 command -v node >/dev/null 2>&1 || fail "未检测到 Node.js。请先安装 Node.js 22+: https://nodejs.org/"
 NODE_MAJOR="$(node -p "process.versions.node.split('.')[0]" 2>/dev/null || echo 0)"
 [ "$NODE_MAJOR" -ge 22 ] || fail "Node.js 版本过低 (当前 $(node -v),需要 22+): https://nodejs.org/"
@@ -31,15 +74,18 @@ command -v npm >/dev/null 2>&1 || fail "未检测到 npm。请用 Node.js 官方
 
 # --- Install ---
 REGISTRY="${NUWACLI_REGISTRY:-}"
-INSTALL_ARGS=(install -g "${PACKAGE}@${TAG}")
+INSTALL_ARGS=(install -g "${PACKAGE}@${TAG}" --progress=true)
 [ -n "$REGISTRY" ] && INSTALL_ARGS+=(--registry "$REGISTRY")
-info "安装 ${PACKAGE}@${TAG}${REGISTRY:+ via $REGISTRY} ..."
-if ! npm "${INSTALL_ARGS[@]}"; then
+step 2 3 "安装 ${PACKAGE}@${TAG}${REGISTRY:+ via $REGISTRY} ..."
+info "正在下载并解压引擎依赖，首次安装可能需要几分钟。"
+INSTALL_STARTED=$SECONDS
+if ! run_npm_with_progress 35 "${INSTALL_ARGS[@]}"; then
   fail "npm 安装失败。$( [ "$(id -u)" -ne 0 ] && echo "权限不足可加 sudo,或 npm config set prefix ~/.npm-global; " )国内网络可设镜像重试: NUWACLI_REGISTRY=https://registry.npmmirror.com"
 fi
-ok "安装完成"
+ok "依赖安装完成，耗时 $((SECONDS - INSTALL_STARTED)) 秒"
 
 # --- Resolve npm global bin directory ---
+step 3 3 "配置 PATH 并验证 nuwa-cli ..."
 PREFIX="$(npm config get prefix 2>/dev/null || true)"
 [ -n "$PREFIX" ] || fail "无法获取 npm 全局目录 (npm config get prefix)。"
 # npm prefix is usually the install root; the shims live in $PREFIX/bin.

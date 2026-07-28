@@ -27,7 +27,48 @@ fi
 ok()   { printf "%s[OK]%s %s\n" "$GREEN" "$NC" "$1"; }
 warn() { printf "%s[!]%s  %s\n" "$YELLOW" "$NC" "$1" >&2; }
 info() { printf "%s->%s %s\n" "$CYAN" "$NC" "$1"; }
+step() { printf "%s[%s/%s]%s %s\n" "$CYAN" "$1" "$2" "$NC" "$3"; }
 fail() { printf "%s[X]%s  %s\n" "$RED" "$NC" "$1" >&2; exit 1; }
+
+progress_bar() {
+  local percent="$1" label="$2" width=30 filled empty bar
+  if [ ! -t 1 ] && [ "${LAST_PROGRESS_PERCENT:-}" = "$percent" ]; then return; fi
+  LAST_PROGRESS_PERCENT="$percent"
+  filled=$((percent * width / 100))
+  empty=$((width - filled))
+  printf -v bar '%*s' "$filled" ''
+  bar="${bar// /#}"
+  printf -v empty '%*s' "$empty" ''
+  if [ -t 1 ]; then
+    printf '\r[%s%s] %3d%% %s' "$bar" "$empty" "$percent" "$label"
+  else
+    printf '[%s%s] %3d%% %s\n' "$bar" "$empty" "$percent" "$label"
+  fi
+}
+
+run_npm_with_progress() {
+  local start_percent="$1"; shift
+  local log_file started pid elapsed percent status
+  log_file="$TMP/npm-install.log"
+  started=$SECONDS
+  npm "$@" >"$log_file" 2>&1 &
+  pid=$!
+
+  while kill -0 "$pid" 2>/dev/null; do
+    elapsed=$((SECONDS - started))
+    percent=$((start_percent + (95 - start_percent) * elapsed / (elapsed + 20)))
+    progress_bar "$percent" "正在下载并安装依赖（估算）"
+    sleep 0.5
+  done
+
+  if wait "$pid"; then status=0; else status=$?; fi
+  progress_bar 100 "依赖安装完成"
+  printf '\n'
+  if [ "$status" -ne 0 ]; then
+    cat "$log_file" >&2
+  fi
+  return "$status"
+}
 
 base="$ENDPOINT/$BUCKET/$PREFIX"
 
@@ -43,6 +84,7 @@ fetch() {
 }
 
 # --- Node check ---
+step 1 4 "检查 Node.js 并解析发布版本 ..."
 command -v node >/dev/null 2>&1 || fail "未检测到 Node.js。请先安装 Node.js 22+: https://nodejs.org/"
 NODE_MAJOR="$(node -p "process.versions.node.split('.')[0]" 2>/dev/null || echo 0)"
 [ "$NODE_MAJOR" -ge 22 ] || fail "Node.js 版本过低 ($(node -v),需要 22+): https://nodejs.org/"
@@ -69,7 +111,7 @@ fi
 PKG_NAME="@nuwax-ai/nuwa-cli"
 PKG_BASE="${PKG_NAME#@}"; PKG_BASE="${PKG_BASE//\//-}"
 TARBALL="$PKG_BASE-$VERSION.tgz"
-info "下载 $TARBALL ..."
+step 2 4 "下载 $TARBALL ..."
 fetch "$base/versions/$VERSION/artifacts/$TARBALL" "$TMP/$TARBALL" || fail "tarball 下载失败: $base/versions/$VERSION/artifacts/$TARBALL"
 ok "下载完成"
 
@@ -80,15 +122,18 @@ fi
 
 # --- npm install -g <tarball> (deps resolved via npm registry) ---
 REGISTRY="${NUWACLI_REGISTRY:-}"
-INSTALL_ARGS=(install -g "$TMP/$TARBALL")
+INSTALL_ARGS=(install -g "$TMP/$TARBALL" --progress=true)
 [ -n "$REGISTRY" ] && INSTALL_ARGS+=(--registry "$REGISTRY")
-info "npm install -g ...${REGISTRY:+ via $REGISTRY}"
-if ! npm "${INSTALL_ARGS[@]}"; then
+step 3 4 "安装 nuwa-cli 与引擎依赖${REGISTRY:+ via $REGISTRY} ..."
+info "首次安装会下载较大的平台依赖，npm 将在下方持续显示活动。"
+INSTALL_STARTED=$SECONDS
+if ! run_npm_with_progress 55 "${INSTALL_ARGS[@]}"; then
   fail "npm 安装失败。国内网络可设镜像重试: NUWACLI_REGISTRY=https://registry.npmmirror.com"
 fi
-ok "安装完成"
+ok "依赖安装完成，耗时 $((SECONDS - INSTALL_STARTED)) 秒"
 
 # --- PATH check / fix (npm global bin) ---
+step 4 4 "配置 PATH 并验证 nuwa-cli ..."
 NPM_PREFIX="$(npm config get prefix 2>/dev/null || true)"
 if   [ -d "$NPM_PREFIX/bin" ]; then NPM_BIN="$NPM_PREFIX/bin"
 elif [ -d "$NPM_PREFIX" ];         then NPM_BIN="$NPM_PREFIX"

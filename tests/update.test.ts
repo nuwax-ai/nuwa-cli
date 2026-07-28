@@ -35,6 +35,7 @@ describe("update command", () => {
       "install",
       "-g",
       "@nuwax-ai/nuwa-cli@beta",
+      "--progress=true",
     ]);
     expect(
       buildInstallArgs("@nuwax-ai/nuwa-cli@0.2.0", "https://r.example"),
@@ -42,6 +43,7 @@ describe("update command", () => {
       "install",
       "-g",
       "@nuwax-ai/nuwa-cli@0.2.0",
+      "--progress=true",
       "--registry",
       "https://r.example",
     ]);
@@ -57,7 +59,9 @@ describe("update command", () => {
     expect(runner).not.toHaveBeenCalled();
     const printed = logSpy.mock.calls.map((c) => c[0]).join("\n");
     expect(printed).toContain("升级目标：@nuwax-ai/nuwa-cli@0.2.0");
-    expect(printed).toContain("执行：npm install -g @nuwax-ai/nuwa-cli@0.2.0");
+    expect(printed).toContain(
+      "执行：npm install -g @nuwax-ai/nuwa-cli@0.2.0 --progress=true",
+    );
   });
 
   it("checks a remote version without installing", async () => {
@@ -127,9 +131,43 @@ describe("update command", () => {
 
     expect(runner).toHaveBeenCalledWith(
       "npm",
-      ["install", "-g", "@nuwax-ai/nuwa-cli@beta"],
+      ["install", "-g", "@nuwax-ai/nuwa-cli@beta", "--progress=true"],
       expect.objectContaining({ stdio: "inherit" }),
     );
+  });
+
+  it("does not reinstall when the selected channel already matches the current version", async () => {
+    const { updateCommand } = await import("../src/commands/update.js");
+    const { CLI_VERSION } = await import("../src/core/version.js");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const runner = vi.fn(() => ({
+      status: 0,
+      stdout: `${CLI_VERSION}\n`,
+    }));
+
+    await updateCommand(undefined, {}, runner);
+
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(runner).toHaveBeenCalledWith(
+      "npm",
+      ["view", "@nuwax-ai/nuwa-cli@beta", "version"],
+      expect.objectContaining({ stdio: "pipe" }),
+    );
+    expect(logSpy.mock.calls.flat().join("\n")).toContain(
+      "已是最新版本，无需重新安装",
+    );
+  });
+
+  it("renders a bounded install progress bar with a percentage", async () => {
+    const { estimateInstallPercent, formatProgressBar } =
+      await import("../src/commands/update.js");
+
+    expect(estimateInstallPercent(30, 0)).toBe(30);
+    expect(estimateInstallPercent(30, 20)).toBe(62);
+    expect(estimateInstallPercent(30, 10_000)).toBeLessThanOrEqual(95);
+    const rendered = formatProgressBar(62, "安装中");
+    expect(rendered).toContain("62% 安装中");
+    expect(rendered).toHaveLength(30 + 2 + 1 + 3 + 2 + 3);
   });
 
   it("runs npm-cli.js directly on Windows when npm resolves to a .cmd shim", async () => {
@@ -138,23 +176,29 @@ describe("update command", () => {
       value: "win32",
       configurable: true,
     });
-    mocks.whichSync.mockReturnValue("C:\\Program Files\\nodejs\\npm.cmd");
-    mocks.spawnSync.mockReset();
-    mocks.spawnSync.mockImplementation(() => ({ status: 0, stdout: "" }));
-    vi.spyOn(console, "log").mockImplementation(() => {});
     try {
-      const { updateCommand } = await import("../src/commands/update.js");
-      await updateCommand(undefined, {});
-      expect(mocks.spawnSync).toHaveBeenCalledWith(
-        process.execPath,
-        [
+      const { resolvePackageManagerInvocation } =
+        await import("../src/commands/update.js");
+      expect(
+        resolvePackageManagerInvocation(
+          "C:\\Program Files\\nodejs\\npm.cmd",
+          [
+            "install",
+            "-g",
+            "@nuwax-ai/nuwa-cli@beta",
+            "--progress=true",
+          ],
+        ),
+      ).toEqual({
+        command: process.execPath,
+        args: [
           "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
           "install",
           "-g",
           "@nuwax-ai/nuwa-cli@beta",
+          "--progress=true",
         ],
-        expect.objectContaining({ stdio: "inherit" }),
-      );
+      });
     } finally {
       Object.defineProperty(process, "platform", {
         value: realPlatform,

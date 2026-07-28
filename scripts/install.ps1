@@ -14,8 +14,44 @@ $Tag = if ($env:NUWACLI_TAG) { $env:NUWACLI_TAG } else { "beta" }
 function Ok($m)   { Write-Host "[OK] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[!]  $m" -ForegroundColor Yellow }
 function Fail($m) { Write-Host "[X]  $m" -ForegroundColor Red; exit 1 }
+function Step($n, $total, $m) { Write-Host "[$n/$total] $m" -ForegroundColor Cyan }
+
+function Invoke-NpmWithProgress($NpmArgs, $StartPercent) {
+    $job = Start-Job -ScriptBlock {
+        param([string[]]$Arguments)
+        & npm @Arguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm exited with code $LASTEXITCODE"
+        }
+    } -ArgumentList (, $NpmArgs)
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+
+    while ($job.State -eq "Running" -or $job.State -eq "NotStarted") {
+        $elapsed = [math]::Floor($watch.Elapsed.TotalSeconds)
+        $percent = $StartPercent + [math]::Floor(
+            (95 - $StartPercent) * $elapsed / ($elapsed + 20)
+        )
+        Write-Progress -Activity "Installing nuwa-cli" `
+            -Status "Downloading and installing dependencies (estimated) - $percent%" `
+            -PercentComplete $percent
+        Start-Sleep -Milliseconds 500
+    }
+
+    $output = Receive-Job $job -Wait 2>&1
+    $succeeded = $job.State -eq "Completed"
+    Remove-Job $job -Force
+    $watch.Stop()
+    Write-Progress -Activity "Installing nuwa-cli" -Completed
+    Write-Host "[##############################] 100% Dependencies installed" -ForegroundColor Green
+    if (-not $succeeded) {
+        $output | Out-Host
+        throw "npm install failed"
+    }
+    return $watch.Elapsed
+}
 
 # --- Node/npm check ---
+Step 1 3 "Checking Node.js and npm ..."
 $node = Get-Command node -ErrorAction SilentlyContinue
 if (-not $node) {
     Fail "Node.js not found. Install Node.js 22+: https://nodejs.org/"
@@ -31,15 +67,20 @@ if (-not $npm) { Fail "npm not found. Use the official Node.js installer: https:
 
 # --- Install ---
 $registry = $env:NUWACLI_REGISTRY
-$installArgs = @("install", "-g", "$Package@$Tag")
+$installArgs = @("install", "-g", "$Package@$Tag", "--progress=true")
 if ($registry) { $installArgs += @("--registry", $registry) }
 $via = if ($registry) { " via $registry" } else { "" }
-Write-Host "-> Installing $Package@$Tag$via ..."
-& npm @installArgs
-if ($LASTEXITCODE -ne 0) { Fail "npm install failed; check network/proxy. For China mirrors retry with: `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'; then re-run the installer" }
-Ok "Install complete"
+Step 2 3 "Installing $Package@$Tag$via ..."
+Write-Host "      Downloading and unpacking engine dependencies. The first install can take several minutes."
+try {
+    $installElapsed = Invoke-NpmWithProgress $installArgs 35
+} catch {
+    Fail "npm install failed; check network/proxy. For China mirrors retry with: `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'; then re-run the installer"
+}
+Ok "Dependencies installed in $([math]::Round($installElapsed.TotalSeconds, 1))s"
 
 # --- Resolve npm global directory ---
+Step 3 3 "Configuring PATH and verifying nuwa-cli ..."
 $prefix = (npm config get prefix 2>$null)
 if ($prefix) { $prefix = $prefix.Trim() }
 if (-not $prefix) { Fail "Cannot resolve npm global prefix (npm config get prefix)." }

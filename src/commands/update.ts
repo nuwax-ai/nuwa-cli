@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import * as path from "node:path";
 import {
   CLI_VERSION,
@@ -58,6 +58,68 @@ function runCommand(
   };
 }
 
+export function estimateInstallPercent(
+  startPercent: number,
+  elapsedSeconds: number,
+): number {
+  return Math.min(
+    95,
+    startPercent +
+      Math.floor(
+        ((95 - startPercent) * elapsedSeconds) / (elapsedSeconds + 20),
+      ),
+  );
+}
+
+export function formatProgressBar(percent: number, label: string): string {
+  const width = 30;
+  const filled = Math.floor((percent * width) / 100);
+  return `[${"#".repeat(filled)}${"-".repeat(width - filled)}] ${String(percent).padStart(3)}% ${label}`;
+}
+
+async function runInstallWithProgress(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<CommandResult> {
+  const invocation = resolvePackageManagerInvocation(command, args);
+  const startedAt = Date.now();
+  let lastPrinted = -1;
+  const render = () => {
+    const percent = estimateInstallPercent(
+      30,
+      Math.floor((Date.now() - startedAt) / 1000),
+    );
+    if (percent === lastPrinted && !process.stdout.isTTY) return;
+    lastPrinted = percent;
+    const line = formatProgressBar(percent, "正在下载并安装依赖（估算）");
+    if (process.stdout.isTTY) process.stdout.write(`\r${line}`);
+    else console.log(line);
+  };
+
+  render();
+  const timer = setInterval(render, 500);
+  timer.unref();
+
+  return await new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: CommandResult) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(timer);
+      if (process.stdout.isTTY) process.stdout.write("\n");
+      resolve(result);
+    };
+    const child = spawn(invocation.command, invocation.args, {
+      env,
+      stdio: "inherit",
+      windowsHide: true,
+    });
+    child.once("error", (error) => finish({ status: null, error }));
+    child.once("close", (code) => finish({ status: code }));
+  });
+}
+
 export function resolvePackageManagerInvocation(
   command: string,
   args: string[],
@@ -113,7 +175,7 @@ export function buildInstallArgs(
   packageSpec: string,
   registry?: string,
 ): string[] {
-  const args = ["install", "-g", packageSpec];
+  const args = ["install", "-g", packageSpec, "--progress=true"];
   if (registry) args.push("--registry", registry);
   return args;
 }
@@ -188,23 +250,54 @@ export async function updateCommand(
     }
 
     const installArgs = buildInstallArgs(packageSpec, options.registry);
+    if (options.dryRun) {
+      console.log(`当前版本：${CLI_VERSION}`);
+      console.log(`升级目标：${packageSpec}`);
+      console.log(`执行：${printableCommand("npm", installArgs)}`);
+      return;
+    }
+
+    console.log(formatProgressBar(0, "正在检查目标版本..."));
+    const versionResult = runner(
+      command,
+      buildViewArgs(packageSpec, options.registry),
+      {
+        encoding: "utf-8",
+        env,
+        stdio: "pipe",
+      },
+    );
+    if (versionResult.error) throw versionResult.error;
+    const remoteVersion =
+      versionResult.status === 0 ? (versionResult.stdout || "").trim() : "";
+    if (remoteVersion === CLI_VERSION) {
+      console.log(formatProgressBar(100, "已是最新版本，无需重新安装。"));
+      return;
+    }
+
     console.log(`当前版本：${CLI_VERSION}`);
+    if (remoteVersion) console.log(`目标版本：${remoteVersion}`);
     console.log(`升级目标：${packageSpec}`);
     console.log(`执行：${printableCommand("npm", installArgs)}`);
-    if (options.dryRun) return;
 
+    console.log(formatProgressBar(20, "正在准备升级..."));
     console.log("正在停止 Gateway、Console、lanproxy 和文件服务，以释放升级文件...");
     await stopRuntimeProcessesForUpdate();
 
-    const result = runner(command, installArgs, {
-      env,
-      stdio: "inherit",
-    });
+    console.log(formatProgressBar(30, "正在安装依赖..."));
+    const result =
+      typeof runnerArg === "function"
+        ? runner(command, installArgs, {
+            env,
+            stdio: "inherit",
+          })
+        : await runInstallWithProgress(command, installArgs, env);
     if (result.error) throw result.error;
     if (result.status !== 0) {
       process.exitCode = result.status ?? 1;
       return;
     }
+    console.log(formatProgressBar(100, "安装完成。"));
     console.log(
       "升级命令已完成。请重新运行 `nuwa-cli --version` 确认当前 shell 解析到的新版本。",
     );

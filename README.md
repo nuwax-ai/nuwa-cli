@@ -21,7 +21,7 @@ curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/insta
 Or via npm (requires Node.js 22+):
 
 ```bash
-npm install -g @nuwax-ai/nuwa-cli@beta
+npm install -g @nuwax-ai/nuwa-cli@beta --progress=true
 nuwa-cli doctor
 ```
 

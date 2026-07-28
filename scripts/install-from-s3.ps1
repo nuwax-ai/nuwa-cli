@@ -23,6 +23,41 @@ $insecure = ($env:NUWAX_S3_INSECURE -eq "1")
 function Ok($m)   { Write-Host "[OK] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[!]  $m" -ForegroundColor Yellow }
 function Fail($m) { Write-Host "[X]  $m" -ForegroundColor Red; exit 1 }
+function Step($n, $total, $m) { Write-Host "[$n/$total] $m" -ForegroundColor Cyan }
+
+function Invoke-NpmWithProgress($NpmArgs, $StartPercent) {
+    $job = Start-Job -ScriptBlock {
+        param([string[]]$Arguments)
+        & npm @Arguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm exited with code $LASTEXITCODE"
+        }
+    } -ArgumentList (, $NpmArgs)
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+
+    while ($job.State -eq "Running" -or $job.State -eq "NotStarted") {
+        $elapsed = [math]::Floor($watch.Elapsed.TotalSeconds)
+        $percent = $StartPercent + [math]::Floor(
+            (95 - $StartPercent) * $elapsed / ($elapsed + 20)
+        )
+        Write-Progress -Activity "Installing nuwa-cli" `
+            -Status "Downloading and installing dependencies (estimated) - $percent%" `
+            -PercentComplete $percent
+        Start-Sleep -Milliseconds 500
+    }
+
+    $output = Receive-Job $job -Wait 2>&1
+    $succeeded = $job.State -eq "Completed"
+    Remove-Job $job -Force
+    $watch.Stop()
+    Write-Progress -Activity "Installing nuwa-cli" -Completed
+    Write-Host "[##############################] 100% Dependencies installed" -ForegroundColor Green
+    if (-not $succeeded) {
+        $output | Out-Host
+        throw "npm install failed"
+    }
+    return $watch.Elapsed
+}
 
 $base = "$endpoint/$bucket/$prefix"
 
@@ -46,6 +81,7 @@ function Fetch($url, $dest) {
 }
 
 # --- Node check ---
+Step 1 4 "Checking Node.js and resolving the release ..."
 $node = Get-Command node -ErrorAction SilentlyContinue
 if (-not $node) { Fail "Node.js not found. Install Node.js 22+: https://nodejs.org/" }
 $nodeMajor = [int](node -p "process.versions.node.split('.')[0]")
@@ -73,7 +109,7 @@ $pkgName = "@nuwax-ai/nuwa-cli"
 # @nuwax-ai/nuwa-cli → nuwax-ai-nuwa-cli (npm pack tarball naming)
 $pkgBase = ($pkgName -replace '^@','') -replace '/', '-'
 $tarball = "$pkgBase-$version.tgz"
-Write-Host "-> Downloading $tarball ..."
+Step 2 4 "Downloading $tarball ..."
 $tarballPath = Join-Path $tmpDir $tarball
 try { Fetch "$base/versions/$version/artifacts/$tarball" $tarballPath } catch { Fail "Tarball download failed: $base/versions/$version/artifacts/$tarball" }
 Ok "Download complete"
@@ -84,15 +120,20 @@ Get-Process -Name "nuwax-lanproxy" -ErrorAction SilentlyContinue | Stop-Process 
 
 # --- npm install -g <tarball> (deps resolved via npm registry) ---
 $registry = $env:NUWACLI_REGISTRY
-$installArgs = @("install", "-g", $tarballPath)
+$installArgs = @("install", "-g", $tarballPath, "--progress=true")
 if ($registry) { $installArgs += @("--registry", $registry) }
 $via = if ($registry) { " via $registry" } else { "" }
-Write-Host "-> npm install -g ...$via"
-& npm @installArgs
-if ($LASTEXITCODE -ne 0) { Fail "npm install failed. For China mirrors retry with: `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'; then re-run the installer" }
-Ok "Install complete"
+Step 3 4 "Installing nuwa-cli and engine dependencies$via ..."
+Write-Host "      Large platform packages are downloaded on first install. npm will show activity below."
+try {
+    $installElapsed = Invoke-NpmWithProgress $installArgs 55
+} catch {
+    Fail "npm install failed. For China mirrors retry with: `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'; then re-run the installer"
+}
+Ok "Dependencies installed in $([math]::Round($installElapsed.TotalSeconds, 1))s"
 
 # --- PATH check / fix ---
+Step 4 4 "Configuring PATH and verifying nuwa-cli ..."
 $npmPrefix = (npm config get prefix 2>$null)
 if ($npmPrefix) { $npmPrefix = $npmPrefix.Trim() }
 if (-not $npmPrefix) { Fail "Cannot resolve npm global prefix (npm config get prefix)." }
