@@ -116,7 +116,7 @@ describe("update command", () => {
       value: "win32",
       configurable: true,
     });
-    mocks.whichSync.mockReturnValue("C:\\nodejs\\npm.cmd");
+    mocks.whichSync.mockReturnValue("C:\\Program Files\\nodejs\\npm.cmd");
     mocks.spawnSync.mockReset();
     mocks.spawnSync.mockImplementation(() => ({ status: 0, stdout: "" }));
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -126,7 +126,7 @@ describe("update command", () => {
       expect(mocks.spawnSync).toHaveBeenCalledWith(
         process.execPath,
         [
-          "C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+          "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
           "install",
           "-g",
           "@nuwax-ai/nuwa-cli@beta",
