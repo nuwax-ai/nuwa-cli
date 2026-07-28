@@ -26,37 +26,57 @@ function Fail($m) { Write-Host "[X]  $m" -ForegroundColor Red; exit 1 }
 function Step($n, $total, $m) { Write-Host "[$n/$total] $m" -ForegroundColor Cyan }
 
 function Invoke-NpmWithProgress($NpmArgs, $StartPercent) {
-    $job = Start-Job -ScriptBlock {
-        param([string[]]$Arguments)
-        & npm @Arguments
-        if ($LASTEXITCODE -ne 0) {
-            throw "npm exited with code $LASTEXITCODE"
-        }
-    } -ArgumentList (, $NpmArgs)
+    # Run npm in a child PowerShell process. Start-Job is intentionally avoided:
+    # Windows PowerShell 5.1 can lose the argument array/job environment and
+    # Receive-Job may hide the original npm stderr under ErrorActionPreference=Stop.
+    $argsJson = ConvertTo-Json -InputObject @($NpmArgs) -Compress
+    $argsBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($argsJson))
+    $childScript = '$ErrorActionPreference = "Stop"; $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' +
+        $argsBase64 +
+        '")); $npmArgs = @(ConvertFrom-Json $json); & npm @npmArgs; exit $LASTEXITCODE'
+    $encodedCommand = [Convert]::ToBase64String(
+        [Text.Encoding]::Unicode.GetBytes($childScript)
+    )
+    $powershellExe = (Get-Process -Id $PID).Path
+    $stdoutLog = [IO.Path]::GetTempFileName()
+    $stderrLog = [IO.Path]::GetTempFileName()
     $watch = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        $child = Start-Process -FilePath $powershellExe `
+            -ArgumentList @("-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", $encodedCommand) `
+            -NoNewWindow -PassThru `
+            -RedirectStandardOutput $stdoutLog `
+            -RedirectStandardError $stderrLog
 
-    while ($job.State -eq "Running" -or $job.State -eq "NotStarted") {
-        $elapsed = [math]::Floor($watch.Elapsed.TotalSeconds)
-        $percent = $StartPercent + [math]::Floor(
-            (95 - $StartPercent) * $elapsed / ($elapsed + 20)
-        )
-        Write-Progress -Activity "Installing nuwa-cli" `
-            -Status "Downloading and installing dependencies (estimated) - $percent%" `
-            -PercentComplete $percent
-        Start-Sleep -Milliseconds 500
-    }
+        while (-not $child.HasExited) {
+            $elapsed = [math]::Floor($watch.Elapsed.TotalSeconds)
+            $percent = $StartPercent + [math]::Floor(
+                (95 - $StartPercent) * $elapsed / ($elapsed + 20)
+            )
+            Write-Progress -Activity "Installing nuwa-cli" `
+                -Status "Downloading and installing dependencies (estimated) - $percent%" `
+                -PercentComplete $percent
+            Start-Sleep -Milliseconds 500
+        }
+        $child.WaitForExit()
+        $watch.Stop()
+        Write-Progress -Activity "Installing nuwa-cli" -Completed
 
-    $output = Receive-Job $job -Wait 2>&1
-    $succeeded = $job.State -eq "Completed"
-    Remove-Job $job -Force
-    $watch.Stop()
-    Write-Progress -Activity "Installing nuwa-cli" -Completed
-    Write-Host "[##############################] 100% Dependencies installed" -ForegroundColor Green
-    if (-not $succeeded) {
-        $output | Out-Host
-        throw "npm install failed"
+        $stdout = if (Test-Path $stdoutLog) { Get-Content $stdoutLog -Raw } else { "" }
+        $stderr = if (Test-Path $stderrLog) { Get-Content $stderrLog -Raw } else { "" }
+        if ($child.ExitCode -ne 0) {
+            if ($stdout.Trim()) { Write-Host $stdout.TrimEnd() }
+            if ($stderr.Trim()) { Write-Host $stderr.TrimEnd() -ForegroundColor Red }
+            throw "npm exited with code $($child.ExitCode)"
+        }
+        if ($stdout.Trim()) { Write-Host $stdout.TrimEnd() }
+        if ($stderr.Trim()) { Write-Host $stderr.TrimEnd() -ForegroundColor Yellow }
+        Write-Host "[##############################] 100% Dependencies installed" -ForegroundColor Green
+        return $watch.Elapsed
+    } finally {
+        Write-Progress -Activity "Installing nuwa-cli" -Completed
+        Remove-Item $stdoutLog, $stderrLog -Force -ErrorAction SilentlyContinue
     }
-    return $watch.Elapsed
 }
 
 $base = "$endpoint/$bucket/$prefix"
@@ -128,7 +148,7 @@ Write-Host "      Large platform packages are downloaded on first install. npm w
 try {
     $installElapsed = Invoke-NpmWithProgress $installArgs 55
 } catch {
-    Fail "npm install failed. For China mirrors retry with: `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'; then re-run the installer"
+    Fail "npm install failed: $($_.Exception.Message). Check the npm error above. For China mirrors retry with: `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'; then re-run the installer"
 }
 Ok "Dependencies installed in $([math]::Round($installElapsed.TotalSeconds, 1))s"
 

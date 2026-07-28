@@ -34,6 +34,12 @@ describe("install script progress", () => {
       expect(script).toContain("Dependencies installed in");
       expect(script).toContain("Write-Progress");
       expect(script).toContain("PercentComplete $percent");
+      expect(script).toContain("Start-Process");
+      expect(script).toContain("-EncodedCommand");
+      expect(script).toContain("$child.ExitCode");
+      expect(script).toContain("Get-Content $stderrLog -Raw");
+      expect(script).not.toContain("Start-Job -ScriptBlock");
+      expect(script).not.toContain("$output = Receive-Job");
       expect(script).toMatch(/Step 1 [34] "/);
       expect(script).toMatch(
         /Step [34] [34] "Configuring PATH and verifying nuwa-cli/,
