@@ -46,4 +46,13 @@ describe("install script progress", () => {
       );
     },
   );
+
+  it("uses npmmirror by default for the domestic S3 installers", () => {
+    expect(readScript("install-from-s3.sh")).toContain(
+      "NUWACLI_REGISTRY:-https://registry.npmmirror.com",
+    );
+    expect(readScript("install-from-s3.ps1")).toContain(
+      '"https://registry.npmmirror.com"',
+    );
+  });
 });

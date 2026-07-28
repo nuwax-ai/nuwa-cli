@@ -8,7 +8,7 @@
 #
 # Pin a channel:        NUWACLI_CHANNEL=beta   (default)
 # Pin a version:        NUWACLI_VERSION=0.1.0-beta.3
-# Use an npm mirror:    NUWACLI_REGISTRY=https://registry.npmmirror.com
+# Override npm registry: NUWACLI_REGISTRY=https://registry.npmjs.org
 # Self-signed endpoint: NUWAX_S3_INSECURE=1
 set -euo pipefail
 
@@ -121,14 +121,14 @@ if [ "$(uname -s 2>/dev/null)" != "Darwin" ] && command -v taskkill >/dev/null 2
 fi
 
 # --- npm install -g <tarball> (deps resolved via npm registry) ---
-REGISTRY="${NUWACLI_REGISTRY:-}"
+REGISTRY="${NUWACLI_REGISTRY:-https://registry.npmmirror.com}"
 INSTALL_ARGS=(install -g "$TMP/$TARBALL" --progress=true)
 [ -n "$REGISTRY" ] && INSTALL_ARGS+=(--registry "$REGISTRY")
 step 3 4 "安装 nuwa-cli 与引擎依赖${REGISTRY:+ via $REGISTRY} ..."
 info "首次安装会下载较大的平台依赖，npm 将在下方持续显示活动。"
 INSTALL_STARTED=$SECONDS
 if ! run_npm_with_progress 55 "${INSTALL_ARGS[@]}"; then
-  fail "npm 安装失败。国内网络可设镜像重试: NUWACLI_REGISTRY=https://registry.npmmirror.com"
+  fail "npm 安装失败。可切换官方源重试: NUWACLI_REGISTRY=https://registry.npmjs.org"
 fi
 ok "依赖安装完成，耗时 $((SECONDS - INSTALL_STARTED)) 秒"
 

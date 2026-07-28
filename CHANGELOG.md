@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/computer/local-sessions/list|read` and `/computer/sensitive-access/await` for consented local-session export; non-TTY `context`/`sessions` CLI paths go through the same bus.
 - A resumable `npm run release:beta` workflow now runs tests/build, publishes npm, syncs only `@nuwax-ai/nuwa-cli` through `cnpm`, verifies npmmirror, and publishes S3.
 - Windows bootstrap installers now run npm through an encoded child PowerShell process instead of `Start-Job`, preserving the full argument list, progress updates, exit code, and original npm stdout/stderr.
+- S3 bootstrap installers now default dependency resolution to npmmirror (overridable with `NUWACLI_REGISTRY`).
 
 ## [0.1.0-beta.17] - 2026-07-28
 

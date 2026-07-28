@@ -6,7 +6,7 @@
 #
 # Pin a channel:        $env:NUWACLI_CHANNEL='beta'
 # Pin a version:        $env:NUWACLI_VERSION='0.1.0-beta.3'
-# Use an npm mirror:    $env:NUWACLI_REGISTRY='https://registry.npmmirror.com'
+# Override npm registry: $env:NUWACLI_REGISTRY='https://registry.npmjs.org'
 # Self-signed endpoint: $env:NUWAX_S3_INSECURE='1'
 #
 # Messages are ASCII English only: Windows PowerShell 5.1 + irm|iex often
@@ -139,7 +139,11 @@ Ok "Download complete"
 Get-Process -Name "nuwax-lanproxy" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 # --- npm install -g <tarball> (deps resolved via npm registry) ---
-$registry = $env:NUWACLI_REGISTRY
+$registry = if ($env:NUWACLI_REGISTRY) {
+    $env:NUWACLI_REGISTRY
+} else {
+    "https://registry.npmmirror.com"
+}
 $installArgs = @("install", "-g", $tarballPath, "--progress=true")
 if ($registry) { $installArgs += @("--registry", $registry) }
 $via = if ($registry) { " via $registry" } else { "" }
@@ -148,7 +152,7 @@ Write-Host "      Large platform packages are downloaded on first install. npm w
 try {
     $installElapsed = Invoke-NpmWithProgress $installArgs 55
 } catch {
-    Fail "npm install failed: $($_.Exception.Message). Check the npm error above. For China mirrors retry with: `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'; then re-run the installer"
+    Fail "npm install failed: $($_.Exception.Message). Check the npm error above. To retry against the official registry: `$env:NUWACLI_REGISTRY='https://registry.npmjs.org'; then re-run the installer"
 }
 Ok "Dependencies installed in $([math]::Round($installElapsed.TotalSeconds, 1))s"
 
