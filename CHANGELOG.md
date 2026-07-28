@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ACP permission guardrails aligned with NuwaClaw: `PermissionCoordinator`, SSE `acpRequestPermission`, real `POST /computer/notify-resolved`, and pluggable sensitive classifiers (first: local session history). `--approve` now accepts `auto|ask|deny`. See [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).
 - `/computer/local-sessions/list|read` and `/computer/sensitive-access/await` for consented local-session export; non-TTY `context`/`sessions` CLI paths go through the same bus.
 
+## [0.1.0-beta.16] - 2026-07-28
+
+### Fixed
+
+- Ignore Commander's trailing `Command` action argument when invoking `updateCommand`; older direct command registrations no longer fail with `runner is not a function`.
+- Lock the Windows updater regression test to the reported `C:\Program Files\nodejs\npm.cmd` path and verify npm runs through `node.exe` without `shell:true`.
+
 ## [0.1.0-beta.15] - 2026-07-28
 
 ### Fixed

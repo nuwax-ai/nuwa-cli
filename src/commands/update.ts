@@ -147,9 +147,16 @@ function printableCommand(command: string, args: string[]): string {
 export async function updateCommand(
   targetArg?: string,
   options: UpdateOptions = {},
-  runner: CommandRunner = runCommand,
+  runnerArg?: CommandRunner | unknown,
 ): Promise<void> {
   try {
+    // Commander passes its Command instance as the final action argument.
+    // Older registrations forwarded updateCommand directly, so only accept
+    // an actual function as the injectable test runner.
+    const runner: CommandRunner =
+      typeof runnerArg === "function"
+        ? (runnerArg as CommandRunner)
+        : runCommand;
     const target = normalizeUpdateTarget(targetArg);
     const command = resolveCommand();
     if (!command) {

@@ -76,6 +76,28 @@ describe("update command", () => {
     expect(printed).toContain("@nuwax-ai/nuwa-cli@beta：0.2.0");
   });
 
+  it("ignores Commander's third action argument instead of treating it as a runner", async () => {
+    mocks.spawnSync.mockImplementation((command: string, args: string[]) => {
+      if (args[0] === "view") {
+        return { status: 0, stdout: "0.1.1\n" };
+      }
+      return { status: 0, stdout: "" };
+    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { updateCommand } = await import("../src/commands/update.js");
+
+    await updateCommand(undefined, { check: true }, {
+      name: () => "update",
+    } as never);
+
+    expect(process.exitCode).toBe(0);
+    expect(mocks.spawnSync).toHaveBeenCalledWith(
+      "npm",
+      ["view", "@nuwax-ai/nuwa-cli@beta", "version"],
+      expect.objectContaining({ stdio: "pipe" }),
+    );
+  });
+
   it("runs --check through the real Commander action", async () => {
     mocks.spawnSync.mockImplementation((command: string, args: string[]) => {
       if (command === "which") return { status: 0, stdout: `${args[0]}\n` };
