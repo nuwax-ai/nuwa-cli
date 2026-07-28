@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ACP permission guardrails aligned with NuwaClaw: `PermissionCoordinator`, SSE `acpRequestPermission`, real `POST /computer/notify-resolved`, and pluggable sensitive classifiers (first: local session history). `--approve` now accepts `auto|ask|deny`. See [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).
 - `/computer/local-sessions/list|read` and `/computer/sensitive-access/await` for consented local-session export; non-TTY `context`/`sessions` CLI paths go through the same bus.
+- A resumable `npm run release:beta` workflow now runs tests/build, publishes npm, syncs only `@nuwax-ai/nuwa-cli` through `cnpm`, verifies npmmirror, and publishes S3.
 
 ## [0.1.0-beta.17] - 2026-07-28
 

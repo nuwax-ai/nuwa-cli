@@ -38,6 +38,18 @@ s3://nuwax-packages/
 
 发布器:`scripts/publish-s3.sh`(需要 `aws` cli + `node`)。流程:build → `npm pack` → 上传 tarball + 安装器 → 重写 channel 指针 → 覆盖根 bootstrap。
 
+完整 beta 发布统一使用：
+
+```bash
+npm run release:beta
+```
+
+固定顺序为：完整测试/构建 → npm beta 发布（同版本可重入）→
+`cnpm sync @nuwax-ai/nuwa-cli` → npmmirror 版本与 beta tag 核验 →
+S3 tarball/channel/bootstrap 发布。预演但不写外部服务可运行
+`npm run release:beta:dry-run`。`lanproxy` 不在日常 CLI 发布流程内，仅在二进制变更时
+单独运行 `npm run release:lanproxy`。
+
 ```bash
 # 1) 配置(本机 ~/.aws [default] profile 已是 nuwax MinIO 凭证时,直接 source .env 拿 endpoint/bucket)
 set -a; source .env; set +a

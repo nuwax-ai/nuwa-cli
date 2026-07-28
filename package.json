@@ -30,7 +30,8 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "prepublishOnly": "node scripts/assert-beta-release.mjs && npm run build",
-    "release:beta": "npm publish --tag beta",
+    "release:beta": "node scripts/release-beta.mjs",
+    "release:beta:dry-run": "node scripts/release-beta.mjs --dry-run",
     "release:lanproxy": "node scripts/release-lanproxy.mjs"
   },
   "dependencies": {
