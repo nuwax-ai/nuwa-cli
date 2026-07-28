@@ -172,6 +172,40 @@ describe("rewriteMcpServersForEngine defaults", () => {
     expect(started["chrome-devtools"]?.persistent).toBe(true);
     expect(started["ask-question"]?.persistent).toBe(true);
   });
+
+  it("codex engine 跳过 proxy 桥接，下发原始 stdio 入口", async () => {
+    const { rewriteMcpServersForEngine } = await import(
+      "../src/core/mcp/proxyRewrite.js"
+    );
+    const out = await rewriteMcpServersForEngine(
+      [
+        {
+          name: "ask-question",
+          command: "npx",
+          args: ["-y", "nuwax-ask-question-mcp@latest"],
+          env: [],
+        },
+      ],
+      undefined,
+      "codex",
+    );
+    const names = out.map((s: { name: string }) => s.name);
+    expect(names).toEqual(
+      expect.arrayContaining(["chrome-devtools", "ask-question"]),
+    );
+    // 原始 stdio 入口，非 proxy（process.execPath + --config-file）
+    const ask = out.find(
+      (s: { name: string }) => s.name === "ask-question",
+    ) as { command: string; args: string[] };
+    expect(ask?.command).toBe("npx");
+    expect(ask?.args).not.toContain("--config-file");
+    const cd = out.find(
+      (s: { name: string }) => s.name === "chrome-devtools",
+    ) as { command: string; args: string[] };
+    expect(cd?.command).toBe("npx");
+    // codex 不启动 PersistentMcpBridge（claude 才用）
+    expect(mocks.bridgeStart).not.toHaveBeenCalled();
+  });
 });
 
 describe("DEFAULT_MCP_PROXY_SERVERS", () => {

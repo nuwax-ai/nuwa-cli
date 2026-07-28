@@ -115,24 +115,24 @@ describe("SessionHub ACP runtime precedence", () => {
     expect(mocks.newSessionRequests[0]).toMatchObject({
       cwd: process.cwd(),
       mcpServers: expect.arrayContaining([
-        // 默认 chrome-devtools（对齐 Electron DEFAULT_MCP_PROXY_CONFIG）
+        // 默认 chrome-devtools（codex-acp 原生支持 stdio MCP，不经 proxy 桥接）
         expect.objectContaining({
           name: "chrome-devtools",
-          command: process.execPath,
-          args: expect.arrayContaining(["--config-file"]),
+          command: "npx",
+          args: expect.arrayContaining(["chrome-devtools-mcp@latest"]),
         }),
+        // ACP 下发的 tools 原样下发（codex-acp 原生 stdio，保留原始 command）
         expect.objectContaining({
           name: "tools",
-          command: process.execPath,
-          args: expect.arrayContaining(["--config-file"]),
+          command: "/bin/tools-mcp",
         }),
       ]),
     });
-    // ACP MCP 经 @nuwax-ai/mcp-proxy-ts 改写后注入引擎（每 server 一 proxy）
-    const rewritten = (
-      mocks.newSessionRequests[0] as { mcpServers: Array<{ name: string; args: string[] }> }
+    // codex 不经 mcp-proxy-ts 改写，tools 保留原始 command（非 proxy 入口）
+    const toolsServer = (
+      mocks.newSessionRequests[0] as { mcpServers: Array<{ name: string; command: string }> }
     ).mcpServers.find((s) => s.name === "tools");
-    expect(rewritten?.args[0]).toMatch(/mcp-proxy-ts.*dist[/\\]index\.js$/);
+    expect(toolsServer?.command).toBe("/bin/tools-mcp");
     await hub.stopSession(session.sessionId);
   });
 

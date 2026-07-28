@@ -700,10 +700,12 @@ export class SessionHub {
     );
     this.sessions.set(session.sessionId, session);
     this.spawnRunner(session, async (ctx) => {
-      // ACP MCP → 经 @nuwax-ai/mcp-proxy-ts 改写为每 server 一个 proxy 入口
+      // ACP MCP：claude 经 @nuwax-ai/mcp-proxy-ts 改写为 proxy 入口；codex 原生
+      // 支持 stdio MCP，由 rewriteMcpServersForEngine 按 engine 分支下发原始入口
       const mcpServers = await rewriteMcpServersForEngine(
         session.mcpServers,
         session.projectId ?? session.sessionId,
+        engineId,
       );
       // Read modes/configOptions off the raw ActiveSession before wrapping —
       // SessionHandle only exposes sessionId/modes/prompt.
@@ -741,6 +743,7 @@ export class SessionHub {
       const mcpServers = await rewriteMcpServersForEngine(
         session.mcpServers,
         session.projectId ?? session.sessionId,
+        engineId,
       );
       const loadRes = (await ctx.request(AGENT_METHODS.session_load, {
         sessionId: summary.sessionId,
@@ -808,6 +811,7 @@ export class SessionHub {
       const mcpServers = await rewriteMcpServersForEngine(
         session.mcpServers,
         session.projectId ?? session.sessionId,
+        engineId,
       );
       const built = await ctx
         .buildSession({ cwd: session.cwd, mcpServers })

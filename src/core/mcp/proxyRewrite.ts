@@ -20,6 +20,7 @@ import {
 import { ensureDir, logsDir, tmpDir } from "../../util/paths.js";
 import { debugLog } from "../debugLog.js";
 import { DEFAULT_MCP_PROXY_SERVERS } from "./defaultServers.js";
+import type { EngineKind } from "../env/inheritEnv.js";
 
 /** Hub 级单例 bridge；无 persistent server 时不启动。 */
 let bridge: PersistentMcpBridge | null = null;
@@ -142,6 +143,7 @@ export async function stopPersistentMcpBridge(): Promise<void> {
 export async function rewriteMcpServersForEngine(
   servers: McpServer[] | undefined,
   projectId?: string,
+  engine?: EngineKind,
 ): Promise<McpServer[]> {
   const acpServers = (servers ?? []) as AcpMcpServer[];
   const { map, passthrough } = acpServersToHostMap(acpServers);
@@ -163,6 +165,14 @@ export async function rewriteMcpServersForEngine(
 
   if (Object.keys(merged).length === 0) {
     return passthrough as McpServer[];
+  }
+
+  // codex-acp 原生支持 ACP stdio MCP（见 codex_agent.rs build_session_config），
+  // 不需要 mcp-proxy-ts proxy 桥接（那是给 claude-code-acp-ts 的：proxy 入口形态
+  // 会让 codex 注册不上原始 server name → "unknown MCP server"）。直接下发原始
+  // stdio 入口；codex 每 session 自启 MCP，也不用 PersistentMcpBridge。
+  if (engine === "codex") {
+    return [...hostMapToAcpServers(merged), ...(passthrough as McpServer[])];
   }
 
   const proxyScriptPath = resolveProxyEntry();
