@@ -10,6 +10,7 @@ import { resolveDefaultLanproxyBinary } from "../serve/lanproxyBinary.js";
 import { getServeStatus } from "../serve/serveLock.js";
 import { claudeEngine } from "../engines/claude.js";
 import { codexEngine } from "../engines/codex.js";
+import { checkMcpProxyEntry } from "../mcp/proxyRewrite.js";
 
 export interface DoctorCheckResult {
   id: string;
@@ -346,6 +347,23 @@ export function checkUiSingleton(): DoctorCheckResult {
   };
 }
 
+/** 探测 @nuwax-ai/mcp-proxy-ts CLI 入口是否可解析（ACP MCP 注入依赖它）。 */
+export function checkMcpStdioProxy(): DoctorCheckResult {
+  const { ok, path: entryPath } = checkMcpProxyEntry();
+  return {
+    id: "mcp-proxy-ts",
+    label: "MCP stdio proxy",
+    ok,
+    detail: ok
+      ? `已解析 ${entryPath}`
+      : "未找到 @nuwax-ai/mcp-proxy-ts 入口（dist/index.js）",
+    fix: ok
+      ? undefined
+      : "确认已安装依赖：npm install @nuwax-ai/mcp-proxy-ts",
+    severity: "info",
+  };
+}
+
 export async function runAllDoctorChecks(): Promise<DoctorCheckResult[]> {
   return [
     checkNodeVersion(),
@@ -356,6 +374,7 @@ export async function runAllDoctorChecks(): Promise<DoctorCheckResult[]> {
     checkNuwaxLogin(),
     checkNuwaxComputer(),
     await checkLanproxy(),
+    checkMcpStdioProxy(),
     checkLocalSessions(),
     checkServeSingleton(),
     checkUiSingleton(),

@@ -41,6 +41,9 @@ await esbuild.build({
   external: [
     "node-machine-id",
     "@nuwax-ai/lanproxy",
+    // Host Adapter + PersistentMcpBridge；CLI 入口需留在 node_modules 供 spawn 解析
+    "@nuwax-ai/mcp-proxy-ts",
+    "@nuwax-ai/mcp-proxy-ts/host",
     "which",
     "write-file-atomic",
   ],

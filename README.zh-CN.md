@@ -103,7 +103,7 @@ nuwa-cli serve --port 60016
 # GET  /health                   （无需鉴权）
 ```
 
-兼容 NuwaClaw 的 `model_provider` / `agent_config` / `context_servers`。优先级：会话配置 > Gateway 参数 > 本地环境。
+兼容 NuwaClaw 的 `model_provider` / `agent_config` / `context_servers`。优先级：会话配置 > Gateway 参数 > 本地环境。ACP 下发的 `mcpServers` / `context_servers` 会经 [`@nuwax-ai/mcp-proxy-ts`](https://www.npmjs.com/package/@nuwax-ai/mcp-proxy-ts) 改写（每 server 一个 proxy 进程）后再交给引擎。
 
 云端会话生成的本地文件位于：
 
@@ -142,5 +142,5 @@ nuwa-cli serve --port 60016
 - **进程树清理**：孙进程（如 `claude-code-acp-ts` 拉起的 `claude` 二进制）不会被信号通知，可能成为孤儿。
 - **yolo 无路径限制**：`--approve auto` 对普通工具不论目标路径一律自动批准。
 - **Prompt 超时**：每条 prompt 限时 5 分钟，引擎卡住时报错而非无限等待。
-- **MCP 启动**：引擎等所有 MCP server 初始化后才处理首条消息；`npm exec` MCP server 首次可能需数分钟。
+- **MCP 启动**：引擎等所有 MCP server 初始化后才处理首条消息；`npm exec` MCP server 首次可能需数分钟。nuwa-cli 通过 `@nuwax-ai/mcp-proxy-ts` 注入 MCP。默认始终启用 `chrome-devtools`（`npx -y chrome-devtools-mcp@latest`，`persistent: true` 走 PersistentMcpBridge，无 `--isolated`），与 NuwaClaw 对齐。其它长驻名可用 `NUWACLI_MCP_PERSISTENT`。
 - **自定义 ACP 引擎**（pi-acp、hermes、kilo 等）暂不支持——仅支持 `claude` 和 `codex`。

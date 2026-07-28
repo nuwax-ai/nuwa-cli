@@ -103,7 +103,7 @@ nuwa-cli serve --port 60016
 # GET  /health                   (no auth)
 ```
 
-Accepts NuwaClaw-compatible `model_provider` / `agent_config` / `context_servers`. Precedence: session config > Gateway flags > local environment.
+Accepts NuwaClaw-compatible `model_provider` / `agent_config` / `context_servers`. Precedence: session config > Gateway flags > local environment. ACP `mcpServers` / `context_servers` are rewritten through [`@nuwax-ai/mcp-proxy-ts`](https://www.npmjs.com/package/@nuwax-ai/mcp-proxy-ts) (one proxy process per server) before the engine starts.
 
 Cloud-session files are stored under:
 
@@ -142,5 +142,5 @@ See [`docs/serve-lifecycle.md`](docs/serve-lifecycle.md) for full lifecycle, aut
 - **Process-tree teardown**: grandchild processes (e.g. `claude` binary under `claude-code-acp-ts`) aren't signalled and may be orphaned on exit.
 - **No path confinement in yolo**: `--approve auto` auto-approves all ordinary tool calls regardless of target path.
 - **Prompt timeout**: 5 minutes per prompt; engine hangs produce an error instead of infinite wait.
-- **MCP startup**: engines wait for MCP servers to initialize before first prompt; `npm exec` MCP servers may take minutes on first run.
+- **MCP startup**: engines wait for MCP servers to initialize before first prompt; `npm exec` MCP servers may take minutes on first run. nuwa-cli injects MCP via `@nuwax-ai/mcp-proxy-ts`. `chrome-devtools` is always enabled by default (`npx -y chrome-devtools-mcp@latest`, `persistent: true` via PersistentMcpBridge, no `--isolated`), matching NuwaClaw. Extra persistent names: `NUWACLI_MCP_PERSISTENT`.
 - **Custom ACP engines** (pi-acp, hermes, kilo, etc.) not supported — only `claude` and `codex`.

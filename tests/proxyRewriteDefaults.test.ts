@@ -1,0 +1,191 @@
+/**
+ * proxyRewrite 默认 MCP / PersistentMcpBridge 行为单测。
+ * 对齐 Electron：空 ACP 列表仍注入 chrome-devtools（persistent）。
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => {
+  const bridgeStart = vi.fn().mockResolvedValue(undefined);
+  const bridgeStop = vi.fn().mockResolvedValue(undefined);
+  const bridgeIsRunning = vi.fn(() => true);
+  const bridgeGetBridgeUrl = vi.fn(
+    (name: string) => `http://127.0.0.1:9/mcp/${name}`,
+  );
+  return {
+    bridgeStart,
+    bridgeStop,
+    bridgeIsRunning,
+    bridgeGetBridgeUrl,
+    resolveProxyEntry: vi.fn(() => "/fake/mcp-proxy-ts/dist/index.js"),
+    rewriteServersToProxyCommands: vi.fn(
+      (servers: Record<string, unknown>) => {
+        const out: Record<
+          string,
+          { command: string; args: string[]; env?: Record<string, string> }
+        > = {};
+        for (const name of Object.keys(servers)) {
+          out[name] = {
+            command: process.execPath,
+            args: [
+              "/fake/mcp-proxy-ts/dist/index.js",
+              "--config-file",
+              `/tmp/${name}.json`,
+            ],
+          };
+        }
+        return out;
+      },
+    ),
+  };
+});
+
+vi.mock("@nuwax-ai/mcp-proxy-ts/host", async () => {
+  const actual = await vi.importActual<
+    typeof import("@nuwax-ai/mcp-proxy-ts/host")
+  >("@nuwax-ai/mcp-proxy-ts/host");
+  class MockBridge {
+    start = mocks.bridgeStart;
+    stop = mocks.bridgeStop;
+    isRunning = mocks.bridgeIsRunning;
+    getBridgeUrl = mocks.bridgeGetBridgeUrl;
+  }
+  return {
+    ...actual,
+    PersistentMcpBridge: MockBridge,
+    resolveProxyEntry: mocks.resolveProxyEntry,
+    rewriteServersToProxyCommands: mocks.rewriteServersToProxyCommands,
+  };
+});
+
+describe("rewriteMcpServersForEngine defaults", () => {
+  beforeEach(() => {
+    mocks.bridgeStart.mockClear();
+    mocks.bridgeStop.mockClear();
+    mocks.resolveProxyEntry.mockReturnValue(
+      "/fake/mcp-proxy-ts/dist/index.js",
+    );
+    mocks.rewriteServersToProxyCommands.mockClear();
+    delete process.env.NUWACLI_MCP_PERSISTENT;
+  });
+
+  afterEach(async () => {
+    const { stopPersistentMcpBridge } = await import(
+      "../src/core/mcp/proxyRewrite.js"
+    );
+    await stopPersistentMcpBridge();
+  });
+
+  it("空 ACP 列表仍注入 chrome-devtools，并按 persistent 启动 bridge", async () => {
+    const { rewriteMcpServersForEngine } = await import(
+      "../src/core/mcp/proxyRewrite.js"
+    );
+    const out = await rewriteMcpServersForEngine([]);
+
+    expect(mocks.bridgeStart).toHaveBeenCalledTimes(1);
+    const started = mocks.bridgeStart.mock.calls[0]![0] as Record<
+      string,
+      { command: string; args?: string[]; persistent?: boolean }
+    >;
+    expect(started["chrome-devtools"]).toEqual({
+      command: "npx",
+      args: ["-y", "chrome-devtools-mcp@latest"],
+      env: undefined,
+      persistent: true,
+    });
+
+    expect(mocks.rewriteServersToProxyCommands).toHaveBeenCalledTimes(1);
+    const merged = mocks.rewriteServersToProxyCommands.mock.calls[0]![0] as Record<
+      string,
+      unknown
+    >;
+    expect(Object.keys(merged)).toEqual(["chrome-devtools"]);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      name: "chrome-devtools",
+      command: process.execPath,
+    });
+    expect(out[0]!.args[0]).toMatch(/mcp-proxy-ts.*dist[/\\]index\.js$/);
+  });
+
+  it("ACP 动态 MCP 与默认合并；同名覆盖 args，但保留默认 persistent", async () => {
+    const { rewriteMcpServersForEngine } = await import(
+      "../src/core/mcp/proxyRewrite.js"
+    );
+    await rewriteMcpServersForEngine([
+      {
+        name: "ask-question",
+        command: "npx",
+        args: ["-y", "nuwax-ask-question-mcp@latest"],
+      },
+      {
+        name: "chrome-devtools",
+        command: "npx",
+        args: ["-y", "chrome-devtools-mcp@1.2.3"],
+      },
+    ]);
+
+    const merged = mocks.rewriteServersToProxyCommands.mock.calls[0]![0] as Record<
+      string,
+      { command: string; args?: string[]; persistent?: boolean }
+    >;
+    expect(merged["ask-question"]).toMatchObject({
+      command: "npx",
+      args: ["-y", "nuwax-ask-question-mcp@latest"],
+    });
+    // ACP 可覆盖 args，但默认 persistent 强制保留
+    expect(merged["chrome-devtools"]).toMatchObject({
+      command: "npx",
+      args: ["-y", "chrome-devtools-mcp@1.2.3"],
+      persistent: true,
+    });
+
+    const started = mocks.bridgeStart.mock.calls[0]![0] as Record<
+      string,
+      { args?: string[]; persistent?: boolean }
+    >;
+    expect(started["chrome-devtools"]).toMatchObject({
+      args: ["-y", "chrome-devtools-mcp@1.2.3"],
+      persistent: true,
+    });
+    expect(started["ask-question"]).toBeUndefined();
+  });
+
+  it("NUWACLI_MCP_PERSISTENT 可追加其它长驻名", async () => {
+    process.env.NUWACLI_MCP_PERSISTENT = "ask-question";
+    const { rewriteMcpServersForEngine } = await import(
+      "../src/core/mcp/proxyRewrite.js"
+    );
+    await rewriteMcpServersForEngine([
+      {
+        name: "ask-question",
+        command: "npx",
+        args: ["-y", "nuwax-ask-question-mcp@latest"],
+      },
+    ]);
+
+    const started = mocks.bridgeStart.mock.calls[0]![0] as Record<
+      string,
+      { persistent?: boolean }
+    >;
+    expect(started["chrome-devtools"]?.persistent).toBe(true);
+    expect(started["ask-question"]?.persistent).toBe(true);
+  });
+});
+
+describe("DEFAULT_MCP_PROXY_SERVERS", () => {
+  it("与 Electron DEFAULT_MCP_PROXY_CONFIG 对齐", async () => {
+    const { DEFAULT_MCP_PROXY_SERVERS } = await import(
+      "../src/core/mcp/defaultServers.js"
+    );
+    expect(DEFAULT_MCP_PROXY_SERVERS["chrome-devtools"]).toEqual({
+      command: "npx",
+      args: ["-y", "chrome-devtools-mcp@latest"],
+      persistent: true,
+    });
+    expect(
+      DEFAULT_MCP_PROXY_SERVERS["chrome-devtools"]!.args,
+    ).not.toContain("--isolated");
+  });
+});

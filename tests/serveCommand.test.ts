@@ -57,6 +57,11 @@ vi.mock("../src/core/serve/lanproxyProcess.js", () => ({
     mocks.waitForLanproxyTunnel(...args),
 }));
 
+// serve 启动时会 setImmediate 触发 MCP npx 缓存预热；mock 掉避免测试真实 spawn npx
+vi.mock("../src/core/mcp/cacheWarmup.js", () => ({
+  warmupMcpNpxCache: vi.fn().mockResolvedValue({ skipped: true }),
+}));
+
 async function waitFor(predicate: () => boolean): Promise<void> {
   for (let i = 0; i < 20; i += 1) {
     if (predicate()) return;
