@@ -57,6 +57,7 @@ export interface UnifiedSessionMessage {
 
 /** Control surface for a live session — rides the same ACP connection. */
 export interface SessionControls {
+  cancel(): Promise<void>;
   setMode(modeId: string): Promise<void>;
   setConfigOption(
     configId: string,
@@ -104,6 +105,8 @@ interface ManagedSession {
   modelOverlay?: ModelOverlay;
   engineEnv?: NodeJS.ProcessEnv;
   mcpServers: McpServer[];
+  /** Increments whenever the ACP runner is replaced in-place. */
+  generation: number;
 }
 
 function mergeModelOverlay(
@@ -220,6 +223,10 @@ export class SessionHub {
     acpSessionId: string,
   ): SessionControls {
     return {
+      cancel: () =>
+        ctx.notify(AGENT_METHODS.session_cancel, {
+          sessionId: acpSessionId,
+        }),
       setMode: (modeId) =>
         ctx
           .request(AGENT_METHODS.session_set_mode, {
@@ -273,7 +280,36 @@ export class SessionHub {
       modelOverlay: runtime?.modelOverlay,
       engineEnv: runtime?.engineEnv,
       mcpServers: runtime?.mcpServers ?? [],
+      generation: 0,
     };
+  }
+
+  private resetReadiness(session: ManagedSession): void {
+    let readyResolve!: (v: Readiness) => void;
+    session.ready = new Promise<Readiness>((resolve) => {
+      readyResolve = resolve;
+    });
+    session.readyResolve = readyResolve;
+    session.readyOk = undefined;
+    session.readySet = undefined;
+  }
+
+  private runtimeMatches(
+    session: ManagedSession,
+    engineId: EngineKind,
+    runtime: SessionRuntimeOptions,
+  ): boolean {
+    return (
+      session.engine === engineId &&
+      JSON.stringify(session.modelOverlay ?? null) ===
+        JSON.stringify(runtime.modelOverlay ?? null) &&
+      JSON.stringify(session.engineEnv ?? null) ===
+        JSON.stringify(runtime.engineEnv ?? null) &&
+      JSON.stringify(session.mcpServers) ===
+        JSON.stringify(runtime.mcpServers ?? []) &&
+      session.initialModeId === runtime.mode &&
+      session.yolo === runtime.yolo
+    );
   }
 
   /**
@@ -288,6 +324,12 @@ export class SessionHub {
     connect: (ctx: ClientContext) => Promise<SessionHandle>,
   ): void {
     const sessionId = session.sessionId;
+    const generation = session.generation;
+    const queue = session.queue;
+    const abortController = session.abortController;
+    const setRunnerReady = (result: Readiness) => {
+      if (session.generation === generation) this.setReady(session, result);
+    };
     const run = (async () => {
       let runError: string | undefined;
       const resolved = await getEngine(session.engine)
@@ -296,7 +338,7 @@ export class SessionHub {
         .catch((err: Error) => ({ ok: false as const, error: err.message }));
       if (!resolved.ok) {
         runError = resolved.error;
-        this.setReady(session, { ok: false, error: resolved.error });
+        setRunnerReady({ ok: false, error: resolved.error });
       } else {
         const env = {
           ...buildEngineEnv(
@@ -322,19 +364,29 @@ export class SessionHub {
               this.askPermission(sessionId, request, meta),
             onAgentText: () => {},
             onRawUpdate: (notification: SessionNotification) => {
-              this.broadcast(sessionId, "agent_session_update", {
+              if (session.generation !== generation) return;
+              const message: UnifiedSessionMessage = {
                 sessionId,
                 acpSessionId: notification.sessionId,
                 messageType: "agentSessionUpdate",
                 subType: notification.update.sessionUpdate,
                 data: notification.update,
                 timestamp: new Date().toISOString(),
-              });
+              };
+              // Cloud/Electron compatibility: SSE event names are the ACP
+              // update subtype (`tool_call`, `agent_message_chunk`, ...).
+              // Keep the aggregate event for the bundled local Console.
+              this.broadcast(
+                sessionId,
+                notification.update.sessionUpdate,
+                message,
+              );
+              this.broadcast(sessionId, "agent_session_update", message);
             },
           },
           async (ctx) => {
             const handle = await connect(ctx);
-            this.setReady(session, { ok: true });
+            setRunnerReady({ ok: true });
 
             // Apply downstream model overlay via ACP configOption so the engine
             // uses the model the cloud sent, not the local config.toml default.
@@ -396,7 +448,7 @@ export class SessionHub {
             this.broadcastState(sessionId);
 
             while (true) {
-              const prompt = await session.queue.next();
+              const prompt = await queue.next();
               if (prompt === undefined) break; // queue closed -> stop this session
               this.broadcast(sessionId, "session_prompt_start", {
                 sessionId,
@@ -446,16 +498,20 @@ export class SessionHub {
               })
               .catch(() => {});
           },
-          session.abortController.signal,
+          abortController.signal,
         ).catch((err: Error) => {
           // ok:false here is a no-op if the engine already connected (ready
           // resolved ok:true) — terminateSession below is what actually evicts
           // the now-dead session in that case.
           runError = err.message;
-          this.setReady(session, { ok: false, error: err.message });
+          setRunnerReady({ ok: false, error: err.message });
         });
       }
-      this.terminateSession(sessionId, runError);
+      // Reconfiguration replaces the runner while retaining the app session
+      // and its SSE clients. An obsolete runner must never evict the new one.
+      if (session.generation === generation) {
+        this.terminateSession(sessionId, runError);
+      }
     })();
 
     session.done = run;
@@ -684,6 +740,74 @@ export class SessionHub {
 
   getSession(sessionId: string): ManagedSession | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  /**
+   * Applies newly delivered ACP runtime configuration to an existing logical
+   * session. ACP sessions are engine-specific, so a model/provider/MCP/engine
+   * change cancels the active turn and replaces only the underlying runner.
+   * The public session id and attached SSE clients remain stable.
+   */
+  async reconfigureSession(
+    sessionId: string,
+    engineId: EngineKind,
+    runtime: SessionRuntimeOptions,
+  ): Promise<ManagedSession | undefined> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return undefined;
+    if (this.runtimeMatches(session, engineId, runtime)) return session;
+
+    await session.controls?.cancel().catch(() => {});
+    const oldQueue = session.queue;
+    const oldAbort = session.abortController;
+    const oldDone = session.done;
+    oldQueue.close();
+    oldAbort.abort();
+
+    session.generation += 1;
+    session.engine = engineId;
+    session.queue = new AsyncQueue<string>();
+    session.abortController = new AbortController();
+    session.acpSessionId = undefined;
+    session.modes = undefined;
+    session.configOptions = undefined;
+    session.controls = undefined;
+    session.initialModeId = runtime.mode;
+    session.yolo = runtime.yolo;
+    session.modelOverlay = runtime.modelOverlay;
+    session.engineEnv = runtime.engineEnv;
+    session.mcpServers = runtime.mcpServers ?? [];
+    this.resetReadiness(session);
+
+    await Promise.race([
+      oldDone.catch(() => {}),
+      new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+    ]);
+    this.spawnRunner(session, async (ctx) => {
+      const built = await ctx
+        .buildSession({ cwd: session.cwd, mcpServers: session.mcpServers })
+        .start();
+      session.acpSessionId = built.sessionId;
+      session.modes = built.modes;
+      session.configOptions = built.newSessionResponse.configOptions ?? null;
+      session.controls = this.buildControls(ctx, built.sessionId);
+      return wrapNewSession(built);
+    });
+    return session;
+  }
+
+  /** Cancels the active ACP turn without deleting the logical session. */
+  async cancelSession(sessionId: string): Promise<boolean> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    const readiness = await session.ready;
+    if (!readiness.ok || !session.controls) return false;
+    try {
+      await session.controls.cancel();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Switches the engine session mode; optimistically updates local state. */

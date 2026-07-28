@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Headless multi-engine agent CLI. `nuwa-cli` attaches to the `claude` and `codex` CLIs you've already installed and logged into — no separate login, no bundled runtime. It reads the exact same `~/.claude` / `~/.codex` state your terminal already uses.
+Headless multi-engine agent CLI. `nuwa-cli` bundles ACP runtimes for Codex and Claude. A locally installed CLI is optional: when present, nuwa-cli reuses its `~/.claude` / `~/.codex` history and configuration; otherwise the session can run entirely from model, environment, and MCP configuration delivered over ACP.
 
 ---
 
@@ -104,6 +104,14 @@ nuwa-cli serve --port 60016
 ```
 
 Accepts NuwaClaw-compatible `model_provider` / `agent_config` / `context_servers`. Precedence: session config > Gateway flags > local environment.
+
+Cloud-session files are stored under:
+
+```text
+~/.nuwa-cli/workspaces/computer-project-workspace/<user_id>/<agent_work_dir>/
+```
+
+Use `nuwa-cli status` to view the registered computer name and service state.
 
 See [`docs/serve-lifecycle.md`](docs/serve-lifecycle.md) for full lifecycle, auth, and permission details.
 

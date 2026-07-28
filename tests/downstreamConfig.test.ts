@@ -153,6 +153,20 @@ describe("parseDownstreamSessionConfig", () => {
     ]);
   });
 
+  it("sanitizes and deduplicates MCP names for OpenAI/Anthropic tool schemas", () => {
+    const result = parseDownstreamSessionConfig({
+      mcp_servers: [
+        { name: "A股股票查询", command: "mcp-a" },
+        { name: "A 股股票查询", command: "mcp-b" },
+      ],
+    });
+
+    expect(result.mcpServers.map((server) => server.name)).toEqual([
+      "A",
+      "A_2",
+    ]);
+  });
+
   it.each([
     ["claude-code", "claude"],
     ["claude-code-acp-ts", "claude"],

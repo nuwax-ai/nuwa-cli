@@ -110,7 +110,7 @@ describe("update command", () => {
     );
   });
 
-  it("spawns npm via shell on Windows when npm resolves to a .cmd shim", async () => {
+  it("runs npm-cli.js directly on Windows when npm resolves to a .cmd shim", async () => {
     const realPlatform = process.platform;
     Object.defineProperty(process, "platform", {
       value: "win32",
@@ -124,9 +124,14 @@ describe("update command", () => {
       const { updateCommand } = await import("../src/commands/update.js");
       await updateCommand(undefined, {});
       expect(mocks.spawnSync).toHaveBeenCalledWith(
-        "C:\\nodejs\\npm.cmd",
-        ["install", "-g", "@nuwax-ai/nuwa-cli@beta"],
-        expect.objectContaining({ shell: true, stdio: "inherit" }),
+        process.execPath,
+        [
+          "C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+          "install",
+          "-g",
+          "@nuwax-ai/nuwa-cli@beta",
+        ],
+        expect.objectContaining({ stdio: "inherit" }),
       );
     } finally {
       Object.defineProperty(process, "platform", {

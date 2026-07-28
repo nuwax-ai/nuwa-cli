@@ -15,7 +15,12 @@ import {
 } from "../core/auth/credentials.js";
 import { getDeviceId } from "../core/auth/deviceId.js";
 import { getServeStatus } from "../core/serve/serveLock.js";
+import {
+  findServeProcessIds,
+  stopServeProcesses,
+} from "../core/processes/serveSingleton.js";
 import { findUiProcessIds } from "../core/processes/uiSingleton.js";
+import { stopCommand } from "./processes.js";
 
 export interface LoginCommandOptions {
   domain?: string;
@@ -104,6 +109,7 @@ export async function loginCommand(
   options: LoginCommandOptions,
 ): Promise<void> {
   try {
+    const runningGatewayPids = findServeProcessIds();
     if (options.savedKey) {
       const domain = await resolveDomain(options.domain);
       if (!domain) {
@@ -116,6 +122,7 @@ export async function loginCommand(
         password: "",
         savedKey: options.savedKey,
       });
+      await restartGatewayAfterLogin(runningGatewayPids);
       return;
     }
 
@@ -135,6 +142,7 @@ export async function loginCommand(
         password,
         savedKey: getSavedKeyForAccount(domain, options.username),
       });
+      await restartGatewayAfterLogin(runningGatewayPids);
       return;
     }
 
@@ -150,6 +158,7 @@ export async function loginCommand(
         password: "",
         savedKey: existing.savedKey,
       });
+      await restartGatewayAfterLogin(runningGatewayPids);
       return;
     }
 
@@ -173,6 +182,7 @@ export async function loginCommand(
       password,
       savedKey: getSavedKeyForAccount(domain, username),
     });
+    await restartGatewayAfterLogin(runningGatewayPids);
   } catch (err) {
     const message =
       err instanceof RegError ? err.message : (err as Error).message;
@@ -181,9 +191,26 @@ export async function loginCommand(
   }
 }
 
+async function restartGatewayAfterLogin(
+  runningGatewayPids: number[],
+): Promise<void> {
+  if (runningGatewayPids.length === 0) return;
+  console.log(pc.dim("检测到 Gateway 正在运行，正在应用新登录信息并自动重启..."));
+  await stopServeProcesses(runningGatewayPids);
+  const { gatewayCommand } = await import("./gateway.js");
+  await gatewayCommand({ daemon: true, force: true, authReady: true });
+}
+
 export async function logoutCommand(): Promise<void> {
+  // Stop first so the tunnel cannot remain online with credentials that the
+  // CLI has already declared logged out.
+  await stopCommand({ all: true });
   clearSessionKeepingSavedKey();
-  console.log(pc.dim("已退出登录（savedKey 已保留，下次可免密登录）。"));
+  console.log(
+    pc.dim(
+      "已退出登录并停止全部服务（savedKey 已保留，下次可免密登录）。",
+    ),
+  );
 }
 
 export interface StatusCommandOptions {

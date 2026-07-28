@@ -73,8 +73,8 @@ function chatProjectKey(
   ...fallbacks: Array<string | undefined | null>
 ): string | undefined {
   return (
-    textField(body, "project_id", "projectId") ??
     textField(body, "agent_work_dir", "agentWorkDir") ??
+    textField(body, "project_id", "projectId") ??
     textField(body, "session_id", "sessionId") ??
     fallbacks.find((value) => typeof value === "string" && value.length > 0) ??
     undefined
@@ -134,8 +134,12 @@ function resolveChatCwd(
   }
 
   if (projectKey) {
+    const userId =
+      textField(body, "user_id", "userId") ?? "unknown";
     const cwd = path.join(
       path.resolve(defaultCwd),
+      "computer-project-workspace",
+      workspaceSegment(userId, "unknown"),
       workspaceSegment(projectKey, "default"),
     );
     ensureDir(cwd);
@@ -296,12 +300,10 @@ export function startServeHttp(options: ServeOptions): {
             );
             return;
           }
-          const downstream = session
-            ? undefined
-            : parseDownstreamSessionConfig(body);
+          const downstream = parseDownstreamSessionConfig(body);
           debugLog("serve.chat", "runtime config resolved", {
             existingId,
-            engine: session?.engine ?? downstream?.engine,
+            engine: downstream.engine,
             hasModelOverlay: Boolean(downstream?.modelOverlay),
             hasEngineEnv: Boolean(
               downstream?.engineEnv &&
@@ -309,17 +311,29 @@ export function startServeHttp(options: ServeOptions): {
             ),
             mcpServerCount: downstream?.mcpServers.length ?? 0,
           });
-          const target =
-            session ??
-            hub.startSession(
-              downstream?.engine ?? "codex",
+          const target = session
+            ? await hub.reconfigureSession(
+                session.sessionId,
+                downstream.engine,
+                downstream,
+              )
+            : hub.startSession(
+                downstream.engine,
               cwdResult.cwd,
               {
                 userId,
                 projectId: cwdResult.projectKey ?? projectId,
               },
-              downstream,
+                downstream,
+              );
+          if (!target) {
+            sendJson(
+              res,
+              404,
+              httpError("ERR_SESSION_NOT_FOUND", `session ${existingId} not found`),
             );
+            return;
+          }
 
           // Wait for the engine to actually connect before responding — if
           // resolve()/session/new fails, surface it here instead of handing
@@ -543,7 +557,7 @@ export function startServeHttp(options: ServeOptions): {
             : projectKey
               ? hub.findSessionByProjectId(projectKey)
               : undefined;
-          if (session) await hub.stopSession(session.sessionId);
+          if (session) await hub.cancelSession(session.sessionId);
           debugLog("serve.cancel", "request", {
             sessionId,
             projectId,

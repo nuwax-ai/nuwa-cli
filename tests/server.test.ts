@@ -44,7 +44,12 @@ describe("serve HTTP server", () => {
   const workspaceUser = "nuwa-cli-test-user";
   const agentWorkDir = "nuwa-cli-test-agent-work-dir";
   const workspaceProject = "nuwa-cli-test-project-id";
-  const workspacePath = path.join(serverCwd, workspaceProject);
+  const workspacePath = path.join(
+    serverCwd,
+    "computer-project-workspace",
+    workspaceUser,
+    agentWorkDir,
+  );
 
   beforeAll(async () => {
     // Isolate the serve lock so the test's server doesn't clobber a real
@@ -189,7 +194,7 @@ describe("serve HTTP server", () => {
     });
   });
 
-  it("creates a CLI-owned project workspace from project_id under the active workspace root", async () => {
+  it("creates a file-server-compatible user/workdir workspace and prefers agent_work_dir", async () => {
     fs.rmSync(workspacePath, { recursive: true, force: true });
 
     const res = await fetch(url("/computer/chat"), {

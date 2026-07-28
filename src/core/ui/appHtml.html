@@ -436,7 +436,7 @@
             if (last && last.role === "assistant") last.thought += update.content.text;
           } else if (su === "tool_call" || su === "tool_call_update") {
             const last = arr[arr.length - 1];
-            const tc = update.content && update.content.toolCall;
+            const tc = (update.content && update.content.toolCall) || update;
             if (last && tc) {
               const name = tc.title || tc.kind || "tool";
               if (!last.tools.includes(name)) last.tools.push(name);

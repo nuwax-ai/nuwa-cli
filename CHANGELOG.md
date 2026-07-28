@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ACP permission guardrails aligned with NuwaClaw: `PermissionCoordinator`, SSE `acpRequestPermission`, real `POST /computer/notify-resolved`, and pluggable sensitive classifiers (first: local session history). `--approve` now accepts `auto|ask|deny`. See [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).
 - `/computer/local-sessions/list|read` and `/computer/sensitive-access/await` for consented local-session export; non-TTY `context`/`sessions` CLI paths go through the same bus.
 
+## [0.1.0-beta.14] - 2026-07-28
+
+### Fixed
+
+- Preserve the public session ID when switching model providers or Agent engines. Runtime changes now send ACP `session/cancel`, replace the engine runner in place, and apply the newly delivered model, environment, and MCP configuration instead of returning SSE 404.
+- Emit ACP session-update subtypes as SSE event names (while retaining the aggregate Console event), allowing interactive `nuwax_ask_question` forms and tool updates to reach cloud clients.
+- Align Agent cwd with `nuwax-file-server`: `computer-project-workspace/<user_id>/<agent_work_dir>`. Generated files, prompts, tools, skills, and plugin outputs are now visible to file preview and packaging APIs.
+- Sanitize and deduplicate ACP MCP server names to the OpenAI/Anthropic tool-name character set, including non-Latin names delivered by agent development flows.
+- On Windows, run `npm-cli.js` through `node` instead of invoking a spaced `.cmd` path via a shell. `update` stops Gateway, Console, lanproxy, and file-server before installing so executable files are not locked.
+- `logout` now stops all services before clearing the active session. A successful `login` automatically restarts an already-running Gateway so the new account takes effect immediately.
+
 ## [0.1.0-beta.3] - 2026-07-23
 
 ### Changed

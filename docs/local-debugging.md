@@ -392,7 +392,7 @@ npm run dev:cli -- serve --port 60016 --tunnel \
 
 注意：`nuwax-file-server` 和 `@nuwax-ai/lanproxy` 都随 CLI 通过 npm 安装；lanproxy 只安装当前 OS/CPU 对应的平台包。`--lanproxy-path`、`config set lanproxy-path` 或 `NUWACLI_LANPROXY_PATH` 只用于覆盖 npm 平台包或调试指定二进制。若注册接口返回 `serverHost`/`serverPort`，可省略 `--lanproxy-host` / `--lanproxy-port`。
 
-工作空间：未传 `--cwd` 时，`serve/gateway` 使用 `~/.nuwa-cli/workspaces` 作为默认根目录；云端请求里的 `project_id` 会映射到 `~/.nuwa-cli/workspaces/<project_id>`，`agent_work_dir` / `session_id` 仅在缺少 `project_id` 时作为兼容 fallback。`user_id` 只作为请求元数据，不参与本地路径。传了 `--cwd <dir>` 时，`<dir>` 就是当前项目目录本身，不会再追加 `project_id`。file-server 使用同一活动目录/根目录。
+工作空间：未传 `--cwd` 时，`serve/gateway` 使用 `~/.nuwa-cli/workspaces` 作为默认根目录；云端请求优先映射到 `~/.nuwa-cli/workspaces/computer-project-workspace/<user_id>/<agent_work_dir>`，缺少 `agent_work_dir` 时再回退到 `project_id` / `session_id`。该目录可直接查看会话生成的文件，并与 file-server 的文件列表、预览和打包路径一致。传了 `--cwd <dir>` 时，`<dir>` 就是当前项目目录本身。
 
 端口隔离：HTTP API 默认优先 `60016`，file-server 默认优先 `60015`；两者若被占用都会自动后移。file-server 的 PID/lock 临时目录按端口固定在 `~/.nuwa-cli/tmp/file-server-<port>`，不会复用系统默认的 `nuwax-file-server` 全局 PID 目录。
 

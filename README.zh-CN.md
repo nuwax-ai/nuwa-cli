@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-无界面（headless）的多引擎 Agent 命令行工具。`nuwa-cli` 直接挂接到你本机**已经安装并登录**的 `claude` 与 `codex` CLI——无需单独登录、不打包运行时。它读取的就是你终端里 `claude`/`codex` 本身在用的 `~/.claude` / `~/.codex` 状态。
+无界面（headless）的多引擎 Agent 命令行工具。`nuwa-cli` 已内置 Codex 与 Claude 的 ACP 运行时；本机无需预装对应 CLI。若本机已有 `claude` / `codex`，会复用 `~/.claude` / `~/.codex` 的历史和配置；否则可完全使用 ACP 下发的模型、环境变量与 MCP 配置运行。
 
 ---
 
@@ -104,6 +104,14 @@ nuwa-cli serve --port 60016
 ```
 
 兼容 NuwaClaw 的 `model_provider` / `agent_config` / `context_servers`。优先级：会话配置 > Gateway 参数 > 本地环境。
+
+云端会话生成的本地文件位于：
+
+```text
+~/.nuwa-cli/workspaces/computer-project-workspace/<user_id>/<agent_work_dir>/
+```
+
+运行 `nuwa-cli status` 可查看“我的电脑”名称和服务状态。
 
 详见 [`docs/serve-lifecycle.md`](docs/serve-lifecycle.md)。
 

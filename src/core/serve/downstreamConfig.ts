@@ -164,6 +164,22 @@ function normalizeMcpServer(value: unknown, index: number): McpServer {
   throw new Error(`${label} 缺少有效的 command、HTTP/SSE url 或 ACP serverId`);
 }
 
+function sanitizeMcpServerNames(servers: McpServer[]): McpServer[] {
+  const used = new Set<string>();
+  return servers.map((server) => {
+    let base = server.name
+      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "");
+    if (!base) base = "mcp_server";
+    let name = base;
+    let suffix = 2;
+    while (used.has(name)) name = `${base}_${suffix++}`;
+    used.add(name);
+    return name === server.name ? server : { ...server, name };
+  });
+}
+
 function resolveModelTemplate(
   value: string,
   modelProvider: Record<string, unknown> | undefined,
@@ -304,6 +320,6 @@ export function parseDownstreamSessionConfig(
     engine,
     modelOverlay: hasModelOverlay ? modelOverlay : undefined,
     engineEnv,
-    mcpServers: mcpValue.map(normalizeMcpServer),
+    mcpServers: sanitizeMcpServerNames(mcpValue.map(normalizeMcpServer)),
   };
 }

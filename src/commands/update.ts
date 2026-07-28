@@ -1,10 +1,20 @@
 import { spawnSync } from "node:child_process";
+import * as path from "node:path";
 import {
   CLI_VERSION,
   DEFAULT_DIST_TAG,
   PACKAGE_NAME,
 } from "../core/version.js";
 import { findOnPath, isBatchShim } from "../util/which.js";
+import {
+  listRegisteredProcesses,
+  stopProcessIds,
+} from "../core/processes/processRegistry.js";
+import {
+  findServeProcessIds,
+  stopServeProcesses,
+} from "../core/processes/serveSingleton.js";
+import { findUiProcessIds } from "../core/processes/uiSingleton.js";
 
 export interface UpdateOptions {
   check?: boolean;
@@ -38,16 +48,53 @@ function runCommand(
     stdio?: "inherit" | "pipe";
   },
 ): CommandResult {
-  const result = spawnSync(command, args, {
-    ...options,
-    ...(isBatchShim(command) ? { shell: true } : {}),
-  });
+  const invocation = resolvePackageManagerInvocation(command, args);
+  const result = spawnSync(invocation.command, invocation.args, options);
   return {
     status: result.status,
     stdout: typeof result.stdout === "string" ? result.stdout : undefined,
     stderr: typeof result.stderr === "string" ? result.stderr : undefined,
     error: result.error,
   };
+}
+
+export function resolvePackageManagerInvocation(
+  command: string,
+  args: string[],
+): { command: string; args: string[] } {
+  if (process.platform !== "win32" || !isBatchShim(command)) {
+    return { command, args };
+  }
+  // Never execute npm.cmd through `shell:true`: cmd.exe splits an unquoted
+  // "C:\Program Files\..." path and produces `'C:\Program' 不是内部或外部命令`.
+  // npm.cmd and npm-cli.js are installed together by Node.js.
+  const npmCli = path.win32.join(
+    path.win32.dirname(command),
+    "node_modules",
+    "npm",
+    "bin",
+    "npm-cli.js",
+  );
+  return { command: process.execPath, args: [npmCli, ...args] };
+}
+
+async function stopRuntimeProcessesForUpdate(): Promise<void> {
+  if (process.env.VITEST) return;
+  const gatewayPids = findServeProcessIds(0).filter(
+    (pid) => pid !== process.pid,
+  );
+  const registeredChildPids = listRegisteredProcesses()
+    .filter(
+      (record) =>
+        (record.kind === "lanproxy" || record.kind === "file-server") &&
+        record.pid !== process.pid,
+    )
+    .map((record) => record.pid);
+  const consolePids = findUiProcessIds().filter((pid) => pid !== process.pid);
+
+  if (gatewayPids.length > 0) await stopServeProcesses(gatewayPids);
+  const remaining = [...new Set([...registeredChildPids, ...consolePids])];
+  if (remaining.length > 0) await stopProcessIds(remaining);
 }
 
 export function normalizeUpdateTarget(target?: string): string {
@@ -138,6 +185,9 @@ export async function updateCommand(
     console.log(`升级目标：${packageSpec}`);
     console.log(`执行：${printableCommand("npm", installArgs)}`);
     if (options.dryRun) return;
+
+    console.log("正在停止 Gateway、Console、lanproxy 和文件服务，以释放升级文件...");
+    await stopRuntimeProcessesForUpdate();
 
     const result = runner(command, installArgs, {
       env,
