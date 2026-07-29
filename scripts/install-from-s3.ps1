@@ -105,7 +105,7 @@ function Fetch($url, $dest) {
     }
 }
 
-# --- 升级检测（安装前 nuwa-cli 是否已存在）---
+# --- Upgrade detection (was nuwa-cli already installed before install?) ---
 $WasInstalled = [bool](Get-Command nuwa-cli -ErrorAction SilentlyContinue)
 
 # --- Node check ---
@@ -218,14 +218,14 @@ if ($WasInstalled) {
         } catch {}
     }
     if ($loggedIn) {
-        Write-Host "已登录，正在后台重启 nuwa-cli serve（升级后）..." -ForegroundColor Cyan
+        Write-Host "Logged in: restarting nuwa-cli serve in background (post-upgrade)..." -ForegroundColor Cyan
         try {
             & nuwa-cli serve --daemon --force 2>$null | Out-Null
-            Ok "已后台重启 nuwa-cli serve"
+            Ok "nuwa-cli serve restarted in background"
         } catch {
-            Warn "serve 自动重启失败（可手动: nuwa-cli serve --daemon）"
+            Warn "serve auto-restart failed (run manually: nuwa-cli serve --daemon)"
         }
     } else {
-        Write-Host "未登录 Nuwax，跳过 serve 自动重启。" -ForegroundColor Cyan
+        Write-Host "Not logged in: skipping serve auto-restart." -ForegroundColor Cyan
     }
 }
