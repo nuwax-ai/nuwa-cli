@@ -220,7 +220,7 @@ if ($WasInstalled) {
     if ($loggedIn) {
         Write-Host "已登录，正在后台重启 nuwa-cli serve（升级后）..." -ForegroundColor Cyan
         try {
-            & nuwa-cli serve --daemon 2>$null | Out-Null
+            & nuwa-cli serve --daemon --force 2>$null | Out-Null
             Ok "已后台重启 nuwa-cli serve"
         } catch {
             Warn "serve 自动重启失败（可手动: nuwa-cli serve --daemon）"
