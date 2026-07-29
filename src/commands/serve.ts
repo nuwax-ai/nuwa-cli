@@ -293,11 +293,13 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
     allowUnauthenticatedComputerRoutes: options.tunnel === true,
   });
   const { secret, stop, addAcceptedSecret } = httpHandle;
-  const shutdown = async () => {
+  const onSigInt = () => shutdown("SIGINT");
+  const onSigTerm = () => shutdown("SIGTERM");
+  const shutdown = async (signal?: NodeJS.Signals) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    process.off("SIGINT", shutdown);
-    process.off("SIGTERM", shutdown);
+    process.off("SIGINT", onSigInt);
+    process.off("SIGTERM", onSigTerm);
     // 先 abort 健康检查，再停子进程，缩短 Ctrl+C 到进程退出的等待。
     if (!shutdownAbort.signal.aborted) shutdownAbort.abort();
     console.log(pc.dim("\n正在关闭..."));
@@ -305,6 +307,7 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
       fileServerStarted,
       activeFileServerPort,
       lanproxyPid: lanproxyHandle?.pid,
+      signal,
     });
     await stop();
     lanproxyHandle?.stop();
@@ -344,9 +347,20 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
     ),
   );
 
+  // keepAlive 心跳：定时刷新进程记录，减少被宿主系统判为 idle 而回收的概率。
+  // （无法防系统休眠/登出等强制信号；那种场景需要 launchd KeepAlive 托管。）
+  const keepAliveTimer = setInterval(() => {
+    try {
+      updateProcessRecord(process.pid, { state: "running" });
+    } catch {
+      // best-effort
+    }
+  }, 30_000);
+  keepAliveTimer.unref();
+
   // HTTP 已起来就注册：覆盖后续 register / 健康检查等待窗口。
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", onSigInt);
+  process.once("SIGTERM", onSigTerm);
   process.on("exit", () => {
     if (shuttingDown) return;
     try {

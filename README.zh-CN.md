@@ -113,6 +113,18 @@ nuwa-cli serve --port 60016
 
 运行 `nuwa-cli status` 可查看“我的电脑”名称和服务状态。
 
+### 查看本地会话文件
+
+云端会话生成的文件写入 `~/.nuwa-cli/workspaces/<user_id>/<agent_work_dir>/`。可直接浏览：
+
+```bash
+ls -la ~/.nuwa-cli/workspaces
+# macOS：在 Finder 中打开
+open ~/.nuwa-cli/workspaces
+```
+
+nuwa-cli 还会启动本地**文件服务**（HTTP，默认端口 `60015`，`serve`/`gateway` 启动时打印）——它镜像相同的工作空间布局，提供文件列表 / 预览 / 上传 / 打包接口，路径与引擎写入的位置一致。
+
 详见 [`docs/serve-lifecycle.md`](docs/serve-lifecycle.md)。
 
 ---
