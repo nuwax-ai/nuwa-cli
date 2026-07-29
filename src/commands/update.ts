@@ -1,10 +1,12 @@
 import { spawn, spawnSync } from "node:child_process";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   CLI_VERSION,
   DEFAULT_DIST_TAG,
   PACKAGE_NAME,
 } from "../core/version.js";
+import { ensureDir, logsDir } from "../util/paths.js";
 import { findOnPath, isBatchShim } from "../util/which.js";
 import {
   listRegisteredProcesses,
@@ -83,31 +85,14 @@ async function runInstallWithProgress(
   env: NodeJS.ProcessEnv,
 ): Promise<CommandResult> {
   const invocation = resolvePackageManagerInvocation(command, args);
-  const startedAt = Date.now();
-  let lastPrinted = -1;
-  const render = () => {
-    const percent = estimateInstallPercent(
-      30,
-      Math.floor((Date.now() - startedAt) / 1000),
-    );
-    if (percent === lastPrinted && !process.stdout.isTTY) return;
-    lastPrinted = percent;
-    const line = formatProgressBar(percent, "正在下载并安装依赖（估算）");
-    if (process.stdout.isTTY) process.stdout.write(`\r${line}`);
-    else console.log(line);
-  };
-
-  render();
-  const timer = setInterval(render, 500);
-  timer.unref();
-
+  // stdio: "inherit" lets npm render its own progress/spinner. We no longer
+  // overlay an estimated \r progress bar — it clobbered npm's output on the
+  // same line (flickering spinner+progress on one row).
   return await new Promise((resolve) => {
     let settled = false;
     const finish = (result: CommandResult) => {
       if (settled) return;
       settled = true;
-      clearInterval(timer);
-      if (process.stdout.isTTY) process.stdout.write("\n");
       resolve(result);
     };
     const child = spawn(invocation.command, invocation.args, {
@@ -118,6 +103,41 @@ async function runInstallWithProgress(
     child.once("error", (error) => finish({ status: null, error }));
     child.once("close", (code) => finish({ status: code }));
   });
+}
+
+/**
+ * 升级/安装完成后：若已登录，静默后台重启 `nuwa-cli serve`（detached）。
+ * 未登录则跳过（serve 需要 Nuwax 凭证才能连 Gateway）。
+ */
+async function restartServeIfLoggedIn(): Promise<void> {
+  try {
+    const { readCredentials } = await import("../core/auth/credentials.js");
+    if (!readCredentials().configKey) {
+      console.log("未登录 Nuwax，跳过 serve 自动重启。");
+      return;
+    }
+    const cliEntry = process.argv[1];
+    if (!cliEntry) return;
+    ensureDir(logsDir());
+    const logPath = path.join(logsDir(), "serve.log");
+    const out = fs.openSync(logPath, "a");
+    const child = spawn(
+      process.execPath,
+      [cliEntry, "serve", "--daemon"],
+      {
+        detached: true,
+        stdio: ["ignore", out, out],
+        env: { ...process.env, NUWACLI_SERVE_DAEMONIZED: "1" },
+        windowsHide: true,
+      },
+    );
+    child.unref();
+    console.log(`已登录，已后台重启 nuwa-cli serve（pid ${child.pid}）。`);
+  } catch (err) {
+    console.log(
+      `serve 自动重启跳过：${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 export function resolvePackageManagerInvocation(
@@ -301,6 +321,8 @@ export async function updateCommand(
     console.log(
       "升级命令已完成。请重新运行 `nuwa-cli --version` 确认当前 shell 解析到的新版本。",
     );
+    // 升级后静默后台重启 serve（已登录时；未登录跳过）
+    await restartServeIfLoggedIn();
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exitCode = 1;

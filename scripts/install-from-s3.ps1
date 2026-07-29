@@ -64,7 +64,12 @@ function Invoke-NpmWithProgress($NpmArgs, $StartPercent) {
 
         $stdout = if (Test-Path $stdoutLog) { Get-Content $stdoutLog -Raw } else { "" }
         $stderr = if (Test-Path $stderrLog) { Get-Content $stderrLog -Raw } else { "" }
-        if ($child.ExitCode -ne 0) {
+        # ExitCode can be empty/$null when the child PowerShell exits via
+        # `exit $LASTEXITCODE` and Windows npm.cmd doesn't propagate a code
+        # (npm itself already printed "added N packages" successfully). Treat
+        # falsy (null/empty/0) as non-failure; the Get-Command nuwa-cli check
+        # later in the script is the source of truth.
+        if ($child.ExitCode -and $child.ExitCode -ne 0) {
             if ($stdout.Trim()) { Write-Host $stdout.TrimEnd() }
             if ($stderr.Trim()) { Write-Host $stderr.TrimEnd() -ForegroundColor Red }
             throw "npm exited with code $($child.ExitCode)"
@@ -99,6 +104,9 @@ function Fetch($url, $dest) {
         }
     }
 }
+
+# --- 升级检测（安装前 nuwa-cli 是否已存在）---
+$WasInstalled = [bool](Get-Command nuwa-cli -ErrorAction SilentlyContinue)
 
 # --- Node check ---
 Step 1 4 "Checking Node.js and resolving the release ..."
@@ -197,4 +205,27 @@ if ($nuwa) {
     Write-Host "Install succeeded. Run nuwa-cli -h for help." -ForegroundColor Green
 } else {
     Warn "nuwa-cli is installed but not visible in this session. Reopen PowerShell and run: nuwa-cli -h"
+}
+
+# --- 升级后静默后台重启 serve（已登录时；未登录跳过）---
+if ($WasInstalled) {
+    $credPath = Join-Path $env:USERPROFILE ".nuwa-cli\credentials.json"
+    $loggedIn = $false
+    if (Test-Path $credPath) {
+        try {
+            $cred = Get-Content $credPath -Raw | ConvertFrom-Json
+            if ($cred.configKey) { $loggedIn = $true }
+        } catch {}
+    }
+    if ($loggedIn) {
+        Write-Host "已登录，正在后台重启 nuwa-cli serve（升级后）..." -ForegroundColor Cyan
+        try {
+            & nuwa-cli serve --daemon 2>$null | Out-Null
+            Ok "已后台重启 nuwa-cli serve"
+        } catch {
+            Warn "serve 自动重启失败（可手动: nuwa-cli serve --daemon）"
+        }
+    } else {
+        Write-Host "未登录 Nuwax，跳过 serve 自动重启。" -ForegroundColor Cyan
+    }
 }

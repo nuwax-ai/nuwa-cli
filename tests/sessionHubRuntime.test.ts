@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   newSessionRequests: [] as unknown[],
   notifications: [] as Array<{ method: string; params: unknown }>,
   engineIds: [] as string[],
+  bridgeStart: vi.fn().mockResolvedValue(undefined),
+  bridgeStop: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../src/core/engines/registry.js", () => ({
@@ -16,6 +18,23 @@ vi.mock("../src/core/engines/registry.js", () => ({
     }),
   }),
 }));
+
+// 避免单测真实 spawn chrome-devtools-mcp（PersistentMcpBridge）
+vi.mock("@nuwax-ai/mcp-proxy-ts/host", async () => {
+  const actual = await vi.importActual<
+    typeof import("@nuwax-ai/mcp-proxy-ts/host")
+  >("@nuwax-ai/mcp-proxy-ts/host");
+  class MockBridge {
+    start = mocks.bridgeStart;
+    stop = mocks.bridgeStop;
+    isRunning = () => true;
+    getBridgeUrl = (name: string) => `http://127.0.0.1:9/mcp/${name}`;
+  }
+  return {
+    ...actual,
+    PersistentMcpBridge: MockBridge,
+  };
+});
 
 vi.mock("../src/core/acp/connection.js", () => ({
   withEngineConnection: async (
@@ -52,6 +71,8 @@ describe("SessionHub ACP runtime precedence", () => {
     mocks.newSessionRequests.length = 0;
     mocks.notifications.length = 0;
     mocks.engineIds.length = 0;
+    mocks.bridgeStart.mockClear();
+    mocks.bridgeStop.mockClear();
   });
 
   it("uses session model/env overrides and forwards MCP servers", async () => {
@@ -91,11 +112,27 @@ describe("SessionHub ACP runtime precedence", () => {
         SESSION_ONLY: "yes",
       }),
     });
-    expect(mocks.newSessionRequests[0]).toEqual({
+    expect(mocks.newSessionRequests[0]).toMatchObject({
       cwd: process.cwd(),
-      mcpServers,
+      mcpServers: expect.arrayContaining([
+        // 默认 chrome-devtools（codex-acp 原生支持 stdio MCP，不经 proxy 桥接）
+        expect.objectContaining({
+          name: "chrome-devtools",
+          command: "npx",
+          args: expect.arrayContaining(["chrome-devtools-mcp@latest"]),
+        }),
+        // ACP 下发的 tools 原样下发（codex-acp 原生 stdio，保留原始 command）
+        expect.objectContaining({
+          name: "tools",
+          command: "/bin/tools-mcp",
+        }),
+      ]),
     });
-
+    // codex 不经 mcp-proxy-ts 改写，tools 保留原始 command（非 proxy 入口）
+    const toolsServer = (
+      mocks.newSessionRequests[0] as { mcpServers: Array<{ name: string; command: string }> }
+    ).mcpServers.find((s) => s.name === "tools");
+    expect(toolsServer?.command).toBe("/bin/tools-mcp");
     await hub.stopSession(session.sessionId);
   });
 

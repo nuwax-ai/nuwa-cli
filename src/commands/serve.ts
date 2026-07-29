@@ -38,6 +38,7 @@ import {
 } from "../core/ports.js";
 import { ensureDir, logsDir, workspacesDir } from "../util/paths.js";
 import { debugLog } from "../core/debugLog.js";
+import { warmupMcpNpxCache } from "../core/mcp/cacheWarmup.js";
 import {
   registerProcess,
   updateProcessRecord,
@@ -235,6 +236,17 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  // 后台静默预热常用 MCP 的 npx 缓存（best-effort，不阻塞 HTTP 端口绑定）
+  setImmediate(() => {
+    warmupMcpNpxCache()
+      .then((r) =>
+        debugLog("serve.warmup", "result", {
+          skipped: r.skipped,
+          warmed: r.warmed,
+        }),
+      )
+      .catch((err) => debugLog("serve.warmup", "failed", { error: String(err) }));
+  });
   const permissionMode: PermissionMode = approveParsed.mode;
   let fileServerStarted = false;
   let activeFileServerPort: number | undefined;

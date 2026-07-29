@@ -38,6 +38,10 @@ import {
   responseAllowsAccess,
 } from "../permissions/syntheticRequest.js";
 import { AsyncQueue } from "./asyncQueue.js";
+import {
+  rewriteMcpServersForEngine,
+  stopPersistentMcpBridge,
+} from "../mcp/proxyRewrite.js";
 
 export interface UnifiedSessionMessage {
   sessionId: string;
@@ -374,15 +378,15 @@ export class SessionHub {
                 data: notification.update,
                 timestamp: new Date().toISOString(),
               };
-              // Cloud/Electron compatibility: SSE event names are the ACP
-              // update subtype (`tool_call`, `agent_message_chunk`, ...).
-              // Keep the aggregate event for the bundled local Console.
+              // SSE event name is the ACP update subtype (`agent_message_chunk`,
+              // `tool_call`, ...). Do NOT also emit an `agent_session_update`
+              // aggregate with the same payload — clients that consume both
+              // (e.g. codex via serve) render the text twice (叠词).
               this.broadcast(
                 sessionId,
                 notification.update.sessionUpdate,
                 message,
               );
-              this.broadcast(sessionId, "agent_session_update", message);
             },
           },
           async (ctx) => {
@@ -696,10 +700,17 @@ export class SessionHub {
     );
     this.sessions.set(session.sessionId, session);
     this.spawnRunner(session, async (ctx) => {
+      // ACP MCP：claude 经 @nuwax-ai/mcp-proxy-ts 改写为 proxy 入口；codex 原生
+      // 支持 stdio MCP，由 rewriteMcpServersForEngine 按 engine 分支下发原始入口
+      const mcpServers = await rewriteMcpServersForEngine(
+        session.mcpServers,
+        session.projectId ?? session.sessionId,
+        engineId,
+      );
       // Read modes/configOptions off the raw ActiveSession before wrapping —
       // SessionHandle only exposes sessionId/modes/prompt.
       const built = await ctx
-        .buildSession({ cwd, mcpServers: session.mcpServers })
+        .buildSession({ cwd, mcpServers })
         .start();
       session.acpSessionId = built.sessionId;
       session.modes = built.modes;
@@ -729,10 +740,15 @@ export class SessionHub {
     );
     this.sessions.set(session.sessionId, session);
     this.spawnRunner(session, async (ctx) => {
+      const mcpServers = await rewriteMcpServersForEngine(
+        session.mcpServers,
+        session.projectId ?? session.sessionId,
+        engineId,
+      );
       const loadRes = (await ctx.request(AGENT_METHODS.session_load, {
         sessionId: summary.sessionId,
         cwd: summary.cwd,
-        mcpServers: session.mcpServers,
+        mcpServers,
       })) as {
         modes?: SessionModeState | null;
         configOptions?: SessionConfigOption[] | null;
@@ -792,8 +808,13 @@ export class SessionHub {
       new Promise<void>((resolve) => setTimeout(resolve, 3000)),
     ]);
     this.spawnRunner(session, async (ctx) => {
+      const mcpServers = await rewriteMcpServersForEngine(
+        session.mcpServers,
+        session.projectId ?? session.sessionId,
+        engineId,
+      );
       const built = await ctx
-        .buildSession({ cwd: session.cwd, mcpServers: session.mcpServers })
+        .buildSession({ cwd: session.cwd, mcpServers })
         .start();
       session.acpSessionId = built.sessionId;
       session.modes = built.modes;
@@ -933,6 +954,8 @@ export class SessionHub {
     this.pending.cancelAll();
     const ids = [...this.sessions.keys()];
     await Promise.all(ids.map((id) => this.stopSession(id)));
+    // 关闭 PersistentMcpBridge，避免长驻 MCP 子进程残留
+    await stopPersistentMcpBridge();
   }
 
   /**

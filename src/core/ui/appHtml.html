@@ -406,7 +406,10 @@
             pushMsg(id, { role: "assistant", text: "", tools: [], thought: "", done: false });
             renderMessages();
           });
-          on("agent_session_update", (m) => handleUpdate(id, m.data));
+          // ACP subtype events. nuwa-cli 不再额外发 aggregate `agent_session_update`
+          // (与 codex 等客户端双消费会叠词)，改为直接按 subtype 监听。
+          for (const evn of ["agent_message_chunk", "agent_thought_chunk", "tool_call", "tool_call_update"])
+            on(evn, (m) => handleUpdate(id, m.data));
           on("end_turn", (m) => {
             const arr = state.msgs[id]; if (arr && arr.length) arr[arr.length - 1].done = true;
             state.pendingAssistant[id] = false;

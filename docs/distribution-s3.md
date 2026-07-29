@@ -113,6 +113,10 @@ curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/insta
 | `NUWACLI_REGISTRY` | — | 透传给 `npm install --registry`(国内用 `https://registry.npmmirror.com`) |
 | `NUWAX_S3_INSECURE` | `0` | 设 `1` 跳过证书校验(自签 MinIO);不设时也会在证书失败后自动降级 `-k` 重试 |
 
+### 升级场景的 serve 处理
+
+升级场景(安装前 `nuwa-cli` 已存在):安装成功后,若已登录(`~/.nuwa-cli/credentials.json` 的 `configKey` 存在),安装器会静默后台 restart `nuwa-cli serve --daemon`,使升级后的 serve 自动用上新版本;未登录或首次安装都跳过 restart,仅完成安装与 PATH 配置。`nuwa-cli update` 走 npm 升级路径时行为一致(已登录静默 restart,未登录打印提示并跳过)。
+
 ## channel / latest 指针
 
 - 每次 `--channel beta` 发布覆盖 `channels/beta.json`;`--channel stable` 同时覆盖 `channels/stable.json` 与 `latest.json`。

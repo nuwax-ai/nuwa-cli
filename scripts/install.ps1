@@ -55,7 +55,12 @@ function Invoke-NpmWithProgress($NpmArgs, $StartPercent) {
 
         $stdout = if (Test-Path $stdoutLog) { Get-Content $stdoutLog -Raw } else { "" }
         $stderr = if (Test-Path $stderrLog) { Get-Content $stderrLog -Raw } else { "" }
-        if ($child.ExitCode -ne 0) {
+        # ExitCode can be empty/$null when the child PowerShell exits via
+        # `exit $LASTEXITCODE` and Windows npm.cmd doesn't propagate a code
+        # (npm itself already printed "added N packages" successfully). Treat
+        # falsy (null/empty/0) as non-failure; the later nuwa-cli verification
+        # is the source of truth.
+        if ($child.ExitCode -and $child.ExitCode -ne 0) {
             if ($stdout.Trim()) { Write-Host $stdout.TrimEnd() }
             if ($stderr.Trim()) { Write-Host $stderr.TrimEnd() -ForegroundColor Red }
             throw "npm exited with code $($child.ExitCode)"

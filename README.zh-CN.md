@@ -103,7 +103,7 @@ nuwa-cli serve --port 60016
 # GET  /health                   （无需鉴权）
 ```
 
-兼容 NuwaClaw 的 `model_provider` / `agent_config` / `context_servers`。优先级：会话配置 > Gateway 参数 > 本地环境。
+兼容 NuwaClaw 的 `model_provider` / `agent_config` / `context_servers`。优先级：会话配置 > Gateway 参数 > 本地环境。ACP 下发的 `mcpServers` / `context_servers` 作为原始 stdio MCP 交给引擎；`claude-code-acp-ts` / `@nuwax-ai/nuwax-codex-acp-ts` 两个 TS adapter 在 adapter 层原生处理 ACP `mcpServers`。
 
 云端会话生成的本地文件位于：
 
@@ -135,12 +135,11 @@ nuwa-cli serve --port 60016
 
 - Node.js >= 22
 - `claude` 和/或 `codex` CLI，已安装并登录（ACP 下发模型配置时可省略）
-- 平台 optional dependencies 已安装（不要用 `--omit=optional`）
 
 ## 已知限制
 
 - **进程树清理**：孙进程（如 `claude-code-acp-ts` 拉起的 `claude` 二进制）不会被信号通知，可能成为孤儿。
 - **yolo 无路径限制**：`--approve auto` 对普通工具不论目标路径一律自动批准。
 - **Prompt 超时**：每条 prompt 限时 5 分钟，引擎卡住时报错而非无限等待。
-- **MCP 启动**：引擎等所有 MCP server 初始化后才处理首条消息；`npm exec` MCP server 首次可能需数分钟。
+- **MCP 启动**：引擎等所有 MCP server 初始化后才处理首条消息；`npm exec` MCP server 首次可能需数分钟。MCP server 以原始 stdio 形式注入引擎，两个 TS adapter 在 adapter 层原生处理 ACP `mcpServers`。默认始终启用 `chrome-devtools`（`npx -y chrome-devtools-mcp@latest`，每 session 自启，无跨 session 持久化，无 `--isolated`）。注意：`@nuwax-ai/mcp-proxy-ts` 仍是依赖（host adapter 工具/默认服务合并），但不再用于给 engine 注入 proxy 入口。
 - **自定义 ACP 引擎**（pi-acp、hermes、kilo 等）暂不支持——仅支持 `claude` 和 `codex`。

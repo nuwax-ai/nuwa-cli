@@ -13,7 +13,7 @@ const ENGINE_IDS: EngineKind[] = ["claude", "codex"];
 function fixForEngine(id: EngineKind): string {
   return id === "claude"
     ? "重新安装 nuwa-cli，并确认 claude-agent-sdk 当前平台包已安装"
-    : "重新安装 nuwa-cli，并确认 nuwax-codex-acp 当前平台包已安装";
+    : "重新安装 nuwa-cli，并确认 @nuwax-ai/nuwax-codex-acp-ts 已安装";
 }
 
 export async function probeEngine(id: EngineKind): Promise<EngineProbeResult> {
