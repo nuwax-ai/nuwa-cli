@@ -156,14 +156,14 @@ Claude ACP 平台运行时不可用。请重新安装 nuwa-cli，且不要使用
 
 可用条件：
 
-- `nuwax-codex-acp` 包依赖可解析。
+- `@nuwax-ai/nuwax-codex-acp-ts` 包依赖可解析（同 `claude-code-acp-ts` 模式：`spawn node dist/index.js`，`require.resolve` 解析）。
 
 `codex` CLI 与 `~/.codex/auth.json` 仅作为本地配置、历史和模型提示来源，不是运行硬前置。缺少时仍可通过 ACP 下发模型、环境变量与 MCP 配置运行。
 
 失败提示：
 
 ```bash
-Codex ACP 平台运行时不可用。请重新安装 nuwa-cli，且不要使用 --omit=optional。
+Codex ACP 平台运行时不可用。请重新安装 nuwa-cli。
 ```
 
 ## 引擎选择
@@ -185,9 +185,9 @@ Codex ACP 平台运行时不可用。请重新安装 nuwa-cli，且不要使用 
 2. Gateway 启动参数 `--api-key`、`--base-url`、`--model`；
 3. 用户电脑已有环境变量和 `~/.claude` / `~/.codex` 配置。
 
-没有下发的字段不会写入空值，也不会覆盖用户本地配置。MCP 配置会作为标准 ACP `mcpServers` 传给 `session/new` / `session/load`，其中 stdio MCP 的环境变量随该 MCP 进程下发。
+没有下发的字段不会写入空值，也不会覆盖用户本地配置。MCP 配置作为标准 ACP `mcpServers` 以原始 stdio 形式传给引擎（不再经 `@nuwax-ai/mcp-proxy-ts` 改写、不再起 `PersistentMcpBridge`），其中 stdio MCP 的环境变量随该 MCP 进程下发；`claude-code-acp-ts` / `@nuwax-ai/nuwax-codex-acp-ts` 两个 TS adapter 在 adapter 层原生处理 ACP `mcpServers`。
 
-引擎映射：`claude-code` / `claude-code-acp-ts` → Claude；`codex` / `codex-cli` / `codex-acp` / `nuwax-codex-acp` → Codex。没有下发 command、command 未命中，或下发当前 CLI 不支持的引擎时，统一使用 Codex。已有会话固定使用创建时的引擎，后续 prompt 不会中途切换。
+引擎映射：`claude-code` / `claude-code-acp-ts` → Claude；`codex` / `codex-cli` / `codex-acp` / `@nuwax-ai/nuwax-codex-acp-ts` → Codex。没有下发 command、command 未命中，或下发当前 CLI 不支持的引擎时，统一使用 Codex。已有会话固定使用创建时的引擎，后续 prompt 不会中途切换。
 
 ## 登录、注册与多账号
 

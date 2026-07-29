@@ -80,7 +80,7 @@
 | abort 能中断挂起的 prompt 并拆除引擎 | `tests/connection.test.ts`："interrupts a hung prompt when the abort signal fires" |
 | resolve 失败 → 502 且不留僵尸 | `tests/server.test.ts`："surfaces engine resolution failure as a 502 and doesn't leave a zombie session" |
 | 全套不破坏既有行为 | `vitest run`：113/113 通过；`tsc --noEmit`：通过 |
-| 手工回归 `serve` 关闭 | 启 `serve` → 发 chat → Ctrl-C：应无 `claude-code-acp-ts` / `nuwax-codex-acp` / `nuwax-file-server` 残留进程 |
+| 手工回归 `serve` 关闭 | 启 `serve` → 发 chat → Ctrl-C：应无 `claude-code-acp-ts` / `@nuwax-ai/nuwax-codex-acp-ts` / `nuwax-file-server` 残留进程 |
 | 手工回归 `/agent/stop` 中断 | 会话执行长工具时 POST stop，应在数秒内返回，引擎进程随之退出 |
 | `status` 反映 serve 运行态 | `tests/serveLock.test.ts`：写锁/读锁/探活/僵尸清理；手工：起 `serve` → `status` 见"运行中 端口 X"，停后 `status` 见"未运行"且锁文件已清 |
 
@@ -105,6 +105,10 @@
 - **未运行**：无锁；若锁存在但 PID 已死，自动清理残留锁并提示。
 
 设计要点：**secret 永不落盘**的承诺不变——锁里只有 pid/port/host/startedAt，是可观测性数据，不是凭证。
+
+## 升级后静默 restart serve
+
+`nuwa-cli update` 成功后，若已登录（`~/.nuwa-cli/credentials.json` 的 `configKey` 存在）则静默后台 restart `nuwa-cli serve --daemon`，使升级后的 serve 自动用上新版本；未登录时仅打印提示并跳过。一键脚本（`install-from-s3.sh` / `.ps1`）在升级场景（安装前 `nuwa-cli` 已存在）同样：已登录则静默 restart serve；首次安装或未登录都跳过。
 
 ## 决策记录
 

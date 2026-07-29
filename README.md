@@ -103,7 +103,7 @@ nuwa-cli serve --port 60016
 # GET  /health                   (no auth)
 ```
 
-Accepts NuwaClaw-compatible `model_provider` / `agent_config` / `context_servers`. Precedence: session config > Gateway flags > local environment. ACP `mcpServers` / `context_servers` are rewritten through [`@nuwax-ai/mcp-proxy-ts`](https://www.npmjs.com/package/@nuwax-ai/mcp-proxy-ts) (one proxy process per server) before the engine starts.
+Accepts NuwaClaw-compatible `model_provider` / `agent_config` / `context_servers`. Precedence: session config > Gateway flags > local environment. ACP `mcpServers` / `context_servers` are passed to the engine as raw stdio MCP servers; both TS adapters (`claude-code-acp-ts` / `@nuwax-ai/nuwax-codex-acp-ts`) handle ACP `mcpServers` natively at the adapter layer.
 
 Cloud-session files are stored under:
 
@@ -135,12 +135,11 @@ See [`docs/serve-lifecycle.md`](docs/serve-lifecycle.md) for full lifecycle, aut
 
 - Node.js >= 22
 - `claude` and/or `codex` CLI installed and logged in (optional when ACP supplies model config)
-- Platform optional dependencies installed (don't use `--omit=optional`)
 
 ## Known limitations
 
 - **Process-tree teardown**: grandchild processes (e.g. `claude` binary under `claude-code-acp-ts`) aren't signalled and may be orphaned on exit.
 - **No path confinement in yolo**: `--approve auto` auto-approves all ordinary tool calls regardless of target path.
 - **Prompt timeout**: 5 minutes per prompt; engine hangs produce an error instead of infinite wait.
-- **MCP startup**: engines wait for MCP servers to initialize before first prompt; `npm exec` MCP servers may take minutes on first run. nuwa-cli injects MCP via `@nuwax-ai/mcp-proxy-ts`. `chrome-devtools` is always enabled by default (`npx -y chrome-devtools-mcp@latest`, `persistent: true` via PersistentMcpBridge, no `--isolated`), matching NuwaClaw. Extra persistent names: `NUWACLI_MCP_PERSISTENT`.
+- **MCP startup**: engines wait for MCP servers to initialize before first prompt; `npm exec` MCP servers may take minutes on first run. MCP servers are injected as raw stdio; both TS adapters handle ACP `mcpServers` natively at the adapter layer. `chrome-devtools` is always enabled by default as a raw stdio MCP (`npx -y chrome-devtools-mcp@latest`, one per session, no cross-session persistence, no `--isolated`). `@nuwax-ai/mcp-proxy-ts` remains a dependency for host adapter tool / default service merging, but is no longer used to inject a proxy entry for the engine.
 - **Custom ACP engines** (pi-acp, hermes, kilo, etc.) not supported — only `claude` and `codex`.
