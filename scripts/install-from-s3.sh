@@ -83,6 +83,10 @@ fetch() {
   fi
 }
 
+# --- 升级检测（安装前 nuwa-cli 是否已存在），用于升级后自动重启 serve ---
+WAS_INSTALLED=0
+command -v nuwa-cli >/dev/null 2>&1 && WAS_INSTALLED=1
+
 # --- Node check ---
 step 1 4 "检查 Node.js 并解析发布版本 ..."
 command -v node >/dev/null 2>&1 || fail "未检测到 Node.js。请先安装 Node.js 22+: https://nodejs.org/"
@@ -175,4 +179,23 @@ if command -v nuwa-cli >/dev/null 2>&1; then
   printf '\n%s安装成功!运行 nuwa-cli -h 查看帮助。%s\n\n' "$GREEN" "$NC"
 else
   warn "nuwa-cli 已安装,但当前 shell 未识别。请重开终端后运行: nuwa-cli -h"
+fi
+
+# --- 升级后静默后台重启 serve（已登录时；未登录跳过）---
+if [ "$WAS_INSTALLED" = "1" ] && command -v nuwa-cli >/dev/null 2>&1; then
+  CRED="$HOME/.nuwa-cli/credentials.json"
+  LOGGED_IN=0
+  if [ -f "$CRED" ] && node -e "const c=require('$CRED');process.exit(c.configKey?0:1)" 2>/dev/null; then
+    LOGGED_IN=1
+  fi
+  if [ "$LOGGED_IN" = "1" ]; then
+    info "已登录，正在后台重启 nuwa-cli serve（升级后）..."
+    if nuwa-cli serve --daemon >/dev/null 2>&1; then
+      ok "已后台重启 nuwa-cli serve"
+    else
+      warn "serve 自动重启失败（可手动: nuwa-cli serve --daemon）"
+    fi
+  else
+    info "未登录 Nuwax，跳过 serve 自动重启。"
+  fi
 fi

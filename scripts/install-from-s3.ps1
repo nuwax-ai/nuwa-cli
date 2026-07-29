@@ -105,6 +105,9 @@ function Fetch($url, $dest) {
     }
 }
 
+# --- 升级检测（安装前 nuwa-cli 是否已存在）---
+$WasInstalled = [bool](Get-Command nuwa-cli -ErrorAction SilentlyContinue)
+
 # --- Node check ---
 Step 1 4 "Checking Node.js and resolving the release ..."
 $node = Get-Command node -ErrorAction SilentlyContinue
@@ -202,4 +205,27 @@ if ($nuwa) {
     Write-Host "Install succeeded. Run nuwa-cli -h for help." -ForegroundColor Green
 } else {
     Warn "nuwa-cli is installed but not visible in this session. Reopen PowerShell and run: nuwa-cli -h"
+}
+
+# --- 升级后静默后台重启 serve（已登录时；未登录跳过）---
+if ($WasInstalled) {
+    $credPath = Join-Path $env:USERPROFILE ".nuwa-cli\credentials.json"
+    $loggedIn = $false
+    if (Test-Path $credPath) {
+        try {
+            $cred = Get-Content $credPath -Raw | ConvertFrom-Json
+            if ($cred.configKey) { $loggedIn = $true }
+        } catch {}
+    }
+    if ($loggedIn) {
+        Write-Host "已登录，正在后台重启 nuwa-cli serve（升级后）..." -ForegroundColor Cyan
+        try {
+            & nuwa-cli serve --daemon 2>$null | Out-Null
+            Ok "已后台重启 nuwa-cli serve"
+        } catch {
+            Warn "serve 自动重启失败（可手动: nuwa-cli serve --daemon）"
+        }
+    } else {
+        Write-Host "未登录 Nuwax，跳过 serve 自动重启。" -ForegroundColor Cyan
+    }
 }
