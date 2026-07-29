@@ -167,11 +167,12 @@ export async function rewriteMcpServersForEngine(
     return passthrough as McpServer[];
   }
 
-  // codex-acp 原生支持 ACP stdio MCP（见 codex_agent.rs build_session_config），
-  // 不需要 mcp-proxy-ts proxy 桥接（那是给 claude-code-acp-ts 的：proxy 入口形态
-  // 会让 codex 注册不上原始 server name → "unknown MCP server"）。直接下发原始
-  // stdio 入口；codex 每 session 自启 MCP，也不用 PersistentMcpBridge。
-  if (engine === "codex") {
+  // claude-code-acp-ts 与 nuwax-codex-acp 均原生支持 ACP stdio MCP（各自把
+  // mcpServers 转成内部 MCP 配置：claude-code-acp-ts acp-agent.js、codex
+  // codex_agent.rs build_session_config）。mcp-proxy-ts proxy 桥接会把 server
+  // 改写成 proxy 入口形态，engine 注册不上原始 server name（codex "unknown MCP
+  // server"）或工具不加载（claude）。直接下发原始 stdio 入口（DEFAULT + ACP）。
+  if (engine === "codex" || engine === "claude") {
     return [...hostMapToAcpServers(merged), ...(passthrough as McpServer[])];
   }
 
