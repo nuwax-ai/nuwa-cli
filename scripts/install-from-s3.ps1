@@ -133,17 +133,19 @@ if ($pinned) {
 }
 
 # --- Skip if already at target version ---
+$SkipInstall = $false
 if ($WasInstalled) {
     try {
         $installedVersion = (nuwa-cli --version 2>$null).Trim()
         if ($installedVersion -eq $version) {
             Ok "nuwa-cli $version already installed; skipping."
-            exit 0
+            $SkipInstall = $true
         }
     } catch {}
 }
 
 # --- Download tarball ---
+if (-not $SkipInstall) {
 $pkgName = "@nuwax-ai/nuwa-cli"
 # @nuwax-ai/nuwa-cli → nuwax-ai-nuwa-cli (npm pack tarball naming)
 $pkgBase = ($pkgName -replace '^@','') -replace '/', '-'
@@ -218,7 +220,7 @@ if ($nuwa) {
     Warn "nuwa-cli is installed but not visible in this session. Reopen PowerShell and run: nuwa-cli -h"
 }
 
-# --- 升级后静默后台重启 serve（已登录时；未登录跳过）---
+# --- Post-upgrade serve restart (logged in only) ---
 if ($WasInstalled) {
     $credPath = Join-Path $env:USERPROFILE ".nuwa-cli\credentials.json"
     $loggedIn = $false
@@ -231,10 +233,8 @@ if ($WasInstalled) {
     if ($loggedIn) {
         Write-Host "Logged in: restarting nuwa-cli serve in background (post-upgrade)..." -ForegroundColor Cyan
         try {
-            # Stop old serve first to release ports (Windows holds ports longer than Unix).
             & nuwa-cli stop 2>$null | Out-Null
             Start-Sleep -Seconds 2
-            # Start fresh — show stderr so the user can diagnose if it fails.
             $restartOutput = & nuwa-cli serve --daemon --force 2>&1
             if ($LASTEXITCODE -eq 0) {
                 Ok "nuwa-cli serve restarted in background"
@@ -249,3 +249,4 @@ if ($WasInstalled) {
         Write-Host "Not logged in: skipping serve auto-restart." -ForegroundColor Cyan
     }
 }
+} # end if (-not $SkipInstall)

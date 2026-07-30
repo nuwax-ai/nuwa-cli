@@ -111,15 +111,17 @@ else
 fi
 
 # --- Skip if already at target version ---
+SKIP_INSTALL=0
 if [ "$WAS_INSTALLED" = "1" ] && command -v nuwa-cli >/dev/null 2>&1; then
   INSTALLED_VERSION="$(nuwa-cli --version 2>/dev/null | head -1 || true)"
   if [ "$INSTALLED_VERSION" = "$VERSION" ]; then
     ok "nuwa-cli $VERSION 已安装，跳过。"
-    exit 0
+    SKIP_INSTALL=1
   fi
 fi
 
 # --- Download tarball ---
+if [ "$SKIP_INSTALL" = "0" ]; then
 # @nuwax-ai/nuwa-cli → nuwax-ai-nuwa-cli (npm pack tarball naming)
 PKG_NAME="@nuwax-ai/nuwa-cli"
 PKG_BASE="${PKG_NAME#@}"; PKG_BASE="${PKG_BASE//\//-}"
@@ -210,3 +212,4 @@ if [ "$WAS_INSTALLED" = "1" ] && command -v nuwa-cli >/dev/null 2>&1; then
     info "未登录 Nuwax，跳过 serve 自动重启。"
   fi
 fi
+fi # end if [ "$SKIP_INSTALL" = "0" ]
