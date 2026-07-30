@@ -40,7 +40,7 @@
     "@clack/prompts": "^1.7.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@nuwax-ai/lanproxy": "^1.0.0",
-    "@nuwax-ai/mcp-proxy-ts": "^1.5.2",
+    "@nuwax-ai/mcp-proxy-ts": "^1.5.4",
     "@nuwax-ai/nuwax-codex-acp-ts": "^1.1.8",
     "claude-code-acp-ts": "^0.57.0",
     "commander": "^15.0.0",
