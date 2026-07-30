@@ -110,6 +110,15 @@ else
   ok "channel '$CHANNEL' → $VERSION"
 fi
 
+# --- Skip if already at target version ---
+if [ "$WAS_INSTALLED" = "1" ] && command -v nuwa-cli >/dev/null 2>&1; then
+  INSTALLED_VERSION="$(nuwa-cli --version 2>/dev/null | head -1 || true)"
+  if [ "$INSTALLED_VERSION" = "$VERSION" ]; then
+    ok "nuwa-cli $VERSION 已安装，跳过。"
+    exit 0
+  fi
+fi
+
 # --- Download tarball ---
 # @nuwax-ai/nuwa-cli → nuwax-ai-nuwa-cli (npm pack tarball naming)
 PKG_NAME="@nuwax-ai/nuwa-cli"

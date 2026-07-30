@@ -132,6 +132,17 @@ if ($pinned) {
     Ok "channel '$channel' -> $version"
 }
 
+# --- Skip if already at target version ---
+if ($WasInstalled) {
+    try {
+        $installedVersion = (nuwa-cli --version 2>$null).Trim()
+        if ($installedVersion -eq $version) {
+            Ok "nuwa-cli $version already installed; skipping."
+            exit 0
+        }
+    } catch {}
+}
+
 # --- Download tarball ---
 $pkgName = "@nuwax-ai/nuwa-cli"
 # @nuwax-ai/nuwa-cli → nuwax-ai-nuwa-cli (npm pack tarball naming)
