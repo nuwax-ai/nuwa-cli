@@ -63,6 +63,11 @@ export async function serviceInstallCommand(
     console.error(
       pc.red(`[nuwa-cli] 安装后台服务失败：${(err as Error).message}`),
     );
+    console.log(
+      pc.dim(
+        "（后台服务用于开机/登录自启动；此步骤失败不影响登录态，可手动运行 nuwa-cli serve 启动 Gateway。）",
+      ),
+    );
     process.exitCode = 1;
   }
 }

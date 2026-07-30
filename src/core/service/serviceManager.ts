@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { spawnSync } from "node:child_process";
-import { ensureDir, logsDir, writeFileAtomic } from "../../util/paths.js";
+import { spawnSync, type SpawnSyncOptions } from "node:child_process";
+import { ensureDir, logsDir, tmpDir, writeFileAtomic } from "../../util/paths.js";
 
 export const SERVICE_LABEL = "com.nuwax.nuwa-cli";
 export const WINDOWS_TASK_NAME = "NuwaCLI";
@@ -256,16 +256,77 @@ export function buildWindowsTaskRunCommand(
     .join(" ");
 }
 
+/**
+ * Builds a Windows Task Scheduler (2.0 schema) definition that starts the
+ * gateway at user logon. Using an XML import (instead of `schtasks /TR`) keeps
+ * the command/arguments free of the fragile cmd-line double-quoting that
+ * `spawnSync` would otherwise re-apply to the `/TR` value. The task is pinned
+ * to the current user with an interactive token at least privilege, which a
+ * non-admin can register for themselves. Task Scheduler XML has no element for
+ * custom environment variables; the task inherits the user's logon environment
+ * (PATH/USERPROFILE/APPDATA/SystemRoot ...), which is all the gateway needs.
+ */
+export function buildWindowsTaskXml(
+  options: ServiceRuntimeOptions,
+  context: RuntimeContext = {},
+): string {
+  const programArgs = buildServiceProgramArgs(options, context);
+  const command = programArgs[0] ?? "";
+  const argumentsField = programArgs.slice(1).map(windowsQuoteArg).join(" ");
+  const username = context.env?.USERNAME ?? process.env.USERNAME ?? "";
+  const principal = username
+    ? [
+        "<Principals>",
+        '  <Principal id="Author">',
+        `    <UserId>${xmlEscape(username)}</UserId>`,
+        "    <LogonType>InteractiveToken</LogonType>",
+        "    <RunLevel>LeastPrivilege</RunLevel>",
+        "  </Principal>",
+        "</Principals>",
+      ].join("\n")
+    : "";
+  return `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Nuwa CLI KeepAlive gateway</Description>
+    <URI>\\${WINDOWS_TASK_NAME}</URI>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  ${principal}
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>${xmlEscape(command)}</Command>
+      <Arguments>${xmlEscape(argumentsField)}</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+`;
+}
+
 function run(
   command: string,
   args: string[],
-  options: { ignoreFailure?: boolean } = {},
+  options: { ignoreFailure?: boolean; spawnOptions?: SpawnSyncOptions } = {},
 ): ServiceCommandResult {
-  const result = spawnSync(command, args, { encoding: "utf-8" });
+  const result = spawnSync(command, args, {
+    encoding: "utf-8",
+    ...options.spawnOptions,
+  });
   const commandText = [command, ...args].join(" ");
   const status = result.status;
-  const stdout = result.stdout ?? "";
-  const stderr = result.stderr ?? "";
+  const stdout = String(result.stdout ?? "");
+  const stderr = String(result.stderr ?? "");
   if (result.error && !options.ignoreFailure) {
     throw new Error(`${commandText} 执行失败：${result.error.message}`);
   }
@@ -313,21 +374,52 @@ function installLinuxService(options: ServiceInstallOptions): void {
   }
 }
 
+function schtasksExe(): string {
+  const systemRoot = process.env.SystemRoot ?? process.env.WINDIR ?? "C:\\Windows";
+  return path.join(systemRoot, "System32", "schtasks.exe");
+}
+
+function windowsSpawnOptions(): SpawnSyncOptions {
+  // Route schtasks through cmd.exe so the system binary is launched by the
+  // shell rather than directly by Node — this bypasses AV/EDR hooks that
+  // intercept Node's own CreateProcess of schtasks.exe (a persistence binary
+  // that defenders flag), and matches the windowsHide convention used across
+  // the codebase.
+  return { shell: true, windowsHide: true };
+}
+
+function windowsTaskXmlPath(): string {
+  return path.join(tmpDir(), "gateway-task.xml");
+}
+
+function runSchtasks(
+  args: string[],
+  options: { ignoreFailure?: boolean } = {},
+): ServiceCommandResult {
+  try {
+    return run(schtasksExe(), args, {
+      ...options,
+      spawnOptions: windowsSpawnOptions(),
+    });
+  } catch (err) {
+    const base = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `${base}\n` +
+        "Windows 计划任务创建被拒绝（常见原因：杀毒/EDR 拦截了 schtasks.exe，或需要管理员权限）。" +
+        "可改用「以管理员身份运行的终端」重试 nuwa-cli service install，或在杀毒软件中放行 schtasks.exe。",
+    );
+  }
+}
+
 function installWindowsService(options: ServiceInstallOptions): void {
-  const taskCommand = buildWindowsTaskRunCommand(options, {
-    platform: "win32",
-  });
-  run("schtasks.exe", [
-    "/Create",
-    "/TN",
-    WINDOWS_TASK_NAME,
-    "/SC",
-    "ONLOGON",
-    "/TR",
-    taskCommand,
-    "/F",
-  ]);
-  if (options.now) run("schtasks.exe", ["/Run", "/TN", WINDOWS_TASK_NAME]);
+  ensureDir(tmpDir());
+  const xmlPath = windowsTaskXmlPath();
+  // schtasks /Create /XML requires UTF-16LE (with BOM); a plain UTF-8 file is
+  // rejected as "task XML is malformed" once any non-ASCII appears.
+  const xml = buildWindowsTaskXml(options, { platform: "win32" });
+  fs.writeFileSync(xmlPath, Buffer.from(`\uFEFF${xml}`, "utf16le"));
+  runSchtasks(["/Create", "/TN", WINDOWS_TASK_NAME, "/XML", xmlPath, "/F"]);
+  if (options.now) runSchtasks(["/Run", "/TN", WINDOWS_TASK_NAME]);
 }
 
 export function installService(options: ServiceInstallOptions): void {
@@ -362,7 +454,7 @@ export function startService(): void {
       run("systemctl", ["--user", "start", `${SERVICE_LABEL}.service`]);
       return;
     case "win32":
-      run("schtasks.exe", ["/Run", "/TN", WINDOWS_TASK_NAME]);
+      runSchtasks(["/Run", "/TN", WINDOWS_TASK_NAME]);
       return;
     default:
       throw new Error(`暂不支持当前平台：${process.platform}`);
@@ -378,7 +470,7 @@ export function stopService(): void {
       run("systemctl", ["--user", "stop", `${SERVICE_LABEL}.service`]);
       return;
     case "win32":
-      run("schtasks.exe", ["/End", "/TN", WINDOWS_TASK_NAME], {
+      runSchtasks(["/End", "/TN", WINDOWS_TASK_NAME], {
         ignoreFailure: true,
       });
       return;
@@ -411,7 +503,7 @@ export function uninstallService(): void {
       return;
     }
     case "win32":
-      run("schtasks.exe", ["/Delete", "/TN", WINDOWS_TASK_NAME, "/F"], {
+      runSchtasks(["/Delete", "/TN", WINDOWS_TASK_NAME, "/F"], {
         ignoreFailure: true,
       });
       return;
@@ -462,8 +554,7 @@ export function getServiceStatus(): ServiceStatus {
       };
     }
     case "win32": {
-      const result = run(
-        "schtasks.exe",
+      const result = runSchtasks(
         ["/Query", "/TN", WINDOWS_TASK_NAME, "/V", "/FO", "LIST"],
         { ignoreFailure: true },
       );

@@ -5,6 +5,7 @@ import {
   buildServiceProgramArgs,
   buildSystemdUserService,
   buildWindowsTaskRunCommand,
+  buildWindowsTaskXml,
   SERVICE_LABEL,
   WINDOWS_TASK_NAME,
 } from "../src/core/service/serviceManager.js";
@@ -120,5 +121,55 @@ describe("serviceManager", () => {
     expect(command).toContain("--engine claude");
     expect(command).not.toContain("savedKey");
     expect(command).not.toContain("password");
+  });
+
+  it("generates a Windows Task Scheduler XML pinned to the current user at logon", () => {
+    const xml = buildWindowsTaskXml(
+      { engine: "claude", port: "60017", cwd: "C:\\Users\\alice\\work repo" },
+      {
+        nodePath: "C:\\Program Files\\nodejs\\node.exe",
+        cliPath:
+          "C:\\Users\\alice\\AppData\\Roaming\\npm\\node_modules\\nuwa-cli\\dist\\cli.js",
+        env: { USERNAME: "alice", NUWACLI_PASSWORD: "pw" },
+      },
+    );
+
+    // schtasks /Create /XML requires the UTF-16 declaration.
+    expect(xml.startsWith('<?xml version="1.0" encoding="UTF-16"?>')).toBe(true);
+    expect(xml).toContain(
+      "http://schemas.microsoft.com/windows/2004/02/mit/task",
+    );
+
+    // Logon trigger replaces the old /SC ONLOGON.
+    expect(xml).toContain("<LogonTrigger>");
+
+    // Runs as the current user, non-elevated, interactive token — a non-admin
+    // can register this task for themselves.
+    expect(xml).toContain("<UserId>alice</UserId>");
+    expect(xml).toContain("<LogonType>InteractiveToken</LogonType>");
+    expect(xml).toContain("<RunLevel>LeastPrivilege</RunLevel>");
+
+    // Command is node.exe (spaces OK unquoted in <Command>); arguments carry
+    // the CLI entry, the gateway subcommand and flags. A spaced --cwd value is
+    // quoted for cmd and then XML-escaped so schtasks parses it correctly.
+    expect(xml).toContain(
+      "<Command>C:\\Program Files\\nodejs\\node.exe</Command>",
+    );
+    expect(xml).toContain(
+      "C:\\Users\\alice\\AppData\\Roaming\\npm\\node_modules\\nuwa-cli\\dist\\cli.js",
+    );
+    expect(xml).toContain(" gateway ");
+    expect(xml).toContain("--engine claude");
+    expect(xml).toContain("--port 60017");
+    expect(xml).toContain(
+      "--cwd &quot;C:\\Users\\alice\\work repo&quot;",
+    );
+
+    // No secrets and no env block leak into the task definition.
+    expect(xml).not.toContain("pw");
+    expect(xml).not.toContain("password");
+    expect(xml).not.toContain("savedKey");
+    expect(xml).not.toContain("NUWACLI_PASSWORD");
+    expect(xml).not.toContain("NUWACLI_SERVICE");
   });
 });
