@@ -220,10 +220,19 @@ if ($WasInstalled) {
     if ($loggedIn) {
         Write-Host "Logged in: restarting nuwa-cli serve in background (post-upgrade)..." -ForegroundColor Cyan
         try {
-            & nuwa-cli serve --daemon --force 2>$null | Out-Null
-            Ok "nuwa-cli serve restarted in background"
+            # Stop old serve first to release ports (Windows holds ports longer than Unix).
+            & nuwa-cli stop 2>$null | Out-Null
+            Start-Sleep -Seconds 2
+            # Start fresh — show stderr so the user can diagnose if it fails.
+            $restartOutput = & nuwa-cli serve --daemon --force 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Ok "nuwa-cli serve restarted in background"
+            } else {
+                Write-Host $restartOutput -ForegroundColor Red
+                Warn "serve auto-restart failed (exit $LASTEXITCODE, run manually: nuwa-cli serve --daemon)"
+            }
         } catch {
-            Warn "serve auto-restart failed (run manually: nuwa-cli serve --daemon)"
+            Warn "serve auto-restart failed: $_ (run manually: nuwa-cli serve --daemon)"
         }
     } else {
         Write-Host "Not logged in: skipping serve auto-restart." -ForegroundColor Cyan

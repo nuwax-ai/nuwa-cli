@@ -190,7 +190,9 @@ if [ "$WAS_INSTALLED" = "1" ] && command -v nuwa-cli >/dev/null 2>&1; then
   fi
   if [ "$LOGGED_IN" = "1" ]; then
     info "已登录，正在后台重启 nuwa-cli serve（升级后）..."
-    if nuwa-cli serve --daemon --force >/dev/null 2>&1; then
+    nuwa-cli stop >/dev/null 2>&1 || true
+    sleep 2
+    if nuwa-cli serve --daemon --force 2>&1; then
       ok "已后台重启 nuwa-cli serve"
     else
       warn "serve 自动重启失败（可手动: nuwa-cli serve --daemon）"
