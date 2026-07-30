@@ -16,7 +16,7 @@ import {
 import { parseComputerPermissionResolveRequest } from "../permissions/notifyResolved.js";
 import { listLocalSessions } from "../sessions/discovery.js";
 import { parseTranscript } from "../sessions/transcript.js";
-import { ensureDir } from "../../util/paths.js";
+import { ensureDir, codexLogDir } from "../../util/paths.js";
 import { debugLog } from "../debugLog.js";
 import { parseDownstreamSessionConfig } from "./downstreamConfig.js";
 
@@ -358,7 +358,15 @@ export function startServeHttp(options: ServeOptions): {
             await hub.stopSession(target.sessionId);
             debugLog("serve.chat", "engine start failed", {
               sessionId: target.sessionId,
+              engine: downstream.engine,
               error: readiness.error,
+              // codex's real failure cause lives in the adapter's full log
+              // (we set CODEX_LOG_DIR on the engine) — point users straight at it.
+              ...(downstream.engine === "codex"
+                ? {
+                    codexLogPath: path.join(codexLogDir(), "app-server.log"),
+                  }
+                : {}),
             });
             sendJson(
               res,
