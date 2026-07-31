@@ -36,7 +36,12 @@ import {
   CLI_FILE_SERVER_PORT,
   findAvailablePort,
 } from "../core/ports.js";
-import { ensureDir, logsDir, workspacesDir } from "../util/paths.js";
+import {
+  ensureDir,
+  logsDir,
+  workspacesDir,
+  serveLogPath,
+} from "../util/paths.js";
 import { debugLog } from "../core/debugLog.js";
 import { warmupMcpNpxCache } from "../core/mcp/cacheWarmup.js";
 import {
@@ -112,7 +117,7 @@ function launchDaemon(argsOverride?: string[]): number {
   const args =
     argsOverride ?? process.argv.slice(1).filter((arg) => arg !== "--daemon");
   ensureDir(logsDir());
-  const logPath = path.join(logsDir(), "serve.log");
+  const logPath = serveLogPath();
   const out = fs.openSync(logPath, "a");
   const err = fs.openSync(logPath, "a");
   const child = spawn(process.execPath, args, {
@@ -171,7 +176,7 @@ export async function serveCommand(
         engine: options.engine,
         host: options.host ?? "127.0.0.1",
         port: options.port ? Number(options.port) : CLI_AGENT_PORT,
-        logPath: path.join(logsDir(), "serve.log"),
+        logPath: serveLogPath(),
       });
     } catch (err) {
       releaseServeSingleton();
@@ -190,7 +195,7 @@ export async function serveCommand(
     engine: options.engine,
     host: options.host ?? "127.0.0.1",
     port: options.port ? Number(options.port) : CLI_AGENT_PORT,
-    logPath: isDaemonChild ? path.join(logsDir(), "serve.log") : undefined,
+    logPath: isDaemonChild ? serveLogPath() : undefined,
   });
 
   try {
@@ -583,7 +588,7 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
             } else {
               console.error(
                 pc.yellow(
-                  `[nuwa-cli] lanproxy 健康检查未通过（pid ${lanproxyHandle.pid ?? "unknown"}），隧道可能未建立，请查看 ~/.nuwa-cli/logs/serve.log。`,
+                  `[nuwa-cli] lanproxy 健康检查未通过（pid ${lanproxyHandle.pid ?? "unknown"}），隧道可能未建立，请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log（按天滚动，看当天那份）。`,
                 ),
               );
             }

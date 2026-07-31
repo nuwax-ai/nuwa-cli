@@ -6,7 +6,7 @@ import {
   DEFAULT_DIST_TAG,
   PACKAGE_NAME,
 } from "../core/version.js";
-import { ensureDir, logsDir } from "../util/paths.js";
+import { ensureDir, logsDir, serveLogPath } from "../util/paths.js";
 import { findOnPath, isBatchShim } from "../util/which.js";
 import {
   listRegisteredProcesses,
@@ -119,7 +119,7 @@ async function restartServeIfLoggedIn(): Promise<void> {
     const cliEntry = process.argv[1];
     if (!cliEntry) return;
     ensureDir(logsDir());
-    const logPath = path.join(logsDir(), "serve.log");
+    const logPath = serveLogPath();
     const out = fs.openSync(logPath, "a");
     const child = spawn(
       process.execPath,

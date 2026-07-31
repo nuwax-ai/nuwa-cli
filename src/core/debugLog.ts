@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { ensureDir, logsDir } from "../util/paths.js";
+import { ensureDir, logsDir, todayDateStr } from "../util/paths.js";
+import { runLogMaintenance } from "./logSweep.js";
 
 const SECRET_KEYS = [
   "apiKey",
@@ -13,24 +14,11 @@ const SECRET_KEYS = [
   "token",
 ];
 
-const TTL_MS_DEV = 30 * 24 * 60 * 60 * 1000;
-const TTL_MS_PROD = 7 * 24 * 60 * 60 * 1000;
 const LATEST_LOG_FILENAME = "latest.log";
 
 let initialized = false;
 let cleanupTimer: NodeJS.Timeout | undefined;
 let lastLinkedDate = "";
-
-function isDev(): boolean {
-  return (
-    process.env.NODE_ENV === "development" || process.env.NUWACLI_DEV === "1"
-  );
-}
-
-function todayDateStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 function activeMainLogPath(): string {
   return path.join(logsDir(), `main.${todayDateStr()}.log`);
@@ -70,41 +58,13 @@ function updateLogLinks(): void {
   lastLinkedDate = date;
 }
 
-function isArchiveLogName(name: string): boolean {
-  const lower = name.toLowerCase();
-  if (!lower.endsWith(".log")) return false;
-  if (lower === LATEST_LOG_FILENAME) {
-    return false;
-  }
-  if (lower === `main.${todayDateStr()}.log`) return false;
-  return lower === "main.log" || lower.startsWith("main.");
-}
-
-function cleanupOldLogs(): void {
-  const dir = logsDir();
-  if (!fs.existsSync(dir)) return;
-  const ttl = isDev() ? TTL_MS_DEV : TTL_MS_PROD;
-  const now = Date.now();
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile()) continue;
-    if (!isArchiveLogName(entry.name)) continue;
-    const fullPath = path.join(dir, entry.name);
-    try {
-      const stat = fs.statSync(fullPath);
-      if (now - stat.mtimeMs > ttl) fs.unlinkSync(fullPath);
-    } catch {
-      // Ignore cleanup failures.
-    }
-  }
-}
-
 export function initDebugLogging(): void {
   if (initialized) return;
   initialized = true;
   ensureDir(logsDir());
   updateLogLinks();
-  cleanupOldLogs();
-  cleanupTimer = setInterval(cleanupOldLogs, 60 * 60 * 1000);
+  runLogMaintenance();
+  cleanupTimer = setInterval(runLogMaintenance, 60 * 60 * 1000);
   cleanupTimer.unref?.();
   process.once("exit", () => {
     if (cleanupTimer) clearInterval(cleanupTimer);

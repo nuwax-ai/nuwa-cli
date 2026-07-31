@@ -96,14 +96,14 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
     } else {
       console.error(
         pc.yellow(
-          `[nuwa-cli] lanproxy 进程存在（PID ${lanproxy.pid}），但 Gateway /health 不可用；请查看 ~/.nuwa-cli/logs/serve.log。`,
+          `[nuwa-cli] lanproxy 进程存在（PID ${lanproxy.pid}），但 Gateway /health 不可用；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log。`,
         ),
       );
     }
   } else {
     console.error(
       pc.yellow(
-        "[nuwa-cli] 未检测到运行中的 lanproxy；请查看 ~/.nuwa-cli/logs/serve.log 或运行 `nuwa-cli doctor`。",
+        "[nuwa-cli] 未检测到运行中的 lanproxy；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log 或运行 `nuwa-cli doctor`。",
       ),
     );
   }

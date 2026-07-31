@@ -72,6 +72,17 @@ export function codexLogDir(): string {
   return path.join(logsDir(), "codex");
 }
 
+/** `YYYY-MM-DD` in local time — the date stamp used in daily-rotated log
+ * filenames. Single source of truth (debugLog / logSweep / serveLogPath). */
+export function todayDateStr(date: Date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** The serve daemon's daily log file: `logsDir()/serve.<YYYY-MM-DD>.log`. */
+export function serveLogPath(dateStr: string = todayDateStr()): string {
+  return path.join(logsDir(), `serve.${dateStr}.log`);
+}
+
 export function tmpDir(): string {
   return path.join(nuwaCliHome(), "tmp");
 }

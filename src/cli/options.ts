@@ -96,7 +96,7 @@ export function addServeRuntimeOptions(command: Command): Command {
       .option("--lanproxy-ssl <true|false>", "lanproxy 是否启用 ssl", "true")
       .option(
         "--daemon",
-        "后台运行（stdout/stderr 写入 ~/.nuwa-cli/logs/serve.log）",
+        "后台运行（stdout/stderr 写入 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log）",
       )
       .option(
         "--force",

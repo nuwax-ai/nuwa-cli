@@ -236,7 +236,7 @@ export async function checkLanproxy(): Promise<DoctorCheckResult> {
       label: "lanproxy",
       ok: false,
       detail: `进程运行中（PID ${running.map((item) => item.pid).join(", ")}），但 Gateway /health ${gateway.state === "unhealthy" ? "无响应" : "不可用"}；二进制：${binaryPath}`,
-      fix: "运行 `nuwa-cli restart` 重启 Gateway，并检查 ~/.nuwa-cli/logs/serve.log",
+      fix: "运行 `nuwa-cli restart` 重启 Gateway，并检查 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log",
       severity: "info",
     };
   }
@@ -246,7 +246,7 @@ export async function checkLanproxy(): Promise<DoctorCheckResult> {
       label: "lanproxy",
       ok: false,
       detail: `Gateway /health 正常，但未检测到 lanproxy 进程；二进制：${binaryPath}`,
-      fix: "运行 `nuwa-cli restart` 重建云端隧道，并检查 ~/.nuwa-cli/logs/serve.log",
+      fix: "运行 `nuwa-cli restart` 重建云端隧道，并检查 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log",
       severity: "info",
     };
   }
