@@ -1,8 +1,7 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 import type { EngineKind } from "../env/inheritEnv.js";
+import { codexConfigToml, claudeSettingsFile } from "../env/engineHome.js";
 
 /**
  * Best-effort "configured model" read from the engine's own local config.
@@ -15,7 +14,7 @@ import type { EngineKind } from "../env/inheritEnv.js";
 export function getEngineModelHint(engine: EngineKind): string | undefined {
   try {
     if (engine === "claude") {
-      const file = path.join(os.homedir(), ".claude", "settings.json");
+      const file = claudeSettingsFile();
       const raw = fs.readFileSync(file, "utf-8");
       const obj = JSON.parse(raw) as Record<string, unknown>;
       const env = obj.env;
@@ -38,7 +37,7 @@ export function getEngineModelHint(engine: EngineKind): string | undefined {
     }
     // codex: ~/.codex/config.toml `model = "..."` — regex parsed, no TOML dep.
     // Accept both double- and single-quoted TOML strings.
-    const file = path.join(os.homedir(), ".codex", "config.toml");
+    const file = codexConfigToml();
     const raw = fs.readFileSync(file, "utf-8");
     const match = raw.match(/^\s*model\s*=\s*["']([^"']+)["']/m);
     return match ? match[1] : undefined;

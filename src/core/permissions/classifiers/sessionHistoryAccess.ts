@@ -23,7 +23,7 @@ const PNPM_DEV_CLI_SESSION =
   /(?:^|[\s;/|&])pnpm(?:\s+run)?\s+dev:cli\s+(?:--\s+)?(?:context|sessions)\b/i;
 
 const SESSION_HISTORY_PATH =
-  /(?:^|[/"'\\])\.claude(?:\/|\\|$)projects|(?:^|[/"'\\])\.codex(?:\/|\\$)sessions|(?:~|\$HOME|%USERPROFILE%)[\\/]\.claude|(?:~|\$HOME|%USERPROFILE%)[\\/]\.codex/i;
+  /(?:^|[/"'\\])\.claude(?:\/|\\|$)projects|(?:^|[/"'\\])\.codex(?:\/|\\$)sessions|(?:^|[/"'\\])\.nuwa-cli[\\/](?:codex-home[\\/]sessions|claude-config[\\/]projects)|(?:~|\$HOME|%USERPROFILE%)[\\/]\.claude|(?:~|\$HOME|%USERPROFILE%)[\\/]\.codex|(?:~|\$HOME|%USERPROFILE%)[\\/]\.nuwa-cli[\\/](?:codex-home|claude-config)/i;
 
 const SYNTHETIC_TITLES = /^(?:local_sessions_|session_history_)/i;
 

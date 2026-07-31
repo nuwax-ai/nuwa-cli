@@ -3,6 +3,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
+// These tests seed the REAL home — pin engine isolation OFF.
+process.env.NUWACLI_ISOLATE_ENGINES = "0";
+
 let tmpHome: string;
 
 vi.mock("node:os", async (importOriginal) => {

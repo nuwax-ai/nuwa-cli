@@ -3,6 +3,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
+// These tests read the REAL home (tmpHome/.codex, tmpHome/.claude) — pin engine
+// isolation OFF. Isolation behavior is covered in engineHome.test.ts.
+process.env.NUWACLI_ISOLATE_ENGINES = "0";
+
 let tmpHome: string;
 
 const lanproxyMocks = vi.hoisted(() => ({

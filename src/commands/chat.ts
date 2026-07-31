@@ -4,6 +4,10 @@ import { AGENT_METHODS } from "@agentclientprotocol/sdk";
 import pc from "picocolors";
 import { getEngine } from "../core/engines/registry.js";
 import { buildEngineEnv, type EngineKind } from "../core/env/inheritEnv.js";
+import {
+  warnIfIsolationAuthGap,
+  maybeShowIsolationMigrationNotice,
+} from "../core/env/engineHome.js";
 import { withEngineConnection } from "../core/acp/connection.js";
 import { applySessionMode } from "../core/acp/sessionMode.js";
 import {
@@ -168,6 +172,8 @@ export async function chatCommand(options: ChatCommandOptions): Promise<void> {
           model: options.model,
         }
       : undefined;
+  maybeShowIsolationMigrationNotice();
+  warnIfIsolationAuthGap(engine.id as "codex" | "claude", overlay);
   const env = {
     ...buildEngineEnv(engineId, overlay),
     ...resolved.envOverlay,

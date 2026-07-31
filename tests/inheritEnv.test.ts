@@ -1,5 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { buildEngineEnv } from "../src/core/env/inheritEnv.js";
+
+let tmpHome: string;
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof os>();
+  return { ...actual, homedir: () => tmpHome };
+});
 
 // This suite runs inside a Claude Code session, whose own process.env may
 // already carry ANTHROPIC_*/CODEX_* vars for its own purposes — so every
@@ -19,6 +28,7 @@ const WATCHED_KEYS = [
   "NUWAX_AGENT_PORT",
   "NUWAX_FILE_SERVER_PORT",
   "NUWACLI_FORCE_ENGINE",
+  "NUWACLI_ISOLATE_ENGINES",
   "NUWACLI_PASSWORD",
   "NUWACLI_SERVE_LOCK_PATH",
   "NUWACLI_CODEX_ACP_BIN",
@@ -30,6 +40,7 @@ const WATCHED_KEYS = [
 let saved: Record<string, string | undefined>;
 
 beforeEach(() => {
+  tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "nuwa-cli-inheritEnv-"));
   saved = Object.fromEntries(WATCHED_KEYS.map((k) => [k, process.env[k]]));
   for (const k of WATCHED_KEYS) delete process.env[k];
 });
@@ -39,6 +50,7 @@ afterEach(() => {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
+  fs.rmSync(tmpHome, { recursive: true, force: true });
 });
 
 describe("buildEngineEnv", () => {
@@ -97,5 +109,30 @@ describe("buildEngineEnv", () => {
     });
     expect(codexEnv.CODEX_BASE_URL).toBe("https://example.com/v1");
     expect(codexEnv.CODEX_API_KEY).toBeUndefined();
+  });
+});
+
+describe("engine home isolation", () => {
+  it("ON (default): sets CODEX_HOME / CLAUDE_CONFIG_DIR to the nuwa-cli home", () => {
+    delete process.env.NUWACLI_ISOLATE_ENGINES;
+    const codexEnv = buildEngineEnv("codex");
+    expect(codexEnv.CODEX_HOME).toBe(
+      path.join(tmpHome, ".nuwa-cli", "codex-home"),
+    );
+    const claudeEnv = buildEngineEnv("claude");
+    expect(claudeEnv.CLAUDE_CONFIG_DIR).toBe(
+      path.join(tmpHome, ".nuwa-cli", "claude-config"),
+    );
+  });
+
+  it("OFF: does not set CODEX_HOME / CLAUDE_CONFIG_DIR", () => {
+    process.env.NUWACLI_ISOLATE_ENGINES = "0";
+    expect(buildEngineEnv("codex").CODEX_HOME).toBeUndefined();
+    expect(buildEngineEnv("claude").CLAUDE_CONFIG_DIR).toBeUndefined();
+  });
+
+  it("does not leak NUWACLI_ISOLATE_ENGINES into the engine env", () => {
+    process.env.NUWACLI_ISOLATE_ENGINES = "1";
+    expect(buildEngineEnv("codex").NUWACLI_ISOLATE_ENGINES).toBeUndefined();
   });
 });

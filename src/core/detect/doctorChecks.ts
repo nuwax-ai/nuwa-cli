@@ -11,6 +11,12 @@ import { getServeStatus } from "../serve/serveLock.js";
 import { claudeEngine } from "../engines/claude.js";
 import { codexEngine } from "../engines/codex.js";
 import { checkMcpProxyEntry } from "../mcp/proxyRewrite.js";
+import {
+  codexAuthFile,
+  codexSessionsDir,
+  claudeProjectsDir,
+  isEngineIsolationEnabled,
+} from "../env/engineHome.js";
 
 export interface DoctorCheckResult {
   id: string;
@@ -71,7 +77,7 @@ export async function checkClaude(): Promise<DoctorCheckResult> {
 export async function checkCodex(): Promise<DoctorCheckResult> {
   const binPath = findOnPath("codex");
   const version = binPath ? getVersion(binPath) : null;
-  const authFile = path.join(os.homedir(), ".codex", "auth.json");
+  const authFile = codexAuthFile();
   const hasAuth = fs.existsSync(authFile);
   try {
     const resolved = await codexEngine.resolve();
@@ -84,9 +90,11 @@ export async function checkCodex(): Promise<DoctorCheckResult> {
         binPath
           ? `本机 CLI：${binPath}${version ? ` (${version})` : ""}`
           : "未安装本机 CLI",
-        hasAuth
-          ? "已检测到本地登录/配置"
-          : "无本地登录/配置；本地历史与模型提示可能为空，可使用 ACP 下发配置",
+        isEngineIsolationEnabled()
+          ? "隔离模式运行（认证经 ACP/env 下发，不复用 ~/.codex）"
+          : hasAuth
+            ? "已检测到本地登录/配置"
+            : "无本地登录/配置；本地历史与模型提示可能为空，可使用 ACP 下发配置",
       ].join("；"),
     };
   } catch (err) {
@@ -289,12 +297,12 @@ function countFiles(
 
 export function checkLocalSessions(): DoctorCheckResult {
   const claudeCount = countFiles(
-    path.join(os.homedir(), ".claude", "projects"),
+    claudeProjectsDir(),
     (name) => name.endsWith(".jsonl"),
     1,
   );
   const codexCount = countFiles(
-    path.join(os.homedir(), ".codex", "sessions"),
+    codexSessionsDir(),
     (name) => name.startsWith("rollout-") && name.endsWith(".jsonl"),
     3,
   );

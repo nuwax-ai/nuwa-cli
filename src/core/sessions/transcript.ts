@@ -152,8 +152,9 @@ export async function parseClaudeTranscript(
 }
 
 /**
- * Full transcript parse for codex's `~/.codex/sessions/**\/rollout-*.jsonl`
- * format. Only `response_item` lines carry conversation content; `message`
+ * Full transcript parse for codex's `sessions/**\/rollout-*.jsonl` format (under
+ * `~/.codex` normally, or `~/.nuwa-cli/codex-home` when engine isolation is ON).
+ * Only `response_item` lines carry conversation content; `message`
  * items hold user/assistant/developer turns (developer = injected system
  * boilerplate, dropped to mirror claude's jsonl which has no such line),
  * and tool invocations are separate `function_call`/`custom_tool_call`

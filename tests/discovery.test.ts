@@ -3,6 +3,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
+// These tests seed the REAL home (tmpHome/.codex, tmpHome/.claude) and exercise
+// session parsing/discovery — pin engine isolation OFF so discovery reads there.
+// Isolation routing (isolated home) is covered in engineHome.test.ts.
+process.env.NUWACLI_ISOLATE_ENGINES = "0";
+
 let tmpHome: string;
 
 vi.mock("node:os", async (importOriginal) => {

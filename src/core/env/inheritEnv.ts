@@ -10,9 +10,12 @@
  * leak from *this* process into the spawned engine.
  */
 
-import * as os from "node:os";
-import * as path from "node:path";
-import { ensureDir } from "../../util/paths.js";
+import {
+  isEngineIsolationEnabled,
+  codexHome,
+  claudeConfigDir,
+  ensureIsolatedEngineHomes,
+} from "./engineHome.js";
 
 /** Overlay values only ever come from an explicit user flag/config entry — never a default. */
 export type ModelProtocol = "anthropic" | "openai";
@@ -33,6 +36,7 @@ const STRIP_VARS = [
   "CODEX_ACP_BIN",
   "NUWACLI_CODEX_ACP_BIN",
   "NUWACLI_FORCE_ENGINE",
+  "NUWACLI_ISOLATE_ENGINES",
   "NUWACLI_LANPROXY_PATH",
   "NUWACLI_PASSWORD",
   "NUWACLI_SERVE_DAEMONIZED",
@@ -84,6 +88,16 @@ export function buildEngineEnv(
   overlay?: ModelOverlay,
 ): NodeJS.ProcessEnv {
   const env = buildCliChildEnv();
+  // Engine home isolation (default ON via NUWACLI_ISOLATE_ENGINES): redirect
+  // codex/claude into nuwa-cli-owned homes so they don't share the user's real
+  // ~/.codex / ~/.claude (state/auth/config/skills). Independent of overlay —
+  // must run before the no-overlay early return so isolation applies even when
+  // no credentials are injected.
+  ensureIsolatedEngineHomes(engine);
+  if (isEngineIsolationEnabled()) {
+    if (engine === "codex") env.CODEX_HOME = codexHome();
+    else env.CLAUDE_CONFIG_DIR = claudeConfigDir();
+  }
   if (!overlay) return env;
 
   if (engine === "claude") {
@@ -93,21 +107,6 @@ export function buildEngineEnv(
     }
     if (overlay.baseUrl) env.ANTHROPIC_BASE_URL = overlay.baseUrl;
     if (overlay.model) env.ANTHROPIC_MODEL = overlay.model;
-    // claude-code's ~/.claude/settings.json has an `env` block whose
-    // priority is HIGHER than the process environment. If the user has
-    // a different provider configured there (e.g. kimi), it overrides
-    // our overlay and causes 401. When an explicit overlay is provided
-    // we isolate claude-code into a clean config dir so only our env
-    // vars take effect.
-    if (overlay.apiKey || overlay.baseUrl || overlay.model) {
-      const isolatedDir = path.join(
-        os.homedir(),
-        ".nuwa-cli",
-        "claude-config",
-      );
-      ensureDir(isolatedDir);
-      env.CLAUDE_CONFIG_DIR = isolatedDir;
-    }
   } else {
     // codex: set OPENAI_API_KEY + OPENAI_BASE_URL so codex uses the
     // openai-compatible provider instead of ChatGPT auth.

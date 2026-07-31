@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as readline from "node:readline";
+import { codexSessionsDir, claudeProjectsDir } from "../env/engineHome.js";
 
 export interface LocalSessionSummary {
   engine: "claude" | "codex";
@@ -228,14 +228,14 @@ function listFilesRecursive(
 }
 
 export async function listClaudeSessions(): Promise<LocalSessionSummary[]> {
-  const root = path.join(os.homedir(), ".claude", "projects");
+  const root = claudeProjectsDir();
   const files = listFilesRecursive(root, (name) => name.endsWith(".jsonl"), 1);
   const summaries = await Promise.all(files.map(readClaudeSessionSummary));
   return summaries.filter((s): s is LocalSessionSummary => s !== null);
 }
 
 export async function listCodexSessions(): Promise<LocalSessionSummary[]> {
-  const root = path.join(os.homedir(), ".codex", "sessions");
+  const root = codexSessionsDir();
   const files = listFilesRecursive(
     root,
     (name) => name.startsWith("rollout-") && name.endsWith(".jsonl"),

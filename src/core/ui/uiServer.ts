@@ -12,6 +12,7 @@ import {
   httpError,
   textField,
 } from "../serve/httpUtil.js";
+import { codexSessionsDir, claudeProjectsDir } from "../env/engineHome.js";
 import { listLocalSessions } from "../sessions/discovery.js";
 import { parseTranscript } from "../sessions/transcript.js";
 import { probeAvailableEngines } from "../engines/probe.js";
@@ -34,10 +35,7 @@ export interface UiServerOptions {
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
 function transcriptRoot(engine: EngineKind): string {
-  const home = os.homedir();
-  return engine === "claude"
-    ? path.join(home, ".claude", "projects")
-    : path.join(home, ".codex", "sessions");
+  return engine === "claude" ? claudeProjectsDir() : codexSessionsDir();
 }
 
 /** Guards the transcript read to files actually under an engine transcript root. */
