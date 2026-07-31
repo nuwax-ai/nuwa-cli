@@ -25,6 +25,10 @@ export function getVersion(
   const result = spawnSync(binPath, args, {
     encoding: "utf-8",
     timeout: 5000,
+    // .cmd/.bat shims need shell:true; on Windows that allocates a cmd.exe
+    // console — hide it so version probes (e.g. engine selection at startup)
+    // don't flash a popup window. No-op on non-Windows.
+    windowsHide: true,
     ...(isBatchShim(binPath) ? { shell: true } : {}),
   });
   if (result.status !== 0) return null;

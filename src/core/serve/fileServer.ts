@@ -76,6 +76,7 @@ export function stopFileServer(port: number, baseWorkspaceDir?: string): void {
   spawnSync(process.execPath, [bin, "stop"], {
     env: buildFileServerEnv(port, baseWorkspaceDir),
     stdio: "ignore",
+    windowsHide: true,
   });
 }
 
