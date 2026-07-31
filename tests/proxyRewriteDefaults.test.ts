@@ -4,6 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveStdioNoWindow } from "../src/util/npxResolve.js";
 
 const mocks = vi.hoisted(() => {
   const bridgeStart = vi.fn().mockResolvedValue(undefined);
@@ -87,9 +88,10 @@ describe("rewriteMcpServersForEngine defaults", () => {
       string,
       { command: string; args?: string[]; persistent?: boolean }
     >;
+    // npx is resolved away from the .cmd shim on Windows (no console flash);
+    // resolveStdioNoWindow is a no-op on non-Windows.
     expect(started["chrome-devtools"]).toEqual({
-      command: "npx",
-      args: ["-y", "chrome-devtools-mcp@latest"],
+      ...resolveStdioNoWindow("npx", ["-y", "chrome-devtools-mcp@latest"]),
       env: undefined,
       persistent: true,
     });
@@ -130,23 +132,21 @@ describe("rewriteMcpServersForEngine defaults", () => {
       string,
       { command: string; args?: string[]; persistent?: boolean }
     >;
-    expect(merged["ask-question"]).toMatchObject({
-      command: "npx",
-      args: ["-y", "nuwax-ask-question-mcp@latest"],
-    });
+    expect(merged["ask-question"]).toMatchObject(
+      resolveStdioNoWindow("npx", ["-y", "nuwax-ask-question-mcp@latest"]),
+    );
     // ACP 可覆盖 args，但默认 persistent 强制保留
     expect(merged["chrome-devtools"]).toMatchObject({
-      command: "npx",
-      args: ["-y", "chrome-devtools-mcp@1.2.3"],
+      ...resolveStdioNoWindow("npx", ["-y", "chrome-devtools-mcp@1.2.3"]),
       persistent: true,
     });
 
     const started = mocks.bridgeStart.mock.calls[0]![0] as Record<
       string,
-      { args?: string[]; persistent?: boolean }
+      { command?: string; args?: string[]; persistent?: boolean }
     >;
     expect(started["chrome-devtools"]).toMatchObject({
-      args: ["-y", "chrome-devtools-mcp@1.2.3"],
+      ...resolveStdioNoWindow("npx", ["-y", "chrome-devtools-mcp@1.2.3"]),
       persistent: true,
     });
     expect(started["ask-question"]).toBeUndefined();
@@ -193,16 +193,22 @@ describe("rewriteMcpServersForEngine defaults", () => {
     expect(names).toEqual(
       expect.arrayContaining(["chrome-devtools", "ask-question"]),
     );
-    // 原始 stdio 入口，非 proxy（process.execPath + --config-file）
+    // 原始 stdio 入口，非 proxy（process.execPath + --config-file）。
+    // npx 在 Windows 上已被改写为 node + npx-cli.js（resolveStdioNoWindow）。
     const ask = out.find(
       (s: { name: string }) => s.name === "ask-question",
     ) as { command: string; args: string[] };
-    expect(ask?.command).toBe("npx");
+    expect(ask?.command).toBe(
+      resolveStdioNoWindow("npx", ["-y", "nuwax-ask-question-mcp@latest"])
+        .command,
+    );
     expect(ask?.args).not.toContain("--config-file");
     const cd = out.find(
       (s: { name: string }) => s.name === "chrome-devtools",
     ) as { command: string; args: string[] };
-    expect(cd?.command).toBe("npx");
+    expect(cd?.command).toBe(
+      resolveStdioNoWindow("npx", ["-y", "chrome-devtools-mcp@latest"]).command,
+    );
     // codex 不启动 PersistentMcpBridge（claude 才用）
     expect(mocks.bridgeStart).not.toHaveBeenCalled();
   });

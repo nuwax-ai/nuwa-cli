@@ -18,6 +18,7 @@ import {
   type HostStdioServerEntry,
 } from "@nuwax-ai/mcp-proxy-ts/host";
 import { ensureDir, logsDir, tmpDir } from "../../util/paths.js";
+import { resolveStdioNoWindow } from "../../util/npxResolve.js";
 import { debugLog } from "../debugLog.js";
 import { DEFAULT_MCP_PROXY_SERVERS } from "./defaultServers.js";
 import type { EngineKind } from "../env/inheritEnv.js";
@@ -163,8 +164,23 @@ export async function rewriteMcpServersForEngine(
     }
   }
 
+  // Resolve `npx` (a .cmd shim on Windows) → `node + npx-cli.js` for every stdio
+  // server, so the engine / PersistentMcpBridge spawn node directly instead of
+  // flashing a cmd.exe console on each MCP start (nuwaclaw `spawnNoWindow` trick;
+  // npx warmup + npm update already do the same). Remote entries pass through.
+  for (const [name, entry] of Object.entries(merged)) {
+    if (isHostRemoteEntry(entry)) continue;
+    const resolved = resolveStdioNoWindow(entry.command, entry.args ?? []);
+    merged[name] = { ...entry, command: resolved.command, args: resolved.args };
+  }
+  const passthroughResolved = (passthrough as AcpMcpServer[]).map((server) => {
+    if (!("command" in server)) return server;
+    const resolved = resolveStdioNoWindow(server.command, server.args ?? []);
+    return { ...server, command: resolved.command, args: resolved.args };
+  });
+
   if (Object.keys(merged).length === 0) {
-    return passthrough as McpServer[];
+    return passthroughResolved as McpServer[];
   }
 
   // claude-code-acp-ts 与 nuwax-codex-acp 均原生支持 ACP stdio MCP（各自把
@@ -173,7 +189,7 @@ export async function rewriteMcpServersForEngine(
   // 改写成 proxy 入口形态，engine 注册不上原始 server name（codex "unknown MCP
   // server"）或工具不加载（claude）。直接下发原始 stdio 入口（DEFAULT + ACP）。
   if (engine === "codex" || engine === "claude") {
-    return [...hostMapToAcpServers(merged), ...(passthrough as McpServer[])];
+    return [...hostMapToAcpServers(merged), ...(passthroughResolved as McpServer[])];
   }
 
   const proxyScriptPath = resolveProxyEntry();
@@ -182,7 +198,7 @@ export async function rewriteMcpServersForEngine(
       "mcp-proxy",
       "@nuwax-ai/mcp-proxy-ts entry not found; passing MCP through unchanged (with defaults)",
     );
-    return [...hostMapToAcpServers(merged), ...(passthrough as McpServer[])];
+    return [...hostMapToAcpServers(merged), ...(passthroughResolved as McpServer[])];
   }
 
   const persistentNames = persistentNamesFromEnv();
@@ -211,7 +227,7 @@ export async function rewriteMcpServersForEngine(
   });
 
   if (!rewritten) {
-    return [...hostMapToAcpServers(merged), ...(passthrough as McpServer[])];
+    return [...hostMapToAcpServers(merged), ...(passthroughResolved as McpServer[])];
   }
 
   const out: McpServer[] = Object.entries(rewritten).map(([name, entry]) => ({

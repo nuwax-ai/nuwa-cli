@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveStdioNoWindow } from "../src/util/npxResolve.js";
 
 const mocks = vi.hoisted(() => ({
   targets: [] as unknown[],
@@ -115,10 +116,14 @@ describe("SessionHub ACP runtime precedence", () => {
     expect(mocks.newSessionRequests[0]).toMatchObject({
       cwd: process.cwd(),
       mcpServers: expect.arrayContaining([
-        // 默认 chrome-devtools（codex-acp 原生支持 stdio MCP，不经 proxy 桥接）
+        // 默认 chrome-devtools（codex-acp 原生支持 stdio MCP，不经 proxy 桥接）。
+        // npx 在 Windows 上被改写为 node + npx-cli.js（避免 cmd.exe 弹窗）。
         expect.objectContaining({
           name: "chrome-devtools",
-          command: "npx",
+          command: resolveStdioNoWindow("npx", [
+            "-y",
+            "chrome-devtools-mcp@latest",
+          ]).command,
           args: expect.arrayContaining(["chrome-devtools-mcp@latest"]),
         }),
         // ACP 下发的 tools 原样下发（codex-acp 原生 stdio，保留原始 command）

@@ -261,7 +261,12 @@ function run(
   args: string[],
   options: { ignoreFailure?: boolean } = {},
 ): ServiceCommandResult {
-  const result = spawnSync(command, args, { encoding: "utf-8" });
+  const result = spawnSync(command, args, {
+    encoding: "utf-8",
+    // schtasks.exe / sc.exe / etc. are console apps; without this a cmd window
+    // flashes whenever the Windows scheduled-task service is started/stopped.
+    windowsHide: true,
+  });
   const commandText = [command, ...args].join(" ");
   const status = result.status;
   const stdout = result.stdout ?? "";
