@@ -60,7 +60,7 @@ describe("parseDownstreamSessionConfig", () => {
       },
       {
         type: "http",
-        name: "remote-tools",
+        name: "remote_tools",
         url: "https://mcp.example.com",
         headers: [{ name: "Authorization", value: "Bearer token" }],
       },
@@ -164,6 +164,19 @@ describe("parseDownstreamSessionConfig", () => {
     expect(result.mcpServers.map((server) => server.name)).toEqual([
       "A",
       "A_2",
+    ]);
+  });
+
+  it("normalizes hyphens to underscores in MCP server names (codex mcp__server__tool namespace)", () => {
+    const result = parseDownstreamSessionConfig({
+      mcp_servers: [
+        { name: "nuwax-openui", command: "mcp-a" },
+        { name: "chrome-tools", command: "mcp-b" },
+      ],
+    });
+    expect(result.mcpServers.map((s) => s.name)).toEqual([
+      "nuwax_openui",
+      "chrome_tools",
     ]);
   });
 

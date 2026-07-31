@@ -167,8 +167,14 @@ function normalizeMcpServer(value: unknown, index: number): McpServer {
 function sanitizeMcpServerNames(servers: McpServer[]): McpServer[] {
   const used = new Set<string>();
   return servers.map((server) => {
+    // codex forms MCP tool names as `mcp__<server>__<tool>` and references the
+    // server by this name; a hyphen in the server name (e.g. "nuwax-openui")
+    // collides with codex/model using the underscore form ("nuwax_openui") and
+    // surfaces as "unknown MCP server 'nuwax_openui'". Normalize hyphens (and
+    // any other non-[a-z0-9_] char) to underscore so the name is consistent
+    // everywhere downstream.
     let base = server.name
-      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .replace(/[^a-zA-Z0-9_]/g, "_")
       .replace(/_+/g, "_")
       .replace(/^_|_$/g, "");
     if (!base) base = "mcp_server";
