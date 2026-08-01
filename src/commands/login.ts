@@ -18,7 +18,13 @@ import { getServeStatus } from "../core/serve/serveLock.js";
 import {
   findServeProcessIds,
   stopServeProcesses,
+  discoverMcpProxyProcesses,
 } from "../core/processes/serveSingleton.js";
+import {
+  listRegisteredProcesses,
+  isPidAlive,
+  type NuwaProcessRecord,
+} from "../core/processes/processRegistry.js";
 import { findUiProcessIds } from "../core/processes/uiSingleton.js";
 import { stopCommand } from "./processes.js";
 
@@ -233,6 +239,21 @@ export interface StatusCommandOptions {
  * serve is up — to actually call `/computer/chat` the user must still grab the
  * secret from the serve process's startup output.
  */
+function printChildServiceLine(
+  name: string,
+  records: NuwaProcessRecord[],
+): void {
+  const alive = records.filter((r) => isPidAlive(r.pid));
+  if (alive.length > 0) {
+    const detail = alive
+      .map((r) => `PID ${r.pid}${r.port ? `  端口 ${r.port}` : ""}`)
+      .join("，");
+    console.log(`${name}：${pc.green("运行中")}  ${detail}`);
+  } else {
+    console.log(`${name}：${pc.dim("未运行")}`);
+  }
+}
+
 async function printServeStatus(): Promise<void> {
   const status = await getServeStatus();
   if (status.state === "running") {
@@ -255,12 +276,31 @@ async function printServeStatus(): Promise<void> {
       }（可用 \`nuwa-cli gateway\` 启动）`,
     );
   }
-  const consolePids = findUiProcessIds();
-  console.log(
-    consolePids.length > 0
-      ? `Console：${pc.green("前台运行中")}  PID ${consolePids.join(", ")}`
-      : `Console：${pc.dim("未运行")}（可用 \`nuwa-cli console\` 启动）`,
+
+  // 子服务状态：file-server / lanproxy（来自进程注册表）+ mcp-proxy（按需 spawn，扫描发现）
+  const registered = listRegisteredProcesses();
+  printChildServiceLine(
+    "file-server",
+    registered.filter((r) => r.kind === "file-server"),
   );
+  printChildServiceLine(
+    "lanproxy",
+    registered.filter((r) => r.kind === "lanproxy"),
+  );
+  const mcpProxyPids = discoverMcpProxyProcesses();
+  console.log(
+    mcpProxyPids.length > 0
+      ? `mcp-proxy：${pc.green("运行中")}  PID ${mcpProxyPids.join(", ")}（按需启动）`
+      : `mcp-proxy：${pc.dim("无运行实例")}（按需启动）`,
+  );
+
+  // Console：仅运行时展示，未运行则不显示该行。
+  const consolePids = findUiProcessIds();
+  if (consolePids.length > 0) {
+    console.log(
+      `Console：${pc.green("前台运行中")}  PID ${consolePids.join(", ")}`,
+    );
+  }
 }
 
 export async function statusCommand(

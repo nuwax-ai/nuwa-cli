@@ -114,57 +114,72 @@ function parseRelativeNuwaProcessKind(
   return normalizeDiscoveredKind(match[1]);
 }
 
+/** 枚举当前所有进程的 (pid, 命令行)。Unix 用 ps，Windows 用 WMI（Win32_Process）。 */
+function listProcessCommandLines(): { pid: number; commandLine: string }[] {
+  if (process.platform === "win32") {
+    const script =
+      "Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress";
+    const result = spawnSync(
+      "powershell.exe",
+      ["-NoProfile", "-Command", script],
+      {
+        encoding: "utf8",
+        timeout: 3000,
+        windowsHide: true,
+      },
+    );
+    if (result.status !== 0 || !result.stdout.trim()) return [];
+    const parsed = JSON.parse(result.stdout) as
+      | { ProcessId?: number; CommandLine?: string }
+      | Array<{ ProcessId?: number; CommandLine?: string }>;
+    return (Array.isArray(parsed) ? parsed : [parsed])
+      .filter((item) => Number.isInteger(item.ProcessId))
+      .map((item) => ({
+        pid: item.ProcessId as number,
+        commandLine: item.CommandLine ?? "",
+      }));
+  }
+  const result = spawnSync("ps", ["-axo", "pid=,command="], {
+    encoding: "utf8",
+    timeout: 3000,
+  });
+  if (result.status !== 0) return [];
+  return result.stdout
+    .split("\n")
+    .map((line) => line.match(/^\s*(\d+)\s+(.*)$/))
+    .filter((match): match is RegExpMatchArray => Boolean(match))
+    .map((match) => ({ pid: Number(match[1]), commandLine: match[2] }));
+}
+
 export function discoverLegacyNuwaProcesses(): DiscoveredNuwaProcess[] {
   if (process.env.VITEST || process.env.NUWACLI_DISABLE_PROCESS_SCAN === "1")
     return [];
   try {
-    if (process.platform === "win32") {
-      const script =
-        "Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress";
-      const result = spawnSync(
-        "powershell.exe",
-        ["-NoProfile", "-Command", script],
-        {
-          encoding: "utf8",
-          timeout: 3000,
-          windowsHide: true,
-        },
-      );
-      if (result.status !== 0 || !result.stdout.trim()) return [];
-      const parsed = JSON.parse(result.stdout) as
-        | { ProcessId?: number; CommandLine?: string }
-        | Array<{ ProcessId?: number; CommandLine?: string }>;
-      return (Array.isArray(parsed) ? parsed : [parsed]).flatMap((item) => {
-        const kind =
-          parseNuwaProcessKind(item.CommandLine ?? "") ??
-          (item.ProcessId
-            ? parseRelativeNuwaProcessKind(
-                item.CommandLine ?? "",
-                item.ProcessId,
-              )
-            : null);
-        return kind && Number.isInteger(item.ProcessId)
-          ? [{ pid: item.ProcessId as number, kind }]
-          : [];
-      });
-    }
-
-    const result = spawnSync("ps", ["-axo", "pid=,command="], {
-      encoding: "utf8",
-      timeout: 3000,
+    return listProcessCommandLines().flatMap(({ pid, commandLine }) => {
+      const kind =
+        parseNuwaProcessKind(commandLine) ??
+        parseRelativeNuwaProcessKind(commandLine, pid);
+      return kind ? [{ pid, kind }] : [];
     });
-    if (result.status !== 0) return [];
-    return result.stdout
-      .split("\n")
-      .map((line) => line.match(/^\s*(\d+)\s+(.*)$/))
-      .filter((match): match is RegExpMatchArray => Boolean(match))
-      .flatMap((match) => {
-        const pid = Number(match[1]);
-        const kind =
-          parseNuwaProcessKind(match[2]) ??
-          parseRelativeNuwaProcessKind(match[2], pid);
-        return kind ? [{ pid, kind }] : [];
-      });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 发现正在运行的 @nuwax-ai/mcp-proxy-ts 进程（PID 列表）。mcp-proxy 由引擎 /
+ * PersistentMcpBridge 按会话需求 spawn，未进 processRegistry，只能扫描进程命令行
+ * （匹配路径片段 `mcp-proxy-ts/`）来发现。返回仍存活的 PID，升序。
+ */
+export function discoverMcpProxyProcesses(): number[] {
+  if (process.env.VITEST || process.env.NUWACLI_DISABLE_PROCESS_SCAN === "1")
+    return [];
+  try {
+    return listProcessCommandLines()
+      .filter(({ commandLine }) => /mcp-proxy-ts[\\/]/i.test(commandLine))
+      .map(({ pid }) => pid)
+      .filter((pid) => Number.isInteger(pid) && isPidAlive(pid))
+      .sort((a, b) => a - b);
   } catch {
     return [];
   }
