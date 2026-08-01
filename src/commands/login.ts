@@ -207,13 +207,31 @@ async function restartGatewayAfterLogin(
       pc.dim("检测到 Gateway 正在运行，正在应用新登录信息并切换到系统后台服务..."),
     );
     await stopServeProcesses(runningGatewayPids);
+  }
+  // 任务定义不含凭证（gateway 运行时从 credentials.json 读取），因此系统服务已
+  // 安装时无需重装——否则 Windows 上对已存在/运行中的计划任务做 schtasks /Create /F
+  // 会「拒绝访问」(ERROR_ACCESS_DENIED)。未安装才安装；已安装则直接启动以应用新登录信息。
+  const { getServiceStatus, startService } = await import(
+    "../core/service/serviceManager.js"
+  );
+  if (getServiceStatus().installed) {
+    console.log(pc.dim("系统后台服务已安装，正在启动以应用新登录信息..."));
+    try {
+      startService();
+    } catch (err) {
+      console.log(
+        pc.dim(
+          `系统服务启动失败（不影响登录态）：${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
+    }
   } else {
     console.log(
       pc.dim("登录成功，正在安装系统后台服务（KeepAlive，退出自动拉起）..."),
     );
+    const { serviceInstallCommand } = await import("./service.js");
+    await serviceInstallCommand({ now: true });
   }
-  const { serviceInstallCommand } = await import("./service.js");
-  await serviceInstallCommand({ now: true });
 }
 
 export async function logoutCommand(): Promise<void> {
