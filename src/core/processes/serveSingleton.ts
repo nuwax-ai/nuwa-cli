@@ -185,6 +185,21 @@ export function discoverMcpProxyProcesses(): number[] {
   }
 }
 
+/**
+ * 停止所有正在运行的 mcp-proxy-ts 进程（best-effort，失败不阻断主流程）。
+ * mcp-proxy 由引擎按会话需求 spawn、不在 processRegistry，serve 停止后常残留，
+ * 故 logout / stop / restart / update 等场景需显式清理，避免泄漏。
+ */
+export async function stopMcpProxyProcesses(): Promise<void> {
+  const pids = discoverMcpProxyProcesses();
+  if (pids.length === 0) return;
+  try {
+    await stopProcessIds(pids);
+  } catch {
+    // mcp-proxy 是辅助进程，停止失败不应阻断 stop / restart / logout 等主流程。
+  }
+}
+
 export function isNuwaServeCommand(commandLine: string): boolean {
   return parseNuwaProcessKind(commandLine) === "serve";
 }
@@ -230,6 +245,9 @@ export async function stopServeProcesses(
     if (service.active) stopService();
   }
   await stopProcessIds(pids);
+  // mcp-proxy 由引擎按会话 spawn、不在注册表，serve 停止后可能残留 —— 一并清理，
+  // 覆盖 logout / stop / login / update 等所有走 stopServeProcesses 的场景。
+  await stopMcpProxyProcesses();
   const guard = readGuard();
   if (guard && pids.includes(guard.pid)) removeGuard();
 }

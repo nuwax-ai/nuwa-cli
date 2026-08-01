@@ -121,18 +121,17 @@ async function restartServeIfLoggedIn(): Promise<void> {
     ensureDir(logsDir());
     const logPath = serveLogPath();
     const out = fs.openSync(logPath, "a");
-    const child = spawn(
-      process.execPath,
-      [cliEntry, "serve", "--daemon", "--force"],
-      {
-        detached: true,
-        stdio: ["ignore", out, out],
-        env: { ...process.env, NUWACLI_SERVE_DAEMONIZED: "1" },
-        windowsHide: true,
-      },
-    );
+    // 升级后用统一的 `restart` 逻辑重启所有服务（Gateway / file-server / lanproxy /
+    // mcp-proxy），与安装脚本 / doctor --fix / restart 命令一致。detached + unref 让
+    // 重启在新进程后台进行、不阻塞 update 退出；输出写入 serve 日志。
+    const child = spawn(process.execPath, [cliEntry, "restart"], {
+      detached: true,
+      stdio: ["ignore", out, out],
+      env: process.env,
+      windowsHide: true,
+    });
     child.unref();
-    console.log(`已登录，已后台重启 nuwa-cli serve（pid ${child.pid}）。`);
+    console.log(`已登录，已后台重启所有服务（重启进程 pid ${child.pid}）。`);
   } catch (err) {
     console.log(
       `serve 自动重启跳过：${err instanceof Error ? err.message : String(err)}`,

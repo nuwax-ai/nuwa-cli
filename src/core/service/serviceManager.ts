@@ -421,6 +421,10 @@ function installWindowsService(options: ServiceInstallOptions): void {
   // rejected as "task XML is malformed" once any non-ASCII appears.
   const xml = buildWindowsTaskXml(options, { platform: "win32" });
   fs.writeFileSync(xmlPath, Buffer.from(`\uFEFF${xml}`, "utf16le"));
+  // \u5148\u505C\u6B62\u5DF2\u5B58\u5728\u7684\u4EFB\u52A1\u5B9E\u4F8B\uFF1Aschtasks /Create /F \u5BF9\u300C\u6B63\u5728\u8FD0\u884C\u300D\u7684\u4EFB\u52A1\u4F1A\u8FD4\u56DE
+  // \u300C\u62D2\u7EDD\u8BBF\u95EE\u300D(ERROR_ACCESS_DENIED)\u3002\u91CD\u590D\u767B\u5F55 / \u5347\u7EA7\u540E\u91CD\u88C5\u65F6\u5FC5\u987B\u5148 /End\uFF0C
+  // \u5426\u5219\u8868\u73B0\u4E3A login \u62A5\u300C\u62D2\u7EDD\u8BBF\u95EE\u300D\u5931\u8D25\u3002
+  runSchtasks(["/End", "/TN", WINDOWS_TASK_NAME], { ignoreFailure: true });
   runSchtasks(["/Create", "/TN", WINDOWS_TASK_NAME, "/XML", xmlPath, "/F"]);
   if (options.now) runSchtasks(["/Run", "/TN", WINDOWS_TASK_NAME]);
 }

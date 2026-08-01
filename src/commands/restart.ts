@@ -1,7 +1,10 @@
 import pc from "picocolors";
 import { gatewayCommand } from "./gateway.js";
 import { uiCommand } from "./ui.js";
-import { findServeProcessIds } from "../core/processes/serveSingleton.js";
+import {
+  findServeProcessIds,
+  stopMcpProxyProcesses,
+} from "../core/processes/serveSingleton.js";
 import { findUiProcessIds } from "../core/processes/uiSingleton.js";
 import { stopProcessIds } from "../core/processes/processRegistry.js";
 import { debugLog } from "../core/debugLog.js";
@@ -24,9 +27,14 @@ export async function stopAllNuwaProcesses(): Promise<number> {
   const servePids = findServeProcessIds(0); // 0 = 不排除自身，全部清理
   const uiPids = findUiProcessIds();
   const allPids = [...servePids, ...uiPids].filter((pid) => pid !== process.pid);
-  if (allPids.length === 0) return 0;
+  // 即便没有 serve/console，也可能有残留的 mcp-proxy，需一并清理。
+  if (allPids.length === 0) {
+    await stopMcpProxyProcesses();
+    return 0;
+  }
   debugLog("restart", "stopping existing processes", { pids: allPids });
   await stopProcessIds(allPids);
+  await stopMcpProxyProcesses();
   // 给 OS 一点时间释放端口 / 清理 detached 子进程。
   await new Promise((resolve) => setTimeout(resolve, 1000));
   return allPids.length;
