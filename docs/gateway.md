@@ -185,9 +185,9 @@ Codex ACP 平台运行时不可用。请重新安装 nuwa-cli。
 2. Gateway 启动参数 `--api-key`、`--base-url`、`--model`；
 3. 用户电脑已有环境变量和 `~/.claude` / `~/.codex` 配置。
 
-没有下发的字段不会写入空值，也不会覆盖用户本地配置。MCP 配置作为标准 ACP `mcpServers` 以原始 stdio 形式传给引擎（不再经 `@nuwax-ai/mcp-proxy-ts` 改写、不再起 `PersistentMcpBridge`），其中 stdio MCP 的环境变量随该 MCP 进程下发；`claude-code-acp-ts` / `@nuwax-ai/nuwax-codex-acp-ts` 两个 TS adapter 在 adapter 层原生处理 ACP `mcpServers`。
+没有下发的字段不会写入空值，也不会覆盖用户本地配置。MCP 处理由 `rewriteMcpServersForEngine` 统一负责：先以内置默认服务（`chrome-devtools`，persistent）为底，叠加 ACP 下发的 `mcpServers`（同名以动态为准），并把所有 stdio 的 `npx` 改写为 `node + npx-cli.js`（避免 Windows 控制台闪屏）。codex / claude 两个引擎的 adapter（`@nuwax-ai/nuwax-codex-acp-ts` / `claude-code-acp-ts`）原生支持 ACP stdio MCP，直接下发合并后的原始 stdio 入口（stdio MCP 的环境变量随各 MCP 进程下发）；只有其它或未知引擎才经 `@nuwax-ai/mcp-proxy-ts` 改写成 proxy 入口，并起 `PersistentMcpBridge` 长驻托管 persistent server（默认 `chrome-devtools`，可用 `NUWACLI_MCP_PERSISTENT` 追加）。
 
-引擎映射：`claude-code` / `claude-code-acp-ts` → Claude；`codex` / `codex-cli` / `codex-acp` / `@nuwax-ai/nuwax-codex-acp-ts` → Codex。没有下发 command、command 未命中，或下发当前 CLI 不支持的引擎时，统一使用 Codex。已有会话固定使用创建时的引擎，后续 prompt 不会中途切换。
+引擎映射：`claude-code` / `claude-code-acp-ts` → Claude；`codex` / `codex-cli` / `codex-acp` / `nuwax-codex-acp` → Codex。没有下发 command、command 未命中，或下发当前 CLI 不支持的引擎时，统一使用 Codex。已有会话固定使用创建时的引擎，后续 prompt 不会中途切换。
 
 ## 登录、注册与多账号
 

@@ -62,7 +62,7 @@ export function logsDir(): string {
 }
 
 /**
- * Directory the codex ACP adapter (`nuwax-codex-acp-ts`) writes its full
+ * Directory the codex ACP adapter (`@nuwax-ai/nuwax-codex-acp-ts`) writes its full
  * stderr/stdout log to (as `app-server.log`) once we set `CODEX_LOG_DIR` on
  * the spawned engine. Kept under the nuwa-cli logs dir so a codex engine-start
  * failure's underlying cause is captured in full instead of the adapter's

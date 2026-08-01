@@ -700,8 +700,9 @@ export class SessionHub {
     );
     this.sessions.set(session.sessionId, session);
     this.spawnRunner(session, async (ctx) => {
-      // ACP MCP：claude 经 @nuwax-ai/mcp-proxy-ts 改写为 proxy 入口；codex 原生
-      // 支持 stdio MCP，由 rewriteMcpServersForEngine 按 engine 分支下发原始入口
+      // ACP MCP：codex / claude 的 adapter 原生支持 stdio MCP，
+      // rewriteMcpServersForEngine 直接下发原始入口（已合并 DEFAULT、npx→node）；
+      // 只有其它/未知引擎才走 mcp-proxy-ts 改写 + PersistentMcpBridge。
       const mcpServers = await rewriteMcpServersForEngine(
         session.mcpServers,
         session.projectId ?? session.sessionId,

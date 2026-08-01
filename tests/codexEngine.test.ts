@@ -26,20 +26,30 @@ describe("codexEngine.resolve", () => {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   });
 
-  it("resolves the packaged adapter without a system codex install or ~/.codex/auth.json", async () => {
+  // Re-import both the engine and the (mocked) resolver fresh after
+  // resetModules so each test observes its own mock call history.
+  async function load() {
     const { codexEngine } = await import("../src/core/engines/codex.js");
+    const { resolveInstalledPackageEntry } = await import(
+      "../src/core/engines/packageResolve.js"
+    );
+    return { codexEngine, resolveInstalledPackageEntry };
+  }
+
+  it("resolves the @nuwax-ai/nuwax-codex-acp-ts adapter entry", async () => {
+    const { codexEngine, resolveInstalledPackageEntry } = await load();
     const resolved = await codexEngine.resolve();
     expect(resolved.command).toBe(process.execPath);
     expect(resolved.args).toEqual(["/fake/nuwax-codex-acp.js"]);
+    expect(resolveInstalledPackageEntry).toHaveBeenCalledWith(
+      "@nuwax-ai/nuwax-codex-acp-ts",
+      "@nuwax-ai/nuwax-codex-acp-ts/dist/index.js",
+    );
   });
 
-  it("resolves via the package dependency adapter once ~/.codex/auth.json exists", async () => {
-    const authFile = path.join(tmpHome, ".codex", "auth.json");
-    fs.mkdirSync(path.dirname(authFile), { recursive: true });
-    fs.writeFileSync(authFile, "{}");
-    const { codexEngine } = await import("../src/core/engines/codex.js");
+  it("points the adapter log dir at codexLogDir() so engine-start failures are captured", async () => {
+    const { codexEngine } = await load();
     const resolved = await codexEngine.resolve();
-    expect(resolved.command).toBe(process.execPath);
-    expect(resolved.args).toEqual(["/fake/nuwax-codex-acp.js"]);
+    expect(resolved.envOverlay?.CODEX_LOG_DIR).toBeTruthy();
   });
 });

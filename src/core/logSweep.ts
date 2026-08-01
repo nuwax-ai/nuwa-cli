@@ -7,7 +7,7 @@
  *   mcp-proxy / file-server / launchd 全部日志;非日志(`*.json`/`*.guard`/lock)自动忽略。
  *   永不删 `latest.log`(指向今日 main 的指针)与活动中的 `codex/app-server.log`
  *   (后者由 `rotateCodexLog` 管)。顺带清理空目录。
- * - `rotateCodexLog`:codex 适配器(`nuwax-codex-acp-ts`)把日志写死成
+ * - `rotateCodexLog`:codex 适配器(`@nuwax-ai/nuwax-codex-acp-ts`)把日志写死成
  *   `app-server.log`、按行 `appendFileSync`(开-写-关,不持 fd),所以可在两次写入
  *   之间安全 rename;按天把活动文件归档为 `app-server-<YYYY-MM-DD>.log`。
  * - `runLogMaintenance`:由 `debugLog.ts` 既有每小时定时器调用(先轮转、再清扫)。
