@@ -232,6 +232,14 @@ if ($WasInstalled) {
     }
     if ($loggedIn) {
         Write-Host "Logged in: restarting nuwa-cli serve in background (post-upgrade)..." -ForegroundColor Cyan
+        # serve --daemon is a fire-and-forget launcher: judge success by exit code
+        # only. Under ErrorActionPreference=Stop (set at top of script), any
+        # native-command stderr — Node DEP0190 shell-spawn warnings, port-change
+        # notices — would otherwise throw into the catch and falsely report
+        # "restart failed" when the daemon actually launched fine. Relax to
+        # Continue for this block only.
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
         try {
             & nuwa-cli stop 2>$null | Out-Null
             Start-Sleep -Seconds 2
@@ -244,6 +252,8 @@ if ($WasInstalled) {
             }
         } catch {
             Warn "serve auto-restart failed: $_ (run manually: nuwa-cli serve --daemon)"
+        } finally {
+            $ErrorActionPreference = $prevEAP
         }
     } else {
         Write-Host "Not logged in: skipping serve auto-restart." -ForegroundColor Cyan
