@@ -1,7 +1,6 @@
 import pc from "picocolors";
 import { runAllDoctorChecks } from "../core/detect/doctorChecks.js";
-import { repairServeSingleton } from "../core/processes/serveSingleton.js";
-import { repairUiSingleton } from "../core/processes/uiSingleton.js";
+import { restartAllServicesForced } from "./restart.js";
 
 export interface DoctorCommandOptions {
   fix?: boolean;
@@ -11,43 +10,23 @@ export async function doctorCommand(
   options: DoctorCommandOptions = {},
 ): Promise<void> {
   if (options.fix) {
+    // --fix = 强制重启所有服务（Gateway / file-server / lanproxy），与 restart 同逻辑：
+    // 清掉所有旧进程后由 Gateway daemon 重新拉起全部子服务。比单例去重更彻底，能修复
+    // detached 子进程占端口、只重启了 gateway 等运行态问题。
     try {
-      const serve = await repairServeSingleton();
-      const ui = await repairUiSingleton();
-      if (serve.stoppedPids.length > 0) {
-        console.log(
-          pc.green(
-            `已修复 serve 多实例：保留 PID ${serve.keptPid}，停止 PID ${serve.stoppedPids.join(", ")}。`,
-          ),
-        );
+      console.log(pc.cyan("正在强制重启所有服务以修复运行状态..."));
+      await restartAllServicesForced();
+      if (process.exitCode && process.exitCode !== 0) {
+        console.error(pc.red("[nuwa-cli] 服务重启失败。"));
       } else {
         console.log(
-          pc.dim(
-            serve.keptPid
-              ? `serve 已是单例（PID ${serve.keptPid}），无需修复。`
-              : "当前没有运行中的 serve，无需修复。",
-          ),
-        );
-      }
-      if (ui.stoppedPids.length > 0) {
-        console.log(
-          pc.green(
-            `已修复 Console 多实例：保留 PID ${ui.keptPid}，停止 PID ${ui.stoppedPids.join(", ")}。`,
-          ),
-        );
-      } else {
-        console.log(
-          pc.dim(
-            ui.keptPid
-              ? `Console 已是单例（PID ${ui.keptPid}），无需修复。`
-              : "当前没有运行中的 Console，无需修复。",
-          ),
+          pc.green("已强制重启所有服务（Gateway / file-server / lanproxy）。"),
         );
       }
       console.log();
     } catch (err) {
       console.error(
-        pc.red(`[nuwa-cli] 自动修复服务单例失败：${(err as Error).message}`),
+        pc.red(`[nuwa-cli] 自动重启服务失败：${(err as Error).message}`),
       );
       process.exitCode = 1;
     }
