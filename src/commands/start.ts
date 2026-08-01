@@ -53,9 +53,34 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
   const includeConsole = options.all === true;
 
   if (gatewayPids.length > 0 && !options.force) {
-    console.log(
-      pc.green(`Gateway 已在运行（PID ${gatewayPids.join(", ")}），继续复用。`),
-    );
+    // Check if child services (lanproxy, file-server) are healthy.
+    // If not, force restart to bring them all back up — "reuse" a serve
+    // whose children died is worse than a clean restart.
+    const lanproxyAlive = await waitForLanproxyProcess();
+    const gatewayStatus = await getServeStatus();
+    if (lanproxyAlive && gatewayStatus.state === "running") {
+      console.log(
+        pc.green(`Gateway 已在运行（PID ${gatewayPids.join(", ")}），继续复用。`),
+      );
+    } else {
+      console.log(
+        pc.yellow(
+          `Gateway PID ${gatewayPids.join(", ")} 存在，但子服务（lanproxy/file-server）缺失，正在强制重启 Gateway 以恢复完整运行环境...`,
+        ),
+      );
+      engine = await gatewayCommand({
+        ...(options as Omit<StartCommandOptions, "open" | "all">),
+        daemon: true,
+        force: true,
+        ...(authReady ? { authReady: true } : {}),
+      });
+      if (process.exitCode && process.exitCode !== 0) {
+        console.error(
+          pc.red("[nuwa-cli] Gateway 重启失败。"),
+        );
+        return;
+      }
+    }
   } else {
     console.log(
       pc.dim(

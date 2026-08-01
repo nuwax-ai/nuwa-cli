@@ -194,11 +194,20 @@ export async function loginCommand(
 async function restartGatewayAfterLogin(
   runningGatewayPids: number[],
 ): Promise<void> {
-  if (runningGatewayPids.length === 0) return;
-  console.log(pc.dim("检测到 Gateway 正在运行，正在应用新登录信息并自动重启..."));
-  await stopServeProcesses(runningGatewayPids);
-  const { gatewayCommand } = await import("./gateway.js");
-  await gatewayCommand({ daemon: true, force: true, authReady: true });
+  // 登录成功后改用系统级后台服务（macOS LaunchAgent / Linux systemd / Windows
+  // 计划任务）托管 gateway —— KeepAlive 会在 serve 被注销/退出后自动拉起。
+  if (runningGatewayPids.length > 0) {
+    console.log(
+      pc.dim("检测到 Gateway 正在运行，正在应用新登录信息并切换到系统后台服务..."),
+    );
+    await stopServeProcesses(runningGatewayPids);
+  } else {
+    console.log(
+      pc.dim("登录成功，正在安装系统后台服务（KeepAlive，退出自动拉起）..."),
+    );
+  }
+  const { serviceInstallCommand } = await import("./service.js");
+  await serviceInstallCommand({ now: true });
 }
 
 export async function logoutCommand(): Promise<void> {

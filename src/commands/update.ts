@@ -123,7 +123,7 @@ async function restartServeIfLoggedIn(): Promise<void> {
     const out = fs.openSync(logPath, "a");
     const child = spawn(
       process.execPath,
-      [cliEntry, "serve", "--daemon"],
+      [cliEntry, "serve", "--daemon", "--force"],
       {
         detached: true,
         stdio: ["ignore", out, out],

@@ -96,6 +96,7 @@ describe("fileServer", () => {
           COMPUTER_WORKSPACE_DIR: "/tmp/nuwa-cli-workspaces",
         }),
         stdio: "ignore",
+        windowsHide: true,
       },
     );
   });
