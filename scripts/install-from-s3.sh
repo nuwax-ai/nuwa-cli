@@ -201,12 +201,13 @@ if [ "$WAS_INSTALLED" = "1" ] && command -v nuwa-cli >/dev/null 2>&1; then
   fi
   if [ "$LOGGED_IN" = "1" ]; then
     info "已登录，正在后台重启 nuwa-cli serve（升级后）..."
-    nuwa-cli stop >/dev/null 2>&1 || true
-    sleep 2
-    if nuwa-cli serve --daemon --force 2>&1; then
+    # 与 `nuwa-cli restart` 同逻辑：清理所有 serve/console 进程后强制重启 Gateway
+    # daemon（重新拉起 file-server / lanproxy 等子服务）。不再用 stop + serve
+    # --daemon 分离调用——那会留下 detached 子进程占端口，导致只有 gateway 重启。
+    if nuwa-cli restart 2>&1; then
       ok "已后台重启 nuwa-cli serve"
     else
-      warn "serve 自动重启失败（可手动: nuwa-cli serve --daemon）"
+      warn "serve 自动重启失败（可手动: nuwa-cli restart）"
     fi
   else
     info "未登录 Nuwax，跳过 serve 自动重启。"

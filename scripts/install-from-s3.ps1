@@ -241,17 +241,19 @@ if ($WasInstalled) {
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-            & nuwa-cli stop 2>$null | Out-Null
-            Start-Sleep -Seconds 2
-            $restartOutput = & nuwa-cli serve --daemon --force 2>&1
+            # 与 `nuwa-cli restart` 同逻辑：先清理所有 serve/console 进程，再强制重启
+            # Gateway daemon（会重新拉起 file-server / lanproxy 等子服务）。不再用
+            # stop + serve --daemon 分离调用——那会留下 detached 的 file-server /
+            # lanproxy 占端口，导致只有 gateway 实际重启。
+            $restartOutput = & nuwa-cli restart 2>&1
             if ($LASTEXITCODE -eq 0) {
                 Ok "nuwa-cli serve restarted in background"
             } else {
                 Write-Host $restartOutput -ForegroundColor Red
-                Warn "serve auto-restart failed (exit $LASTEXITCODE, run manually: nuwa-cli serve --daemon)"
+                Warn "serve auto-restart failed (exit $LASTEXITCODE, run manually: nuwa-cli restart)"
             }
         } catch {
-            Warn "serve auto-restart failed: $_ (run manually: nuwa-cli serve --daemon)"
+            Warn "serve auto-restart failed: $_ (run manually: nuwa-cli restart)"
         } finally {
             $ErrorActionPreference = $prevEAP
         }
