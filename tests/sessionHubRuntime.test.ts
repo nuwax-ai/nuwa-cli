@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   targets: [] as unknown[],
   newSessionRequests: [] as unknown[],
   notifications: [] as Array<{ method: string; params: unknown }>,
+  requests: [] as Array<{ method: string; params: unknown }>,
   engineIds: [] as string[],
   bridgeStart: vi.fn().mockResolvedValue(undefined),
   bridgeStop: vi.fn().mockResolvedValue(undefined),
@@ -59,7 +60,10 @@ vi.mock("../src/core/acp/connection.js", () => ({
       notify: async (method: string, params: unknown) => {
         mocks.notifications.push({ method, params });
       },
-      request: async () => ({}),
+      request: async (method: string, params: unknown) => {
+        mocks.requests.push({ method, params });
+        return {};
+      },
     };
     return op(ctx);
   },
@@ -71,6 +75,7 @@ describe("SessionHub ACP runtime precedence", () => {
     mocks.targets.length = 0;
     mocks.newSessionRequests.length = 0;
     mocks.notifications.length = 0;
+    mocks.requests.length = 0;
     mocks.engineIds.length = 0;
     mocks.bridgeStart.mockClear();
     mocks.bridgeStop.mockClear();
@@ -187,6 +192,36 @@ describe("SessionHub ACP runtime precedence", () => {
       method: "session/cancel",
       params: { sessionId: "acp-session-1" },
     });
+
+    await hub.stopSession(session.sessionId);
+  });
+
+  it("resumeSession loads history via ACP session/load with the historical cwd", async () => {
+    const { SessionHub } = await import("../src/core/serve/sessionHub.js");
+    const hub = new SessionHub("deny-noninteractive");
+    const session = hub.resumeSession(
+      "codex",
+      {
+        engine: "codex",
+        sessionId: "hist-acp-1",
+        cwd: "/historical/cwd",
+        updatedAt: "2026-08-02T07:00:00.000Z",
+        title: "previous turn",
+        filePath: "/tmp/hist.jsonl",
+      },
+      { userId: "u1", projectId: "p1" },
+    );
+    await session.ready;
+
+    // session/load invoked with the historical ACP id + cwd (caller cwd ignored
+    // — session/load correctness depends on the original cwd).
+    const loadCall = mocks.requests.find(
+      (r) => (r.params as { sessionId?: string } | null)?.sessionId === "hist-acp-1",
+    );
+    expect(loadCall).toBeDefined();
+    expect((loadCall!.params as { cwd?: string }).cwd).toBe("/historical/cwd");
+    // The historical ACP id is exposed as acpSessionId on the managed session.
+    expect(session.acpSessionId).toBe("hist-acp-1");
 
     await hub.stopSession(session.sessionId);
   });
