@@ -58,3 +58,7 @@ export function resolveCodexAcp(): EngineResolution {
     args: [entry],
   };
 }
+
+// Health-check primitives (file-server / lanproxy polling, envelope判定,
+// process liveness) shared with nuwaclaw. See ./health.ts.
+export * from "./health.js";
