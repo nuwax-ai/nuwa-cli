@@ -22,9 +22,27 @@ import { resolveStdioNoWindow } from "../../util/npxResolve.js";
 import { debugLog } from "../debugLog.js";
 import { DEFAULT_MCP_PROXY_SERVERS } from "./defaultServers.js";
 import type { EngineKind } from "../env/inheritEnv.js";
+import { createPersistentBridge, type McpProxyLogger } from "@nuwax-ai/agent-kit";
 
-/** Hub 级单例 bridge；无 persistent server 时不启动。 */
-let bridge: PersistentMcpBridge | null = null;
+const mcpBridgeLogger: McpProxyLogger = {
+  info: (...args) => debugLog("mcp-bridge", args.map(String).join(" ")),
+  warn: (...args) => debugLog("mcp-bridge", args.map(String).join(" ")),
+  error: (...args) => debugLog("mcp-bridge", args.map(String).join(" ")),
+};
+
+/** Hub 级 PersistentMcpBridge 单例（管理在 @nuwax-ai/agent-kit）；无 persistent server 时不启动。 */
+const persistentBridge = createPersistentBridge({
+  create: (logger) => new PersistentMcpBridge(logger),
+  logger: mcpBridgeLogger,
+  onStarted: (names) =>
+    debugLog("mcp-proxy", `PersistentMcpBridge started: ${names.join(", ")}`),
+  onStopped: () => debugLog("mcp-proxy", "PersistentMcpBridge stopped"),
+  onStopError: (err) =>
+    debugLog(
+      "mcp-proxy",
+      `PersistentMcpBridge stop error: ${err instanceof Error ? err.message : String(err)}`,
+    ),
+});
 
 function mcpProxyLogDir(): string {
   const dir = logsDir();
@@ -89,48 +107,19 @@ function hostMapToAcpServers(
 
 /**
  * 确保 PersistentMcpBridge 已托管指定的 persistent stdio servers。
- * 已运行则先 stop 再按新配置 start（配置变更场景）。
+ * 单例管理在 @nuwax-ai/agent-kit（createPersistentBridge）。
  */
 export async function ensurePersistentMcpBridge(
   servers: Record<string, HostStdioServerEntry>,
 ): Promise<PersistentMcpBridge | null> {
-  const names = Object.keys(servers);
-  if (names.length === 0) {
-    await stopPersistentMcpBridge();
-    return null;
-  }
-
-  if (!bridge) {
-    // PersistentMcpBridge 构造参数是 BridgeLogger（info/warn/error）
-    bridge = new PersistentMcpBridge({
-      info: (...args: unknown[]) =>
-        debugLog("mcp-bridge", args.map(String).join(" ")),
-      warn: (...args: unknown[]) =>
-        debugLog("mcp-bridge", args.map(String).join(" ")),
-      error: (...args: unknown[]) =>
-        debugLog("mcp-bridge", args.map(String).join(" ")),
-    });
-  }
-
-  await bridge.start(servers);
-  debugLog("mcp-proxy", `PersistentMcpBridge started: ${names.join(", ")}`);
-  return bridge;
+  return (await persistentBridge.ensureStarted(
+    servers as Record<string, unknown>,
+  )) as PersistentMcpBridge | null;
 }
 
 /** serve / hub 关闭时停止 bridge，避免子进程残留。 */
 export async function stopPersistentMcpBridge(): Promise<void> {
-  if (!bridge) return;
-  try {
-    await bridge.stop();
-    debugLog("mcp-proxy", "PersistentMcpBridge stopped");
-  } catch (err) {
-    debugLog(
-      "mcp-proxy",
-      `PersistentMcpBridge stop error: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  } finally {
-    bridge = null;
-  }
+  await persistentBridge.stop();
 }
 
 /**

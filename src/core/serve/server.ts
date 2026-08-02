@@ -14,7 +14,7 @@ import {
   textField,
 } from "./httpUtil.js";
 import { parseComputerPermissionResolveRequest } from "../permissions/notifyResolved.js";
-import { listLocalSessions } from "../sessions/discovery.js";
+import { listLocalSessions, type LocalSessionSummary } from "../sessions/discovery.js";
 import { parseTranscript } from "../sessions/transcript.js";
 import { ensureDir, codexLogDir } from "../../util/paths.js";
 import { debugLog } from "../debugLog.js";
@@ -79,6 +79,23 @@ function chatProjectKey(
     fallbacks.find((value) => typeof value === "string" && value.length > 0) ??
     undefined
   );
+}
+
+/**
+ * 找到与给定 cwd 精确匹配、且最近 7 天内更新过的本地会话中最新的一条
+ * （`listLocalSessions` 已按 updatedAt 降序，首个命中即最近会话）。
+ *
+ * 用于 HTTP `/computer/chat` 在请求未带有效 session_id 时按 projectKey（=cwd）
+ * 自动续接，对齐 `chat --resume`：读磁盘 transcript，gateway 重启后仍可续接。
+ * 纯读盘、不加敏感授权闸门——自动续接等同 user-resume 语义，每条消息触发，
+ * 走审批会破坏体验；engine + cwd 精确过滤 + limit/sinceDays 使 IO 有界。
+ */
+async function findRecentLocalSession(
+  engine: EngineKind,
+  cwd: string,
+): Promise<LocalSessionSummary | undefined> {
+  const sessions = await listLocalSessions({ engine, sinceDays: 7, limit: 50 });
+  return sessions.find((s) => s.cwd === cwd);
 }
 
 function workspaceSegment(value: string, fallback: string): string {
@@ -321,22 +338,46 @@ export function startServeHttp(options: ServeOptions): {
             ),
             mcpServerCount: downstream?.mcpServers.length ?? 0,
           });
-          const target = session
-            ? await hub.reconfigureSession(
+          // 内存命中 → reconfigure；否则按 cwd 自动续接最近本地会话（对齐
+          // `chat --resume`，读磁盘 transcript，重启后仍可续接）；都不命中才新建。
+          const target = await (async () => {
+            if (session) {
+              return await hub.reconfigureSession(
                 session.sessionId,
                 downstream.engine,
                 downstream,
-              )
-            : hub.startSession(
-                downstream.engine,
-                cwdResult.cwd,
-                {
-                  userId,
-                  projectId: cwdResult.projectKey ?? projectId,
-                },
-                downstream,
-                existingId,
               );
+            }
+            // 仅当请求未带 session_id 时才自动续接：带了 id（哪怕已 stale）则
+            // 尊重客户端 id，走 startSession(existingId) 保留公开会话 id。
+            const recent = existingId
+              ? undefined
+              : await findRecentLocalSession(downstream.engine, cwdResult.cwd);
+            if (recent) {
+              debugLog("serve.chat", "auto-resume from local history", {
+                projectKey: cwdResult.projectKey,
+                cwd: cwdResult.cwd,
+                resumedSessionId: recent.sessionId,
+                updatedAt: recent.updatedAt,
+              });
+              return hub.resumeSession(
+                downstream.engine,
+                recent,
+                { userId, projectId: cwdResult.projectKey ?? projectId },
+                downstream,
+              );
+            }
+            return hub.startSession(
+              downstream.engine,
+              cwdResult.cwd,
+              {
+                userId,
+                projectId: cwdResult.projectKey ?? projectId,
+              },
+              downstream,
+              existingId,
+            );
+          })();
           if (!target) {
             sendJson(
               res,

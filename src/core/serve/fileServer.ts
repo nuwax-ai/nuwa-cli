@@ -4,6 +4,7 @@ import { resolveInstalledPackageEntry } from "../engines/packageResolve.js";
 import { buildCliChildEnv } from "../env/inheritEnv.js";
 import { ensureDir, logsDir, tmpDir, workspacesDir } from "../../util/paths.js";
 import { registerProcess } from "../processes/processRegistry.js";
+import { waitForFileServerHealth as kitWaitForFileServerHealth } from "@nuwax-ai/agent-kit";
 
 const NUWAX_FILE_SERVER_ENTRY = "nuwax-file-server/dist/cli.js";
 
@@ -80,21 +81,10 @@ export function stopFileServer(port: number, baseWorkspaceDir?: string): void {
   });
 }
 
-/** 可被 AbortSignal 打断的 sleep；abort 时立即结束，不抛错。 */
-function delay(ms: number, signal?: AbortSignal): Promise<void> {
-  if (ms <= 0 || signal?.aborted) return Promise.resolve();
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    const onAbort = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
 /**
  * 轮询 file-server GET /health，直到 status===ok、超时或 signal abort。
+ * 实现已抽进 @nuwax-ai/agent-kit（与 nuwaclaw 共用）；这里保留原签名返回
+ * boolean，serve.ts 调用处不变。
  * @param signal 可选；serve shutdown 时 abort，避免 Ctrl+C 后仍卡满 timeoutMs。
  */
 export async function waitForFileServerHealth(
@@ -103,26 +93,7 @@ export async function waitForFileServerHealth(
   intervalMs = 200,
   signal?: AbortSignal,
 ): Promise<boolean> {
-  if (signal?.aborted) return false;
-  const url = `http://127.0.0.1:${port}/health`;
-  const deadline = Date.now() + timeoutMs;
-  do {
-    if (signal?.aborted) return false;
-    try {
-      // 单次请求超时 + 外部 abort（shutdown）任一触发即结束本次 fetch
-      const requestSignal = signal
-        ? AbortSignal.any([AbortSignal.timeout(1500), signal])
-        : AbortSignal.timeout(1500);
-      const res = await fetch(url, { signal: requestSignal });
-      if (res.ok) {
-        const body = (await res.json()) as { status?: string };
-        if (body?.status === "ok") return true;
-      }
-    } catch {
-      // not ready / aborted；若已 abort 则下面直接 return false
-    }
-    if (signal?.aborted) return false;
-    await delay(intervalMs, signal);
-  } while (Date.now() < deadline);
-  return false;
+  return (
+    await kitWaitForFileServerHealth({ port, timeoutMs, intervalMs, signal })
+  ).healthy;
 }

@@ -1,20 +1,13 @@
-import { resolveInstalledPackageEntry } from "./packageResolve.js";
+import { resolveCodexAcp } from "@nuwax-ai/agent-kit";
 import type { EngineSpec, ResolvedEngine } from "./types.js";
 import { codexLogDir } from "../../util/paths.js";
-
-const CODEX_ACP_ENTRY = "@nuwax-ai/nuwax-codex-acp-ts/dist/index.js";
 
 export const codexEngine: EngineSpec = {
   id: "codex",
   async resolve(): Promise<ResolvedEngine> {
-    // @nuwax-ai/nuwax-codex-acp-ts is a package dependency (the TS ACP adapter
-    // that bundles nuwax-codex, same spawn model as claude-code-acp-ts). Resolve
-    // its entry via require.resolve so it works whether installed locally or
-    // globally.
-    const entry = resolveInstalledPackageEntry(
-      "@nuwax-ai/nuwax-codex-acp-ts",
-      CODEX_ACP_ENTRY,
-    );
+    // codex 引擎定位（require.resolve @nuwax-ai/nuwax-codex-acp-ts 的入口）已抽进
+    // @nuwax-ai/agent-kit，与 nuwaclaw 共用同一策略；这里只叠加宿主特有的日志目录。
+    const { command, args } = resolveCodexAcp();
     const envOverlay: NodeJS.ProcessEnv = {};
     // The codex ACP adapter captures codex's stderr but only surfaces it as a
     // ≤2KB tail inside the failure message ("Codex process has exited …"), and
@@ -31,8 +24,8 @@ export const codexEngine: EngineSpec = {
       envOverlay.CODEX_LOG_DIR = codexLogDir();
     }
     return {
-      command: process.execPath,
-      args: [entry],
+      command,
+      args,
       envOverlay,
     };
   },
