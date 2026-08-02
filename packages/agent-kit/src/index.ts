@@ -62,3 +62,7 @@ export function resolveCodexAcp(): EngineResolution {
 // Health-check primitives (file-server / lanproxy polling, envelope判定,
 // process liveness) shared with nuwaclaw. See ./health.ts.
 export * from "./health.js";
+
+// PersistentMcpBridge singleton manager (host injects the bridge constructor +
+// logger, so agent-kit doesn't depend on @nuwax-ai/mcp-proxy-ts). See ./proxyBridge.ts.
+export * from "./proxyBridge.js";
