@@ -50,9 +50,17 @@ export const CODEX_ACP_ENTRY = `${CODEX_ACP_PACKAGE}/dist/index.js`;
  * is require.resolve'd from @nuwax-ai/nuwax-codex-acp-ts. Host-specific env
  * (e.g. nuwa-cli's CODEX_LOG_DIR) is left for the caller to overlay on
  * `envOverlay`.
+ *
+ * `entryOverride` lets hosts that resolve the adapter by a non-require.resolve
+ * mechanism (e.g. nuwaclaw's Electron `resources/` bundling) pass the absolute
+ * entry path; defaults to require.resolve for npm-installed hosts (nuwa-cli).
  */
-export function resolveCodexAcp(): EngineResolution {
-  const entry = resolvePackageEntry(CODEX_ACP_PACKAGE, CODEX_ACP_ENTRY);
+export function resolveCodexAcp(opts?: {
+  entryOverride?: string;
+}): EngineResolution {
+  const entry =
+    opts?.entryOverride ??
+    resolvePackageEntry(CODEX_ACP_PACKAGE, CODEX_ACP_ENTRY);
   return {
     command: process.execPath,
     args: [entry],

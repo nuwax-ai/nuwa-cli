@@ -24,6 +24,13 @@ describe("@nuwax-ai/agent-kit — codex engine resolution", () => {
     expect(r.envOverlay).toBeUndefined();
   });
 
+  it("resolveCodexAcp honors entryOverride (nuwaclaw resources mode)", () => {
+    const fake = "/fake/resources/nuwax-codex-acp-ts/dist/index.js";
+    const r = resolveCodexAcp({ entryOverride: fake });
+    expect(r.command).toBe(process.execPath);
+    expect(r.args).toEqual([fake]);
+  });
+
   it("resolvePackageEntry resolves a real installed entry", () => {
     const entry = resolvePackageEntry(CODEX_ACP_PACKAGE, CODEX_ACP_ENTRY);
     expect(entry).toBe(
