@@ -22,6 +22,7 @@ describe("createProgram", () => {
       "doctor",
       "chat",
       "sessions",
+      "workspaces",
       "context",
       "login",
       "logout",

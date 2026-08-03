@@ -5,6 +5,7 @@ import {
   sessionsCommand,
   sessionsSummaryCommand,
 } from "../commands/sessions.js";
+import { workspacesCommand } from "../commands/workspaces.js";
 import { addModelOverlayOptions } from "./options.js";
 import { processesCommand } from "../commands/processes.js";
 
@@ -89,4 +90,14 @@ export function registerAgentCommands(program: Command): void {
     .option("--reverse", "按时间逆序输出（新消息在前）")
     .option("--json", "以 JSON 输出（当前是唯一输出格式）")
     .action(sessionsSummaryCommand);
+
+  program
+    .command("workspaces")
+    .description(
+      "列出本地工作空间目录（云端会话生成的文件，~/.nuwa-cli/workspaces）",
+    )
+    .option("--user <id>", "只看某个用户 ID 下的项目")
+    .option("--long", "列出每个项目内的文件树")
+    .option("--json", "以 JSON 格式输出")
+    .action(workspacesCommand);
 }

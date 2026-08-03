@@ -51,6 +51,7 @@ nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>  # 云端隧
 | `nuwa-cli chat` | 交互式 REPL 或单次模式（`-p`），支持 claude/codex |
 | `nuwa-cli console` | 本机 Web 控制台，流式聊天（[文档](docs/console.md)） |
 | `nuwa-cli sessions` | 列出/续接本地 claude/codex 会话历史 |
+| `nuwa-cli workspaces` | 列出本地工作空间目录（云端会话生成的文件） |
 | `nuwa-cli context` | 跨引擎上下文引用（read/digest/handoff） |
 
 ### 云端与生命周期
@@ -121,6 +122,14 @@ nuwa-cli serve --port 60016
 - `<agent_work_dir>` 是每次会话的项目 ID（数字目录）。
 
 这两个 ID 可在 `nuwa-cli status` 输出或 `~/.nuwa-cli/logs/serve.*.log` 日志里找到。
+
+也可直接在终端用 `nuwa-cli workspaces` 列出工作空间目录（支持 `--user <id>` 过滤、`--json`、`--long` 列文件树），无需手动拼路径：
+
+```bash
+nuwa-cli workspaces                  # 列出所有用户/项目
+nuwa-cli workspaces --user <id>      # 只看某个用户
+nuwa-cli workspaces --long           # 列出每个项目内的文件树
+```
 
 各平台打开工作空间目录：
 
