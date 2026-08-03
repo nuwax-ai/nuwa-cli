@@ -48,6 +48,18 @@ export async function stopAllNuwaProcesses(): Promise<number> {
 export async function restartAllServicesForced(
   options: { engine?: string } = {},
 ): Promise<void> {
+  // 未登录则跳过——serve/gateway 需要 Nuwax 凭证才能注册连 Gateway。统一提示先登录，
+  // 覆盖 restart / doctor --fix / 升级后重启等所有走本函数的场景；不在此时走
+  // ensureRegistered 的「需要 --domain」报错（那条对自动重启场景不贴切）。
+  const { readCredentials } = await import("../core/auth/credentials.js");
+  if (!readCredentials().configKey) {
+    console.log(
+      pc.yellow(
+        "未登录 Nuwax，已跳过服务重启。请先运行 `nuwa-cli login` 登录，再运行 `nuwa-cli gateway` 启动服务。",
+      ),
+    );
+    return;
+  }
   console.log(pc.dim("正在清理所有已运行的 Gateway / Console 进程..."));
   const stopped = await stopAllNuwaProcesses();
   if (stopped > 0) {

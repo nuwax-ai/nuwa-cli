@@ -121,7 +121,9 @@ async function restartServeIfLoggedIn(): Promise<void> {
   try {
     const { readCredentials } = await import("../core/auth/credentials.js");
     if (!readCredentials().configKey) {
-      console.log("未登录 Nuwax，跳过 serve 自动重启。");
+      console.log(
+        "未登录 Nuwax，已跳过升级后的服务自动重启。请先运行 `nuwa-cli login` 登录，再运行 `nuwa-cli gateway` 启动服务。",
+      );
       return;
     }
     const cliEntry = process.argv[1];

@@ -94,7 +94,7 @@ async function ensureRegistered(options: GatewayCommandOptions): Promise<void> {
   }
 
   throw new Error(
-    "首次启动需要 --domain <host> --saved-key <key> 或 --domain <host> -u <username>",
+    "首次启动需要 --domain <host> --saved-key <key> 或 --domain <host> -u <username>，或先运行 `nuwa-cli login` 登录。",
   );
 }
 
