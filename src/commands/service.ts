@@ -39,7 +39,7 @@ function printPlatformNote(): void {
   } else if (process.platform === "win32") {
     console.log(
       pc.dim(
-        "Windows 使用当前用户计划任务：用户登录时自动启动；不需要把密码写入计划任务。",
+        "Windows 使用当前用户计划任务：用户登录时自动启动；不需要把密码写入计划任务。若计划任务被杀软/EDR 拦截，会自动改用「启动文件夹」自启。",
       ),
     );
   }
@@ -119,6 +119,12 @@ export async function serviceStatusCommand(): Promise<void> {
     if (service.configPath)
       console.log(pc.dim(`配置文件：${service.configPath}`));
     if (service.taskName) console.log(pc.dim(`计划任务：${service.taskName}`));
+    if (service.autostartMethod)
+      console.log(
+        pc.dim(
+          `自启方式：${service.autostartMethod === "taskScheduler" ? "计划任务" : "启动文件夹"}`,
+        ),
+      );
 
     const serve = await getServeStatus();
     if (serve.state === "running") {

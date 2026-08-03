@@ -4,10 +4,12 @@ import {
   buildServiceEnvironment,
   buildServiceProgramArgs,
   buildSystemdUserService,
+  buildWindowsStartupVbs,
   buildWindowsTaskRunCommand,
   buildWindowsTaskXml,
   SERVICE_LABEL,
   WINDOWS_TASK_NAME,
+  windowsStartupVbsPath,
 } from "../src/core/service/serviceManager.js";
 
 describe("serviceManager", () => {
@@ -174,5 +176,60 @@ describe("serviceManager", () => {
     expect(xml).not.toContain("savedKey");
     expect(xml).not.toContain("NUWACLI_PASSWORD");
     expect(xml).not.toContain("NUWACLI_SERVICE");
+  });
+
+  it("generates a Windows Startup-folder .vbs that launches gateway --daemon hidden at logon", () => {
+    const vbs = buildWindowsStartupVbs(
+      { engine: "claude", port: "60017", cwd: "C:\\Users\\alice\\work repo" },
+      {
+        nodePath: "C:\\Program Files\\nodejs\\node.exe",
+        cliPath:
+          "C:\\Users\\alice\\AppData\\Roaming\\npm\\node_modules\\nuwa-cli\\dist\\cli.js",
+        env: { USERNAME: "alice", NUWACLI_PASSWORD: "pw" },
+      },
+    );
+
+    // 隐藏窗口、不等待地启动 gateway（--daemon 复用 launchDaemon 全套）。
+    expect(vbs).toContain('Set sh = CreateObject("WScript.Shell")');
+    expect(vbs).toContain("sh.Run ");
+    expect(vbs).toContain(", 0, False");
+    expect(vbs).toContain(" gateway --daemon ");
+
+    // 含空格的 node 路径被 Windows 引号包裹，再为 VBScript 字面量把 " 翻倍成 ""。
+    expect(vbs).toContain('""C:\\Program Files\\nodejs\\node.exe""');
+    expect(vbs).toContain(
+      "C:\\Users\\alice\\AppData\\Roaming\\npm\\node_modules\\nuwa-cli\\dist\\cli.js",
+    );
+    expect(vbs).toContain("--engine claude");
+    expect(vbs).toContain("--port 60017");
+
+    // 不泄漏任何凭证。
+    expect(vbs).not.toContain("pw");
+    expect(vbs).not.toContain("password");
+    expect(vbs).not.toContain("savedKey");
+    expect(vbs).not.toContain("NUWACLI_PASSWORD");
+  });
+
+  it("places the Startup-folder .vbs under the user Startup directory", () => {
+    const oldAppData = process.env.APPDATA;
+    process.env.APPDATA = "C:\\Users\\alice\\AppData\\Roaming";
+    try {
+      const vbsPath = windowsStartupVbsPath();
+      expect(vbsPath).toContain("Startup");
+      expect(vbsPath).toContain("nuwa-cli-gateway.vbs");
+    } finally {
+      if (oldAppData === undefined) delete process.env.APPDATA;
+      else process.env.APPDATA = oldAppData;
+    }
+  });
+
+  it("throws when APPDATA is unset on Windows fallback path resolution", () => {
+    const oldAppData = process.env.APPDATA;
+    delete process.env.APPDATA;
+    try {
+      expect(() => windowsStartupVbsPath()).toThrow(/APPDATA/);
+    } finally {
+      if (oldAppData !== undefined) process.env.APPDATA = oldAppData;
+    }
   });
 });
