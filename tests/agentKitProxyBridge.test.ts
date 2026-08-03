@@ -12,7 +12,9 @@ const noopLogger: McpProxyLogger = {
 
 function mockBridge() {
   return {
-    start: vi.fn(async () => undefined),
+    // Type the `start` param so createPersistentBridge's BridgeServers<B>
+    // inference resolves to Record<string, unknown> (clean, no `any`).
+    start: vi.fn(async (_servers: Record<string, unknown>) => undefined),
     stop: vi.fn(async () => undefined),
   };
 }
@@ -45,6 +47,21 @@ describe("agent-kit createPersistentBridge", () => {
     await handle.ensureStarted({ b: 2 });
     expect(b.start).toHaveBeenCalledTimes(2);
     expect(created).toBe(1);
+  });
+
+  it("forwards every ensureStarted to start — restart on change, no internal dedup", async () => {
+    // agent-kit's contract (see proxyBridge.ts file note): ensureStarted always
+    // forwards to bridge.start; the injected bridge must be idempotent/diff-aware.
+    const b = mockBridge();
+    const handle = createPersistentBridge({
+      create: () => b,
+      logger: noopLogger,
+    });
+    await handle.ensureStarted({ a: 1 });
+    await handle.ensureStarted({ b: 2 }); // new servers → forwarded again
+    expect(b.start).toHaveBeenCalledTimes(2);
+    expect(b.start).toHaveBeenLastCalledWith({ b: 2 });
+    expect(handle.isRunning()).toBe(true);
   });
 
   it("stops and returns null when servers is empty", async () => {

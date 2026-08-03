@@ -8,8 +8,16 @@ import {
   CODEX_ACP_ENTRY,
   type EngineResolution,
 } from "@nuwax-ai/agent-kit";
+import type { ResolvedEngine } from "../src/core/engines/types.js";
 
 const req = createRequire(import.meta.url);
+
+// Compile-time guard: a nuwa-cli ResolvedEngine must be assignable to agent-kit's
+// EngineResolution (the host reads command/args off the resolved engine; envOverlay
+// is required on ResolvedEngine but optional on EngineResolution, so the host fills
+// it). If this stops compiling, the two structs have drifted.
+const _resolvedFitsEngineResolution: EngineResolution =
+  null as unknown as ResolvedEngine;
 
 describe("@nuwax-ai/agent-kit — codex engine resolution", () => {
   it("resolveCodexAcp returns node + the codex-acp-ts adapter entry", () => {

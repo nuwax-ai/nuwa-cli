@@ -19,6 +19,7 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
+    "@agentclientprotocol/sdk": "^1.2.1",
     "@nuwax-ai/nuwax-codex-acp-ts": "^1.2.4"
   },
   "devDependencies": {
@@ -27,7 +28,7 @@
     "typescript": "^5.6.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.3.0"
   },
   "publishConfig": {
     "access": "public"

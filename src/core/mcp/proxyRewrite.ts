@@ -112,9 +112,7 @@ function hostMapToAcpServers(
 export async function ensurePersistentMcpBridge(
   servers: Record<string, HostStdioServerEntry>,
 ): Promise<PersistentMcpBridge | null> {
-  return (await persistentBridge.ensureStarted(
-    servers as Record<string, unknown>,
-  )) as PersistentMcpBridge | null;
+  return persistentBridge.ensureStarted(servers);
 }
 
 /** serve / hub 关闭时停止 bridge，避免子进程残留。 */

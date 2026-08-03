@@ -74,3 +74,8 @@ export * from "./health.js";
 // PersistentMcpBridge singleton manager (host injects the bridge constructor +
 // logger, so agent-kit doesn't depend on @nuwax-ai/mcp-proxy-ts). See ./proxyBridge.ts.
 export * from "./proxyBridge.js";
+
+// ACP permission subsystem (decision chain + classifier framework +
+// tool_approval_rules + notify-resolved protocol + pending state machine).
+// See ./permissions/index.ts.
+export * from "./permissions/index.js";

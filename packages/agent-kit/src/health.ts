@@ -97,12 +97,15 @@ export interface LanproxyTunnelEnvelope {
   data?: { online?: boolean };
 }
 
+/** lanproxy 的「成功」业务码（envelope.code 命中即视为隧道健康）。 */
+export const LANPROXY_OK_CODE = "0000";
+
 /** Pure envelope predicate — any of the three fields marks the tunnel up. */
 export function isLanproxyTunnelEnvelopeHealthy(
   envelope: LanproxyTunnelEnvelope,
 ): boolean {
   return (
-    envelope.code === "0000" ||
+    envelope.code === LANPROXY_OK_CODE ||
     envelope.success === true ||
     envelope.data?.online === true
   );
