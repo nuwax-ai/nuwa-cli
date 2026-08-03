@@ -27,7 +27,8 @@ export type PendingResolveReason =
   | "superseded"
   | "timeout"
   | "session_cancel"
-  | "cancel_all";
+  | "cancel_all"
+  | (string & {});
 
 export interface PendingPermission {
   interventionId: string;
@@ -47,6 +48,8 @@ export interface PendingPermission {
 }
 
 export interface CreatePendingArgs {
+  /** Host-created opaque id; omitted to use the service idFactory. */
+  interventionId?: string;
   appSessionId: string;
   acpSessionId: string;
   request: RequestPermissionRequest;
@@ -58,8 +61,16 @@ export interface CreatePendingArgs {
 }
 
 export type ResolveResult =
-  | { ok: true; hostStatus: "resolved" | "already_resolved"; pending: PendingPermission }
-  | { ok: false; hostStatus?: "gone"; error: { code: string; message: string } };
+  | {
+      ok: true;
+      hostStatus: "resolved" | "already_resolved";
+      pending: PendingPermission;
+    }
+  | {
+      ok: false;
+      hostStatus?: "gone";
+      error: { code: string; message: string };
+    };
 
 export interface PendingServiceOptions {
   /** 干预 id 工厂；默认 `itv_<uuid>`（nuwa-cli / nuwaclaw 同款）。 */
@@ -93,8 +104,16 @@ export interface PendingServiceHandle {
     interventionId: string,
     response: RequestPermissionResponse,
   ): ResolveResult;
-  cancelByAppSession(appSessionId: string): void;
-  cancelByAcpSession(acpSessionId: string): void;
+  /** Read-only lookup for host-owned revision/audit checks. */
+  getPendingByInterventionId(
+    interventionId: string,
+  ): PendingPermission | undefined;
+  getPendingBySessionTool(
+    acpSessionId: string,
+    toolCallId: string,
+  ): PendingPermission | undefined;
+  cancelByAppSession(appSessionId: string, reason?: PendingResolveReason): void;
+  cancelByAcpSession(acpSessionId: string, reason?: PendingResolveReason): void;
   cancelAll(): void;
   hasPendingForAcpSession(acpSessionId: string): boolean;
   readonly pendingCount: number;
@@ -159,8 +178,8 @@ export function createPendingService(
     const key = permissionKey(entry.acpSessionId, entry.toolCallId);
     byPermissionKey.delete(key);
     pending.delete(interventionId);
-    recentResolved.set(key, entry);
     if (retentionMs > 0) {
+      recentResolved.set(key, entry);
       setTimeout(() => {
         const cur = recentResolved.get(key);
         if (cur?.interventionId === interventionId) {
@@ -178,12 +197,19 @@ export function createPendingService(
       const key = permissionKey(args.acpSessionId, toolCallId);
       const existingId = byPermissionKey.get(key);
       if (existingId) {
-        resolveInternal(existingId, { outcome: { outcome: "cancelled" } }, "superseded");
+        resolveInternal(
+          existingId,
+          { outcome: { outcome: "cancelled" } },
+          "superseded",
+        );
       }
       // 新请求覆盖同 key 的 already_resolved 缓存
       recentResolved.delete(key);
 
-      const interventionId = idFactory();
+      const interventionId = args.interventionId ?? idFactory();
+      if (pending.has(interventionId)) {
+        throw new Error(`duplicate intervention id: ${interventionId}`);
+      }
       const timeoutMs = args.timeoutMs ?? defaultTimeoutMs;
 
       let resolveFn!: (response: RequestPermissionResponse) => void;
@@ -260,7 +286,11 @@ export function createPendingService(
         for (const recent of recentResolved.values()) {
           if (recent.interventionId === interventionId) {
             if (sameResponse(recent.resolvedResponse, response)) {
-              return { ok: true, hostStatus: "already_resolved", pending: recent };
+              return {
+                ok: true,
+                hostStatus: "already_resolved",
+                pending: recent,
+              };
             }
             return {
               ok: false,
@@ -308,25 +338,36 @@ export function createPendingService(
       return { ok: true, hostStatus: "resolved", pending: entry };
     },
 
-    cancelByAppSession(appSessionId) {
+    getPendingByInterventionId(interventionId) {
+      return pending.get(interventionId);
+    },
+
+    getPendingBySessionTool(acpSessionId, toolCallId) {
+      const interventionId = byPermissionKey.get(
+        permissionKey(acpSessionId, toolCallId),
+      );
+      return interventionId ? pending.get(interventionId) : undefined;
+    },
+
+    cancelByAppSession(appSessionId, reason = "session_cancel") {
       for (const entry of [...pending.values()]) {
         if (entry.appSessionId === appSessionId && entry.status === "pending") {
           resolveInternal(
             entry.interventionId,
             { outcome: { outcome: "cancelled" } },
-            "session_cancel",
+            reason,
           );
         }
       }
     },
 
-    cancelByAcpSession(acpSessionId) {
+    cancelByAcpSession(acpSessionId, reason = "session_cancel") {
       for (const entry of [...pending.values()]) {
         if (entry.acpSessionId === acpSessionId && entry.status === "pending") {
           resolveInternal(
             entry.interventionId,
             { outcome: { outcome: "cancelled" } },
-            "session_cancel",
+            reason,
           );
         }
       }

@@ -159,6 +159,19 @@ describe("agent-kit createPendingService", () => {
     expect(interventionId).toBe("custom-id");
   });
 
+  it("支持宿主提供 interventionId，并可只读查询 revision", () => {
+    const svc = createPendingService({ defaultTimeoutMs: 0 });
+    const created = svc.createPending({
+      interventionId: "host-itv",
+      appSessionId: "a",
+      acpSessionId: "s",
+      request: req({}),
+      revision: 3,
+    });
+    expect(created.interventionId).toBe("host-itv");
+    expect(svc.getPendingByInterventionId("host-itv")?.revision).toBe(3);
+  });
+
   it("resolve 触发 onResolved 回调（含 reason）", async () => {
     const onResolved = vi.fn();
     const svc = createPendingService({
@@ -189,6 +202,34 @@ describe("agent-kit createPendingService", () => {
     const again = svc.resolveBySessionTool("s", "tc", allowResponse());
     expect(again.ok).toBe(true);
     if (again.ok) expect(again.hostStatus).toBe("already_resolved");
+  });
+
+  it("retentionMs=0 不保留 resolved 记录", () => {
+    const svc = createPendingService({ defaultTimeoutMs: 0, retentionMs: 0 });
+    svc.createPending({
+      appSessionId: "a",
+      acpSessionId: "s",
+      request: req({ toolCallId: "tc" }),
+    });
+    svc.resolveBySessionTool("s", "tc", allowResponse());
+    expect(svc.resolveBySessionTool("s", "tc", allowResponse())).toMatchObject({
+      ok: false,
+      hostStatus: "gone",
+    });
+  });
+
+  it("取消原因由宿主透传给 onResolved", () => {
+    const onResolved = vi.fn();
+    const svc = createPendingService({ defaultTimeoutMs: 0, onResolved });
+    svc.createPending({
+      appSessionId: "a",
+      acpSessionId: "s",
+      request: req({}),
+    });
+    svc.cancelByAcpSession("s", "superseded");
+    expect(onResolved).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "superseded" }),
+    );
   });
 
   it("hasPendingForAcpSession / cancelByAcpSession（nuwaclaw 下轮用）", () => {

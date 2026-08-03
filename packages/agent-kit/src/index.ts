@@ -42,8 +42,31 @@ export interface EngineResolution {
   envOverlay?: NodeJS.ProcessEnv;
 }
 
+export interface NodePackageResolutionOptions {
+  packageName: string;
+  entrySpecifier: string;
+  /** Absolute bundled entry supplied by a host such as Electron. */
+  entryOverride?: string;
+}
+
+/**
+ * Resolve a Node-hosted package entry into a spawn target. The package owns
+ * the invariant `node <absolute-entry>`; hosts only decide whether the entry
+ * comes from bundled resources or normal package resolution.
+ */
+export function resolveNodePackage(
+  options: NodePackageResolutionOptions,
+): EngineResolution {
+  const entry =
+    options.entryOverride ??
+    resolvePackageEntry(options.packageName, options.entrySpecifier);
+  return { command: process.execPath, args: [entry] };
+}
+
 export const CODEX_ACP_PACKAGE = "@nuwax-ai/nuwax-codex-acp-ts";
 export const CODEX_ACP_ENTRY = `${CODEX_ACP_PACKAGE}/dist/index.js`;
+export const CLAUDE_ACP_PACKAGE = "claude-code-acp-ts";
+export const CLAUDE_ACP_ENTRY = `${CLAUDE_ACP_PACKAGE}/dist/index.js`;
 
 /**
  * Resolve the codex ACP adapter to a spawn target: `node <entry>`, where entry
@@ -58,13 +81,25 @@ export const CODEX_ACP_ENTRY = `${CODEX_ACP_PACKAGE}/dist/index.js`;
 export function resolveCodexAcp(opts?: {
   entryOverride?: string;
 }): EngineResolution {
-  const entry =
-    opts?.entryOverride ??
-    resolvePackageEntry(CODEX_ACP_PACKAGE, CODEX_ACP_ENTRY);
-  return {
-    command: process.execPath,
-    args: [entry],
-  };
+  return resolveNodePackage({
+    packageName: CODEX_ACP_PACKAGE,
+    entrySpecifier: CODEX_ACP_ENTRY,
+    entryOverride: opts?.entryOverride,
+  });
+}
+
+/**
+ * Resolve the Claude ACP adapter. Electron passes its resources entry through
+ * `entryOverride`; package-installed hosts use require.resolve by default.
+ */
+export function resolveClaudeAcp(opts?: {
+  entryOverride?: string;
+}): EngineResolution {
+  return resolveNodePackage({
+    packageName: CLAUDE_ACP_PACKAGE,
+    entrySpecifier: CLAUDE_ACP_ENTRY,
+    entryOverride: opts?.entryOverride,
+  });
 }
 
 // Health-check primitives (file-server / lanproxy polling, envelope判定,
@@ -74,6 +109,9 @@ export * from "./health.js";
 // PersistentMcpBridge singleton manager (host injects the bridge constructor +
 // logger, so agent-kit doesn't depend on @nuwax-ai/mcp-proxy-ts). See ./proxyBridge.ts.
 export * from "./proxyBridge.js";
+
+// MCP npx cache warmup state machine. Hosts inject command/env/state adapters.
+export * from "./mcpCacheWarmup.js";
 
 // ACP permission subsystem (decision chain + classifier framework +
 // tool_approval_rules + notify-resolved protocol + pending state machine).

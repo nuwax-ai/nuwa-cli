@@ -16,12 +16,16 @@ Shared slices, dual-format (ESM + CJS) build:
 - codex engine resolution
 - file-server / lanproxy health polling
 - `PersistentMcpBridge` singleton lifecycle
+- MCP npx cache warmup state machine
+- ACP permission decision primitives
 
 ## Exports
 
 ### Engine resolution (`src/index.ts`)
 - `resolvePackageEntry(packageName, entrySpecifier)` — `require.resolve` a dependency entry (ESM+CJS safe via `createRequire(import.meta.url)` + tsup shims).
+- `resolveNodePackage({ packageName, entrySpecifier, entryOverride? })` — turn either a bundled override or installed package entry into the canonical `node <entry>` spawn target.
 - `resolveCodexAcp({ entryOverride? })` — resolve the codex ACP adapter (`@nuwax-ai/nuwax-codex-acp-ts`) to a spawn target `{ command, args }`. `entryOverride` is for hosts that bundle the adapter by a non-`require.resolve` mechanism (e.g. nuwaclaw's Electron `resources/`); defaults to `require.resolve` for npm-installed hosts (nuwa-cli).
+- `resolveClaudeAcp({ entryOverride? })` — the same spawn-target contract for `claude-code-acp-ts`; hosts should supply their installed or bundled entry so the package stays an optional integration.
 - `EngineResolution` — type (`{ command; args; envOverlay? }`), structurally compatible with nuwa-cli's `ResolvedEngine`.
 
 ### Health primitives (`src/health.ts`)
@@ -46,6 +50,24 @@ Host differences (`fetch` vs `http.request`; `isPidAlive` vs `process.kill(0)`) 
 parameter is type-checked against exactly what the injected bridge's `start` accepts —
 no `any` / host-side casts, and agent-kit still names no host type.
 
+### MCP cache warmup (`src/mcpCacheWarmup.ts`)
+- `runMcpCacheWarmup({ version, npxDir, env, spawnNpx, readState, writeState, … })` — shared marker/cache idempotency, serial warming, timeout and TERM/KILL cleanup.
+- `packageNameFromSpec(spec)` — remove a version suffix while preserving scoped package names.
+- `isPackageInNpxCache(npxDir, packageName)` — scan npm's `_npx/<hash>/node_modules` cache without depending on npm's hash algorithm.
+- `MCP_WARMUP_SPECS` and timeout constants — shared defaults consumed by both hosts.
+
+Hosts retain command discovery, environment policy, state-file schema and logging as
+adapters. The warmup module never imports Electron or either host runtime.
+
+### ACP permission primitives (`src/permissions/`)
+- `parseComputerPermissionResolveRequest` — shared `Selected.option_id` / legacy `optionId` wire parsing; hosts adapt HTTP response envelopes.
+- `toComputerPermissionProgressData` — shared SSE payload mapping with host-owned `metadata` and `extensions` (for example nuwaclaw's `save_rule`). Its request contract is structural so ACP SDK enum drift does not leak into hosts.
+- `matchToolApprovalRules` / normalization and target extraction — the canonical glob matching implementation used by both hosts.
+- `createPendingService` — duplicate-key supersession, option validation, timeout/cancel, optional resolved retention, host-provided IDs and revision lookup. `retentionMs: 0` keeps no resolved entries.
+
+nuwaclaw keeps Electron events, revision response policy, strict sandbox decisions and
+product audit logs in its host adapters. nuwa-cli keeps its interactive/serve policy.
+
 ## Build
 
 ```
@@ -59,4 +81,4 @@ builds the artifact if missing.
 ## Requirements
 
 - Node `>= 20.3` (uses `AbortSignal.any`, available since 20.3). Both hosts run Node 22+.
-- `@nuwax-ai/nuwax-codex-acp-ts` is a **peerDependency** — the host must provide it.
+- ACP SDK and adapter packages declared as **peerDependencies** are provided by the host.

@@ -161,4 +161,24 @@ describe("toComputerPermissionProgressData", () => {
       "itv_abc",
     );
   });
+
+  it("accepts host metadata, extensions, and engine-specific tool kinds", () => {
+    const request = {
+      ...baseRequest(),
+      toolCall: { ...baseRequest().toolCall, kind: "nuwaclaw_custom_tool" },
+    };
+    const data = toComputerPermissionProgressData({
+      request,
+      metadata: { nuwaclaw_intervention_id: "itv_claw" },
+      extensions: { save_rule: { rule_type: "allow" } },
+    });
+
+    expect(data).toMatchObject({
+      request_permission_request: {
+        toolCall: { kind: "nuwaclaw_custom_tool" },
+      },
+      _meta: { nuwaclaw_intervention_id: "itv_claw" },
+      save_rule: { rule_type: "allow" },
+    });
+  });
 });

@@ -8,6 +8,13 @@ vi.mock("../src/util/which.js", () => ({
   findOnPath: (...args: unknown[]) => mocks.findOnPath(...args),
 }));
 
+vi.mock("@nuwax-ai/agent-kit", () => ({
+  resolveClaudeAcp: vi.fn(() => ({
+    command: "/fake/node",
+    args: ["/fake/claude-code-acp.js"],
+  })),
+}));
+
 vi.mock("../src/core/engines/packageResolve.js", () => ({
   resolveInstalledPackageEntry: vi
     .fn()
@@ -24,7 +31,7 @@ describe("claudeEngine.resolve", () => {
     mocks.findOnPath.mockReturnValue(null);
     const { claudeEngine } = await import("../src/core/engines/claude.js");
     await expect(claudeEngine.resolve()).resolves.toEqual({
-      command: process.execPath,
+      command: "/fake/node",
       args: ["/fake/claude-code-acp.js"],
       envOverlay: {},
     });

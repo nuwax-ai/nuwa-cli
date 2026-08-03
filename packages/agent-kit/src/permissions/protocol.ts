@@ -6,7 +6,25 @@
 // lives in the shared kit.
 
 import type { RequestPermissionResponse } from "@agentclientprotocol/sdk";
-import type { RequestPermissionRequest } from "@agentclientprotocol/sdk";
+
+/**
+ * Wire-level request shape used by the protocol mapper. Deliberately wider
+ * than any single ACP SDK release: hosts may accept engine-specific tool kinds
+ * while the mapper only needs these stable fields.
+ */
+export interface ComputerPermissionRequestLike {
+  sessionId: string;
+  toolCall: {
+    toolCallId: string;
+    kind?: string | null;
+    status?: string | null;
+    title?: string | null;
+    content?: unknown[] | null;
+    rawInput?: unknown;
+    locations?: Array<{ path: string; line?: number | null }> | null;
+  };
+  options: Array<{ optionId: string; name: string; kind: string }>;
+}
 
 export interface ComputerPermissionResolveCommand {
   acpSessionId: string;
@@ -139,18 +157,23 @@ export function parseComputerPermissionResolveRequest(
 
 /** 构造 SSE data：与 nuwaclaw toComputerPermissionProgressData 同构。 */
 export function toComputerPermissionProgressData(args: {
-  request: RequestPermissionRequest;
+  request: ComputerPermissionRequestLike;
   interventionId?: string;
   revision?: number;
+  /** Host-owned metadata; avoids baking product prefixes into shared core. */
+  metadata?: Record<string, unknown>;
+  /** Host-owned top-level extensions such as nuwaclaw's save_rule hint. */
+  extensions?: Record<string, unknown>;
 }): Record<string, unknown> {
-  const { request, interventionId, revision } = args;
+  const { request, interventionId, revision, extensions } = args;
   const toolCall = request.toolCall;
   const toolCallId = toolCall.toolCallId;
-  const meta: Record<string, unknown> = {};
+  const meta: Record<string, unknown> = { ...args.metadata };
   if (interventionId) meta.nuwa_cli_intervention_id = interventionId;
   if (typeof revision === "number") meta.nuwa_cli_revision = revision;
 
   return {
+    ...extensions,
     request_permission_request: {
       sessionId: request.sessionId,
       toolCall: {
