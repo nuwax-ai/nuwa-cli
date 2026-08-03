@@ -3,8 +3,7 @@
   "version": "0.1.0-beta.40",
   "packageManager": "npm@10.9.2",
   "workspaces": [
-    "packages/lanproxy",
-    "packages/agent-kit"
+    "packages/lanproxy"
   ],
   "description": "Headless multi-engine agent CLI with managed Gateway, Console, ACP engines, and remote session routing",
   "type": "module",
@@ -16,7 +15,7 @@
   ],
   "scripts": {
     "prepare": "npm run build",
-    "build": "npm run build -w @nuwax-ai/agent-kit && tsc --noEmit && node scripts/build.mjs",
+    "build": "tsc --noEmit && node scripts/build.mjs",
     "build:tsc": "tsc",
     "dev:build": "node scripts/build.mjs",
     "dev:cli": "node dist/cli.js",
@@ -40,7 +39,7 @@
     "@anthropic-ai/sdk": "^0.111.0",
     "@clack/prompts": "^1.7.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@nuwax-ai/agent-kit": "^0.2.0",
+    "@nuwax-ai/agent-kit": "^0.3.0",
     "@nuwax-ai/lanproxy": "^1.0.0",
     "@nuwax-ai/mcp-proxy-ts": "^1.5.4",
     "@nuwax-ai/nuwax-codex-acp-ts": "^1.2.4",

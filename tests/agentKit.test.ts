@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
 import {
   resolveCodexAcp,
   resolveClaudeAcp,
@@ -75,13 +74,8 @@ describe("@nuwax-ai/agent-kit — codex engine resolution", () => {
     ).toThrow(/缺少 no-such-pkg/);
   });
 
-  it("CJS build (dist/index.cjs) is consumable via require — for nuwaclaw", () => {
-    // The CJS output must load and work under require() (nuwaclaw is CJS/Electron).
-    // This is the whole point of the dual-format build.
-    const cjsPath = fileURLToPath(
-      new URL("../packages/agent-kit/dist/index.cjs", import.meta.url),
-    );
-    const mod = req(cjsPath) as typeof import("@nuwax-ai/agent-kit");
+  it("published CJS export is consumable via require — for nuwaclaw", () => {
+    const mod = req("@nuwax-ai/agent-kit") as typeof import("@nuwax-ai/agent-kit");
     expect(typeof mod.resolveCodexAcp).toBe("function");
     expect(typeof mod.resolveClaudeAcp).toBe("function");
     const r = mod.resolveCodexAcp();
