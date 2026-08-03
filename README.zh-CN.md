@@ -115,15 +115,33 @@ nuwa-cli serve --port 60016
 
 ### 查看本地会话文件
 
-云端会话生成的文件写入 `~/.nuwa-cli/workspaces/<user_id>/<agent_work_dir>/`。可直接浏览：
+云端会话生成的文件写入工作空间目录 `~/.nuwa-cli/workspaces/<user_id>/<agent_work_dir>/`：
+
+- `<user_id>` 是你的 Nuwax 数字用户 ID；
+- `<agent_work_dir>` 是每次会话的项目 ID（数字目录）。
+
+这两个 ID 可在 `nuwa-cli status` 输出或 `~/.nuwa-cli/logs/serve.*.log` 日志里找到。
+
+各平台打开工作空间目录：
 
 ```bash
-ls -la ~/.nuwa-cli/workspaces
-# macOS：在 Finder 中打开
+# macOS（Finder）
 open ~/.nuwa-cli/workspaces
+
+# Windows（PowerShell，资源管理器）
+explorer "$env:USERPROFILE\.nuwa-cli\workspaces"
+
+# Linux
+xdg-open ~/.nuwa-cli/workspaces
 ```
 
-nuwa-cli 还会启动本地**文件服务**（HTTP，默认端口 `60015`，`serve`/`gateway` 启动时打印）——它镜像相同的工作空间布局，提供文件列表 / 预览 / 上传 / 打包接口，路径与引擎写入的位置一致。
+或命令行浏览某个用户下的所有会话目录：
+
+```bash
+ls -la ~/.nuwa-cli/workspaces/<user_id>/
+```
+
+nuwa-cli 还会启动本地**文件服务**（HTTP，默认端口 `60015`，`serve`/`gateway` 启动时打印）——它镜像相同的工作空间布局，提供文件列表 / 预览 / 上传 / 打包接口，路径与引擎写入的位置一致。serve 运行时可通过 `http://127.0.0.1:60015` 访问。
 
 详见 [`docs/serve-lifecycle.md`](docs/serve-lifecycle.md)。
 
