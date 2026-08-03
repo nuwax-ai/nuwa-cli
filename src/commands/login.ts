@@ -200,37 +200,43 @@ export async function loginCommand(
 async function restartGatewayAfterLogin(
   runningGatewayPids: number[],
 ): Promise<void> {
-  // 登录成功后改用系统级后台服务（macOS LaunchAgent / Linux systemd / Windows
-  // 计划任务）托管 gateway —— KeepAlive 会在 serve 被注销/退出后自动拉起。
   if (runningGatewayPids.length > 0) {
     console.log(
-      pc.dim("检测到 Gateway 正在运行，正在应用新登录信息并切换到系统后台服务..."),
+      pc.dim("检测到 Gateway 正在运行，正在停止以应用新登录信息..."),
     );
     await stopServeProcesses(runningGatewayPids);
   }
-  // 任务定义不含凭证（gateway 运行时从 credentials.json 读取），因此系统服务已
-  // 安装时无需重装——否则 Windows 上对已存在/运行中的计划任务做 schtasks /Create /F
-  // 会「拒绝访问」(ERROR_ACCESS_DENIED)。未安装才安装；已安装则直接启动以应用新登录信息。
-  const { getServiceStatus, startService } = await import(
-    "../core/service/serviceManager.js"
-  );
-  if (getServiceStatus().installed) {
-    console.log(pc.dim("系统后台服务已安装，正在启动以应用新登录信息..."));
-    try {
-      startService();
-    } catch (err) {
+  // 立即用新凭证重启 Gateway（daemon，与 `nuwa-cli gateway --daemon` 同路径）。
+  // login 已完成注册，传 authReady 让 gateway 跳过内部重复注册；selectEngine 非交互。
+  // 不再依赖后台服务的 startService（schtasks /Run 或裸 spawn）——那条路径在受限环境
+  // 下启动的 gateway 会秒退，导致登录后服务不起、用户被迫手动 `nuwa-cli gateway`。
+  console.log(pc.dim("正在用新登录信息重启 Gateway..."));
+  try {
+    const { gatewayCommand } = await import("./gateway.js");
+    const engine = await gatewayCommand({ daemon: true, authReady: true });
+    if (!engine) {
       console.log(
         pc.dim(
-          `系统服务启动失败（不影响登录态）：${err instanceof Error ? err.message : String(err)}`,
+          "Gateway 自动重启未成功（不影响登录态，可手动运行 `nuwa-cli gateway`）。",
         ),
       );
     }
-  } else {
+  } catch (err) {
     console.log(
-      pc.dim("登录成功，正在安装系统后台服务（KeepAlive，退出自动拉起）..."),
+      pc.dim(
+        `Gateway 自动重启失败（不影响登录态，可手动 nuwa-cli gateway）：${err instanceof Error ? err.message : String(err)}`,
+      ),
     );
+  }
+  // 确保后台服务已安装（下次登录自启）；立即启动已由上面的 gateway daemon 完成，
+  // 故 now:false——避免后台服务（schtasks /Run / fallback spawn）再起一个冲突的 gateway。
+  const { getServiceStatus } = await import(
+    "../core/service/serviceManager.js"
+  );
+  if (!getServiceStatus().installed) {
+    console.log(pc.dim("正在安装系统后台服务（KeepAlive，登录自启）..."));
     const { serviceInstallCommand } = await import("./service.js");
-    await serviceInstallCommand({ now: true });
+    await serviceInstallCommand({ now: false });
   }
 }
 

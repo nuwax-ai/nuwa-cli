@@ -30,6 +30,13 @@ vi.mock("../src/core/auth/regClient.js", async (importOriginal) => {
   };
 });
 
+// restartGatewayAfterLogin 登录后会自动重启 gateway daemon —— mock 掉避免测试
+// 真实探测引擎 / spawn serve 进程。
+const gatewayCommandMock = vi.fn();
+vi.mock("../src/commands/gateway.js", () => ({
+  gatewayCommand: (...args: unknown[]) => gatewayCommandMock(...args),
+}));
+
 describe("login/logout/status commands", () => {
   beforeEach(() => {
     tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "nuwa-cli-login-test-"));
@@ -40,6 +47,7 @@ describe("login/logout/status commands", () => {
     passwordMock.mockReset();
     isCancelMock.mockReset().mockReturnValue(false);
     registerClientMock.mockReset();
+    gatewayCommandMock.mockReset().mockResolvedValue("claude");
     process.exitCode = 0;
   });
 
