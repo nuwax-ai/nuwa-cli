@@ -1,12 +1,10 @@
 import { spawn, spawnSync } from "node:child_process";
-import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   CLI_VERSION,
   DEFAULT_DIST_TAG,
   PACKAGE_NAME,
 } from "../core/version.js";
-import { ensureDir, logsDir, serveLogPath } from "../util/paths.js";
 import { findOnPath, isBatchShim } from "../util/which.js";
 import {
   listRegisteredProcesses,
@@ -106,8 +104,18 @@ async function runInstallWithProgress(
 }
 
 /**
- * 升级/安装完成后：若已登录，静默后台重启 `nuwa-cli serve`（detached）。
- * 未登录则跳过（serve 需要 Nuwax 凭证才能连 Gateway）。
+ * 升级/安装完成后：若已登录，重启所有服务（Gateway / file-server / lanproxy /
+ * mcp-proxy），复用 `nuwa-cli restart` 的统一逻辑。未登录则跳过（serve 需要 Nuwax
+ * 凭证才能连 Gateway）。
+ *
+ * 实现要点（Windows 可靠性）：以前 fire-and-forget 一个 detached `restart` 子进程
+ * （detached + unref，stdio 重定向到日志），它再 spawn detached gateway daemon——这是
+ * 「detached 进程派生 detached 孙进程」，Windows 上 gateway daemon 起不来（升级后服务
+ * 全没起，留下指向已死 daemon 的陈旧单例锁）。改为：前台 await 一个 console-attached
+ * （非 detached、stdio inherit）的 `restart` 子进程——它 spawn 的 detached daemon 与
+ * `nuwa-cli gateway` 同构（前台/console-attached 进程派生 detached daemon，1 层），
+ * 在 Windows 上能可靠存活。restart 在 launchDaemon 后即 return 退出，故 await 有界，
+ * 还能据退出码确认是否真的拉起。
  */
 async function restartServeIfLoggedIn(): Promise<void> {
   try {
@@ -118,20 +126,22 @@ async function restartServeIfLoggedIn(): Promise<void> {
     }
     const cliEntry = process.argv[1];
     if (!cliEntry) return;
-    ensureDir(logsDir());
-    const logPath = serveLogPath();
-    const out = fs.openSync(logPath, "a");
-    // 升级后用统一的 `restart` 逻辑重启所有服务（Gateway / file-server / lanproxy /
-    // mcp-proxy），与安装脚本 / doctor --fix / restart 命令一致。detached + unref 让
-    // 重启在新进程后台进行、不阻塞 update 退出；输出写入 serve 日志。
     const child = spawn(process.execPath, [cliEntry, "restart"], {
-      detached: true,
-      stdio: ["ignore", out, out],
+      stdio: "inherit",
       env: process.env,
       windowsHide: true,
     });
-    child.unref();
-    console.log(`已登录，已后台重启所有服务（重启进程 pid ${child.pid}）。`);
+    const exitCode = await new Promise<number | null>((resolve) => {
+      child.once("error", () => resolve(null));
+      child.once("close", (code) => resolve(code));
+    });
+    if (exitCode === 0) {
+      console.log("已登录，已重启所有服务（Gateway 正在后台拉起子服务）。");
+    } else {
+      console.log(
+        `serve 自动重启可能未完成（restart 退出码 ${exitCode}）。可手动运行 \`nuwa-cli gateway\`。`,
+      );
+    }
   } catch (err) {
     console.log(
       `serve 自动重启跳过：${err instanceof Error ? err.message : String(err)}`,
