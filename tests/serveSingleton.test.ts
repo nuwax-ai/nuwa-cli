@@ -136,4 +136,26 @@ describe("serveSingleton", () => {
       ),
     ).toBeNull();
   });
+
+  it("transfers the serve guard to a daemon child pid", async () => {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      stdio: "ignore",
+    });
+    await once(child, "spawn");
+    try {
+      const {
+        acquireServeSingleton,
+        transferServeSingleton,
+      } = await import("../src/core/processes/serveSingleton.js");
+      await acquireServeSingleton(false);
+      transferServeSingleton(process.pid, child.pid!);
+      const guard = JSON.parse(
+        fs.readFileSync(process.env.NUWACLI_SERVE_GUARD_PATH!, "utf8"),
+      );
+      expect(guard.pid).toBe(child.pid);
+    } finally {
+      child.kill();
+      await once(child, "exit");
+    }
+  });
 });

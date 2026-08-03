@@ -343,19 +343,46 @@ export function transferServeSingleton(fromPid: number, toPid: number): void {
   if (!guard || guard.pid !== fromPid) {
     throw new Error("serve 单例锁所有者已变化，拒绝启动 daemon");
   }
-  writeFileAtomic(
-    cliServeGuardPath(),
-    JSON.stringify(
-      {
-        pid: toPid,
-        createdAt: guard.createdAt,
-        processStartToken: getProcessStartToken(toPid),
-      },
-      null,
-      2,
-    ),
-    0o600,
+  const payload = JSON.stringify(
+    {
+      pid: toPid,
+      createdAt: guard.createdAt,
+      processStartToken: getProcessStartToken(toPid),
+    },
+    null,
+    2,
   );
+  writeGuardWithRetry(payload);
+}
+
+/**
+ * 写入 serve.guard。Windows 上 writeFileAtomic 的原子 rename 偶发 EPERM——
+ * 目标 serve.guard 被杀毒/EDR 扫描、或刚 stop 的旧进程句柄短暂占用（update
+ * 升级后重启 gateway 时尤甚：npm 刚改了几百个文件触发 AV 扫描）。锁通常在数百
+ * ms 内释放，重试几次即可；其他平台 / 非 EPERM 错误直接抛出。
+ */
+function writeGuardWithRetry(payload: string): void {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      writeFileAtomic(cliServeGuardPath(), payload, 0o600);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (
+        process.platform !== "win32" ||
+        (err as NodeJS.ErrnoException).code !== "EPERM"
+      ) {
+        throw err;
+      }
+      // 同步短暂等待（busy-wait ~150ms）后重试，避免立即重试风暴。
+      const deadline = Date.now() + 150;
+      while (Date.now() < deadline) {
+        /* spin */
+      }
+    }
+  }
+  throw lastErr;
 }
 
 export function releaseServeSingleton(pid = process.pid): void {
