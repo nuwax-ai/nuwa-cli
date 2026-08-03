@@ -123,7 +123,7 @@ describe("serviceManager", () => {
     expect(command).not.toContain("password");
   });
 
-  it("generates a Windows Task Scheduler XML pinned to the current user at logon", () => {
+  it("generates a Windows Task Scheduler XML for the current user at logon without an explicit Principal", () => {
     const xml = buildWindowsTaskXml(
       { engine: "claude", port: "60017", cwd: "C:\\Users\\alice\\work repo" },
       {
@@ -143,11 +143,14 @@ describe("serviceManager", () => {
     // Logon trigger replaces the old /SC ONLOGON.
     expect(xml).toContain("<LogonTrigger>");
 
-    // Runs as the current user, non-elevated, interactive token — a non-admin
-    // can register this task for themselves.
-    expect(xml).toContain("<UserId>alice</UserId>");
-    expect(xml).toContain("<LogonType>InteractiveToken</LogonType>");
-    expect(xml).toContain("<RunLevel>LeastPrivilege</RunLevel>");
+    // 不内嵌 <Principal>：schtasks /Create 默认以「创建任务的当前用户」
+    // （LeastPrivilege / InteractiveToken）注册，非管理员可为本人创建。显式写裸
+    // <UserId> 在域账号机器上解析歧义会触发 ERROR_ACCESS_DENIED，因此即使
+    // context 里给了 USERNAME 也不写入。
+    expect(xml).not.toContain("<Principal");
+    expect(xml).not.toContain("<UserId>");
+    expect(xml).not.toContain("<LogonType>");
+    expect(xml).not.toContain("<RunLevel>");
 
     // Command is node.exe (spaces OK unquoted in <Command>); arguments carry
     // the CLI entry, the gateway subcommand and flags. A spaced --cwd value is

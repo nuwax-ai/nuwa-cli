@@ -260,11 +260,14 @@ export function buildWindowsTaskRunCommand(
  * Builds a Windows Task Scheduler (2.0 schema) definition that starts the
  * gateway at user logon. Using an XML import (instead of `schtasks /TR`) keeps
  * the command/arguments free of the fragile cmd-line double-quoting that
- * `spawnSync` would otherwise re-apply to the `/TR` value. The task is pinned
- * to the current user with an interactive token at least privilege, which a
- * non-admin can register for themselves. Task Scheduler XML has no element for
- * custom environment variables; the task inherits the user's logon environment
- * (PATH/USERPROFILE/APPDATA/SystemRoot ...), which is all the gateway needs.
+ * `spawnSync` would otherwise re-apply to the `/TR` value.
+ *
+ * 不内嵌 <Principals>/<Principal>：schtasks /Create 在缺少 Principal 时默认以「创建
+ * 任务的当前用户」、LeastPrivilege、InteractiveToken 注册，非管理员可为本人创建，
+ * 行为与显式指定等价。若显式写裸 <UserId>（仅 USERNAME、无域前缀），在域账号机器
+ * 上主体解析会产生歧义，触发 ERROR_ACCESS_DENIED（「拒绝访问」），反而让登录后
+ * 自动安装失败。Task Scheduler XML 没有自定义环境变量元素；任务继承用户登录环境
+ * （PATH/USERPROFILE/APPDATA/SystemRoot ...），足以供 gateway 使用。
  */
 export function buildWindowsTaskXml(
   options: ServiceRuntimeOptions,
@@ -273,18 +276,6 @@ export function buildWindowsTaskXml(
   const programArgs = buildServiceProgramArgs(options, context);
   const command = programArgs[0] ?? "";
   const argumentsField = programArgs.slice(1).map(windowsQuoteArg).join(" ");
-  const username = context.env?.USERNAME ?? process.env.USERNAME ?? "";
-  const principal = username
-    ? [
-        "<Principals>",
-        '  <Principal id="Author">',
-        `    <UserId>${xmlEscape(username)}</UserId>`,
-        "    <LogonType>InteractiveToken</LogonType>",
-        "    <RunLevel>LeastPrivilege</RunLevel>",
-        "  </Principal>",
-        "</Principals>",
-      ].join("\n")
-    : "";
   return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
@@ -296,7 +287,6 @@ export function buildWindowsTaskXml(
       <Enabled>true</Enabled>
     </LogonTrigger>
   </Triggers>
-  ${principal}
   <Settings>
     <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
@@ -304,7 +294,7 @@ export function buildWindowsTaskXml(
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
     <Enabled>true</Enabled>
   </Settings>
-  <Actions Context="Author">
+  <Actions>
     <Exec>
       <Command>${xmlEscape(command)}</Command>
       <Arguments>${xmlEscape(argumentsField)}</Arguments>
@@ -314,22 +304,46 @@ export function buildWindowsTaskXml(
 `;
 }
 
+// 中文 Windows 上 schtasks.exe 按系统 ANSI 码页（CP936/GBK）输出，直接按 UTF-8
+// 解码会变成一堆「?」（例如「错误: 拒绝访问。」→「????: ??????」），让人无法
+// 判断失败原因。优先用 GBK 解码；Node 官方发行版自带 full-ICU 支持 'gbk'，精简
+// 构建（small/no-ICU）下 TextDecoder 会抛错，此时回退 UTF-8 保证不崩。
+let gbkDecoder: TextDecoder | null | undefined;
+function decodeProcessOutput(
+  buf: Buffer | string | null | undefined,
+): string {
+  if (!buf) return "";
+  if (typeof buf === "string") return buf;
+  if (process.platform !== "win32") return buf.toString("utf-8");
+  if (gbkDecoder === undefined) {
+    try {
+      gbkDecoder = new TextDecoder("gbk");
+    } catch {
+      gbkDecoder = null;
+    }
+  }
+  return gbkDecoder ? gbkDecoder.decode(buf) : buf.toString("utf-8");
+}
+
 function run(
   command: string,
   args: string[],
   options: { ignoreFailure?: boolean; spawnOptions?: SpawnSyncOptions } = {},
 ): ServiceCommandResult {
   const result = spawnSync(command, args, {
-    encoding: "utf-8",
     ...options.spawnOptions,
+    // 不设 encoding：返回 Buffer，由 decodeProcessOutput 按平台解码（Windows
+    // 计划任务为 GBK；macOS/Linux 的 launchctl/systemctl 为 UTF-8）。若调用方
+    // 在 spawnOptions 里显式给了 encoding，结果变 string，decodeProcessOutput
+    // 仍能正确处理。
     // schtasks.exe / sc.exe / etc. are console apps; without this a cmd window
     // flashes whenever the Windows scheduled-task service is started/stopped.
     windowsHide: true,
   });
   const commandText = [command, ...args].join(" ");
   const status = result.status;
-  const stdout = String(result.stdout ?? "");
-  const stderr = String(result.stderr ?? "");
+  const stdout = decodeProcessOutput(result.stdout);
+  const stderr = decodeProcessOutput(result.stderr);
   if (result.error && !options.ignoreFailure) {
     throw new Error(`${commandText} 执行失败：${result.error.message}`);
   }
@@ -382,15 +396,6 @@ function schtasksExe(): string {
   return path.join(systemRoot, "System32", "schtasks.exe");
 }
 
-function windowsSpawnOptions(): SpawnSyncOptions {
-  // Route schtasks through cmd.exe so the system binary is launched by the
-  // shell rather than directly by Node — this bypasses AV/EDR hooks that
-  // intercept Node's own CreateProcess of schtasks.exe (a persistence binary
-  // that defenders flag), and matches the windowsHide convention used across
-  // the codebase.
-  return { shell: true, windowsHide: true };
-}
-
 function windowsTaskXmlPath(): string {
   return path.join(tmpDir(), "gateway-task.xml");
 }
@@ -400,10 +405,12 @@ function runSchtasks(
   options: { ignoreFailure?: boolean } = {},
 ): ServiceCommandResult {
   try {
-    return run(schtasksExe(), args, {
-      ...options,
-      spawnOptions: windowsSpawnOptions(),
-    });
+    // 直接 spawn schtasks.exe（不走 cmd.exe / shell:true）：消除 Node 的
+    // DEP0190「Passing args ... with shell option true」警告，也避免 cmd 行
+    // 注入。windowsHide 已在 run() 内统一设置，schtasks.exe 作为 console app
+    // 不会弹出窗口。EDR 若拦 schtasks 的 /Create，拦的是持久化行为本身而非启动
+    // 方式，因此经由 shell 并不能绕过。
+    return run(schtasksExe(), args, options);
   } catch (err) {
     const base = err instanceof Error ? err.message : String(err);
     throw new Error(
