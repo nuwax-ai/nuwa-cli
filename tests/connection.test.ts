@@ -16,6 +16,33 @@ function spawnTarget() {
 }
 
 describe("withEngineConnection", () => {
+  it.each([
+    ["Codex", "trigger-codex-ask", "ask-codex"],
+    ["Claude", "trigger-claude-ask", "ask-claude"],
+  ])("normalizes %s ask-question updates before forwarding", async (_engine, prompt, requestId) => {
+    const updates: any[] = [];
+    await withEngineConnection(
+      spawnTarget(),
+      {
+        permissionMode: "yolo",
+        onAgentText: () => {},
+        onRawUpdate: (notification) => updates.push(notification.update),
+      },
+      async (ctx) => {
+        const session = await ctx.buildSession(process.cwd()).start();
+        await session.prompt(prompt);
+      },
+    );
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0].rawInput).toMatchObject({
+      toolName: "nuwax_ask_question",
+      schemaVersion: "nuwax.mcp_ask.v2",
+      requestId,
+      ui: { version: "nuwax.interaction.v2" },
+    });
+  });
+
   it("initializes, starts a session, and streams agent_message_chunk text", async () => {
     const chunks: string[] = [];
     const result = await withEngineConnection(

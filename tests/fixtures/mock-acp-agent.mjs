@@ -7,6 +7,8 @@
 //   "trigger-permission" -> sends a session/request_permission request mid-turn
 //   "trigger-hang"       -> never responds to session/prompt (simulates a stuck engine)
 //   "trigger-error"      -> agent process exits non-zero immediately
+//   "trigger-codex-ask"  -> emits Codex's wrapped MCP ask tool update
+//   "trigger-claude-ask" -> emits Claude's JSON MCP ask tool result
 //   anything else        -> streams two agent_message_chunk updates, then stops
 
 import * as readline from "node:readline";
@@ -80,6 +82,64 @@ rl.on("line", async (line) => {
       if (text.includes("trigger-hang")) {
         // Intentionally never respond — simulates an engine parked mid-tool.
         // The connection's AbortSignal is what unblocks the caller.
+        break;
+      }
+      if (text.includes("trigger-codex-ask")) {
+        notify("session/update", {
+          sessionId: msg.params.sessionId,
+          update: {
+            sessionUpdate: "tool_call",
+            toolCallId: "call-codex-ask",
+            title: "mcp.ask-question.nuwax_ask_question",
+            status: "in_progress",
+            rawInput: {
+              server: "ask-question",
+              tool: "nuwax_ask_question",
+              arguments: {
+                requestId: "ask-codex",
+                sessionId: "demo",
+                title: "Codex ask",
+                ui: {
+                  presentation: "inline",
+                  title: "Codex ask",
+                  fields: [{ name: "choice", title: "Choice", widget: "radio" }],
+                },
+              },
+            },
+          },
+        });
+        respond(msg.id, { stopReason: "end_turn" });
+        break;
+      }
+      if (text.includes("trigger-claude-ask")) {
+        const input = {
+          toolName: "nuwax_ask_question",
+          schemaVersion: "nuwax.mcp_ask.v2",
+          requestId: "ask-claude",
+          sessionId: "demo",
+          title: "Claude ask",
+          ui: {
+            version: "nuwax.interaction.v2",
+            presentation: "inline",
+            title: "Claude ask",
+            fields: [{ name: "choice", title: "Choice", widget: "radio" }],
+          },
+        };
+        notify("session/update", {
+          sessionId: msg.params.sessionId,
+          update: {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "call-claude-ask",
+            status: "completed",
+            _meta: {
+              claudeCode: {
+                toolName: "mcp__ask-question__nuwax_ask_question",
+              },
+            },
+            rawOutput: JSON.stringify({ status: "pending", input }),
+          },
+        });
+        respond(msg.id, { stopReason: "end_turn" });
         break;
       }
       if (text.includes("trigger-sensitive-permission")) {

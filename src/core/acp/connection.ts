@@ -11,6 +11,7 @@ import {
   type RequestPermissionResponse,
   type SessionNotification,
 } from "@agentclientprotocol/sdk";
+import { normalizeMcpAskToolUpdate } from "@nuwax-ai/agent-kit";
 import type { PermissionMode } from "../permissions/policy.js";
 import { decidePermission } from "../permissions/policy.js";
 import type { PermissionCoordinator } from "../permissions/coordinator.js";
@@ -70,8 +71,14 @@ function routeSessionUpdate(
   notification: SessionNotification,
   handlers: EngineSessionHandlers,
 ): void {
-  handlers.onRawUpdate?.(notification);
-  const update = notification.update;
+  const update = normalizeMcpAskToolUpdate(
+    notification.update as unknown as Record<string, unknown>,
+  ) as unknown as SessionNotification["update"];
+  const normalizedNotification =
+    update === notification.update
+      ? notification
+      : ({ ...notification, update } as SessionNotification);
+  handlers.onRawUpdate?.(normalizedNotification);
   switch (update.sessionUpdate) {
     case "agent_message_chunk":
       if (update.content.type === "text")
