@@ -213,7 +213,15 @@ async function restartGatewayAfterLogin(
   console.log(pc.dim("正在用新登录信息重启 Gateway..."));
   try {
     const { gatewayCommand } = await import("./gateway.js");
-    const engine = await gatewayCommand({ daemon: true, authReady: true });
+    // force:true 强制接管可能残留的 serve 实例/锁——无 force 时 daemon 子进程的
+    // acquireServeSingleton 会因检测到上一个 serve（含 login 自己 gateway 进程刚
+    // claim 的锁、或上一轮未清干净的 serve）而失败、秒退，表现为登录后 gateway
+    // 没起来（serve.log「检测到已有 serve 进程」）。与 `nuwa-cli restart` 行为一致。
+    const engine = await gatewayCommand({
+      daemon: true,
+      authReady: true,
+      force: true,
+    });
     if (!engine) {
       console.log(
         pc.dim(
