@@ -130,7 +130,13 @@ step 2 4 "下载 $TARBALL ..."
 fetch "$base/versions/$VERSION/artifacts/$TARBALL" "$TMP/$TARBALL" || fail "tarball 下载失败: $base/versions/$VERSION/artifacts/$TARBALL"
 ok "下载完成"
 
-# Stop running lanproxy so its binary isn't locked (npm EPERM on Windows).
+# 升级前停掉完整运行时（对齐 `nuwa-cli update`），避免 npm 覆盖时旧 serve
+# 半死不活、升级后 restart 假成功。
+if [ "$WAS_INSTALLED" = "1" ] && command -v nuwa-cli >/dev/null 2>&1; then
+  info "升级前停止正在运行的 nuwa-cli 服务..."
+  nuwa-cli stop --all >/dev/null 2>&1 || true
+fi
+# Windows Git Bash：再兜底杀 lanproxy，避免 npm EPERM 锁二进制。
 if [ "$(uname -s 2>/dev/null)" != "Darwin" ] && command -v taskkill >/dev/null 2>&1; then
   taskkill //F //IM nuwax-lanproxy.exe >/dev/null 2>&1 || true
 fi
@@ -211,13 +217,20 @@ if [ "$WAS_INSTALLED" = "1" ] && command -v nuwa-cli >/dev/null 2>&1; then
   fi
   if [ "$LOGGED_IN" = "1" ]; then
     info "已登录，正在后台重启 nuwa-cli serve（升级后）..."
-    # 与 `nuwa-cli restart` 同逻辑：清理 serve/console/tunnel 子服务后强制重启 Gateway
-    # daemon。不要在 restart 未结束时再套 start --force retry（会杀掉刚起的 lanproxy）。
-    # 脚本重试前请先 `nuwa-cli status` 确认 Gateway+lanproxy 是否已就绪。
-    if nuwa-cli restart 2>&1; then
-      ok "已后台重启 nuwa-cli serve"
+    # restart 会等待 Gateway+/lanproxy 就绪；未就绪 exit≠0。始终打印输出，避免假成功。
+    set +e
+    RESTART_OUT="$(nuwa-cli restart 2>&1)"
+    RESTART_RC=$?
+    set -e
+    printf '%s\n' "$RESTART_OUT"
+    if [ "$RESTART_RC" -eq 0 ]; then
+      ok "已后台重启 nuwa-cli serve（Gateway + lanproxy 就绪）"
     else
-      warn "serve 自动重启失败（可手动: nuwa-cli restart）"
+      warn "serve 自动重启失败（exit $RESTART_RC，可手动: nuwa-cli start）"
+      warn "日志：$HOME/.nuwa-cli/logs/serve.$(date +%Y-%m-%d).log"
+    fi
+    if nuwa-cli service status 2>/dev/null | grep -qE '未安装|not installed'; then
+      info "提示：尚未安装登录自启（KeepAlive）。开机自动拉起请运行: nuwa-cli service install"
     fi
   else
     info "未登录 Nuwax，跳过 serve 自动重启。"

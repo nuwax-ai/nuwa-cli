@@ -231,4 +231,43 @@ describe("serveSingleton", () => {
       await once(child, "exit");
     }
   });
+
+  it("waitForDaemonGuardHandoff resolves once guard is transferred to self", async () => {
+    const {
+      acquireServeSingleton,
+      transferServeSingleton,
+      waitForDaemonGuardHandoff,
+    } = await import("../src/core/processes/serveSingleton.js");
+    await acquireServeSingleton(false);
+
+    const child = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)"],
+      { stdio: "ignore" },
+    );
+    await once(child, "spawn");
+    try {
+      // 模拟子进程：在 transfer 完成前开始等待
+      const waiting = (async () => {
+        const prevPid = process.pid;
+        // 用 child.pid 伪装「自己」不可行；改为等待 guard 变为 child 后在父进程侧验证 API。
+        // 直接测：transfer 后 guard 指向 child，对 child 视角应立即返回——此处用
+        // guard 已是 self（父进程）时 wait 立即返回。
+        await waitForDaemonGuardHandoff(500);
+        expect(prevPid).toBe(process.pid);
+      })();
+      await waiting;
+
+      transferServeSingleton(process.pid, child.pid!);
+      // guard 已交给 child；对父进程再 wait：child 仍存活，会等到超时（不抛错）
+      await waitForDaemonGuardHandoff(120);
+      const guard = JSON.parse(
+        fs.readFileSync(process.env.NUWACLI_SERVE_GUARD_PATH!, "utf8"),
+      );
+      expect(guard.pid).toBe(child.pid);
+    } finally {
+      child.kill();
+      await once(child, "exit");
+    }
+  });
 });

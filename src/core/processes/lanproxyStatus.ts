@@ -34,6 +34,11 @@ export interface GatewayStackReadyResult {
   lanproxy: NuwaProcessRecord | undefined;
 }
 
+/** Gateway `/health` 正常且进程注册表中有存活的 lanproxy。 */
+export function isGatewayStackReady(ready: GatewayStackReadyResult): boolean {
+  return ready.gateway.state === "running" && Boolean(ready.lanproxy);
+}
+
 /**
  * 等待 daemon 拉起后的完整就绪：Gateway `/health` 正常且 lanproxy 已写入进程注册表。
  *
@@ -57,4 +62,39 @@ export async function waitForGatewayStackReady(
     lanproxy = findLanproxyProcesses()[0];
   }
   return { gateway, lanproxy };
+}
+
+/**
+ * 打印就绪结果；未就绪时设置 `process.exitCode = 1`，供安装脚本/CI 用退出码判定假成功。
+ * @returns 是否完整就绪
+ */
+export async function reportGatewayStackReadiness(
+  timeoutMs = GATEWAY_STACK_READY_TIMEOUT_MS,
+): Promise<boolean> {
+  // 延迟 import picocolors，避免本模块被纯探测路径加载时拉 UI 依赖失败。
+  const pc = (await import("picocolors")).default;
+  const ready = await waitForGatewayStackReady(timeoutMs);
+  if (isGatewayStackReady(ready) && ready.lanproxy) {
+    console.log(
+      pc.green(
+        `lanproxy 运行中（PID ${ready.lanproxy.pid}，${ready.lanproxy.host ?? "未知主机"}:${ready.lanproxy.port ?? "未知端口"}），Gateway /health 正常。`,
+      ),
+    );
+    return true;
+  }
+  if (ready.lanproxy) {
+    console.error(
+      pc.yellow(
+        `[nuwa-cli] lanproxy 进程存在（PID ${ready.lanproxy.pid}），但 Gateway /health 不可用；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log。`,
+      ),
+    );
+  } else {
+    console.error(
+      pc.yellow(
+        "[nuwa-cli] 未检测到运行中的 lanproxy；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log 或运行 `nuwa-cli doctor`。升级/安装脚本请勿仅凭 spawn 成功判定；可手动 `nuwa-cli start` 或 `nuwa-cli restart`。",
+      ),
+    );
+  }
+  process.exitCode = 1;
+  return false;
 }

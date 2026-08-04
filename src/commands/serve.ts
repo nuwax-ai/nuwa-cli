@@ -52,6 +52,7 @@ import {
   acquireServeSingleton,
   releaseServeSingleton,
   transferServeSingleton,
+  waitForDaemonGuardHandoff,
 } from "../core/processes/serveSingleton.js";
 
 export interface ServeCommandOptions {
@@ -150,6 +151,11 @@ export async function serveCommand(
     requestedCwd: options.cwd,
   });
   const isDaemonChild = process.env.NUWACLI_SERVE_DAEMONIZED === "1";
+  // daemon 子进程：先等父进程把 serve.guard 转交给自己，再抢单例。
+  // 否则会在 transfer 完成前看到父 PID，无 --force 时秒退（Windows 上尤甚）。
+  if (isDaemonChild) {
+    await waitForDaemonGuardHandoff();
+  }
   try {
     const replaced = await acquireServeSingleton(options.force === true);
     if (replaced.length > 0) {
@@ -165,6 +171,8 @@ export async function serveCommand(
 
   if (options.daemon && !isDaemonChild) {
     try {
+      // 先 spawn 拿到 childPid，立刻 transfer，尽量缩短子进程看到父 guard 的窗口；
+      // 子进程侧另有 waitForDaemonGuardHandoff 兜底。
       const childPid = launchDaemon(options.daemonArgs);
       transferServeSingleton(process.pid, childPid);
       registerProcess({

@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows bootstrap installers now run npm through an encoded child PowerShell process instead of `Start-Job`, preserving the full argument list, progress updates, exit code, and original npm stdout/stderr.
 - S3 bootstrap installers now default dependency resolution to npmmirror (overridable with `NUWACLI_REGISTRY`).
 
+## [0.1.0-beta.51] - 2026-08-04
+
+### Fixed
+
+- Fix daemon handoff race: child `serve` waited for `serve.guard` transfer before acquiring the singleton. Without this, removing `--force` from the daemon child caused immediate exit on Windows (`start` printed a pid then `status` showed nothing running).
+- `start` / `restart` now exit `1` when Gateway+/lanproxy are not ready (no more false “Gateway 已就绪”); S3 installers stop the full runtime before upgrade and surface restart output/exit code.
+
 ## [0.1.0-beta.50] - 2026-08-04
 
 ### Fixed

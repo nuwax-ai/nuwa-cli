@@ -3,6 +3,8 @@ import { readCredentials } from "../core/auth/credentials.js";
 import { listRegisteredProcesses } from "../core/processes/processRegistry.js";
 import {
   GATEWAY_STACK_READY_TIMEOUT_MS,
+  isGatewayStackReady,
+  reportGatewayStackReadiness,
   waitForGatewayStackReady,
 } from "../core/processes/lanproxyStatus.js";
 import { findServeProcessIds } from "../core/processes/serveSingleton.js";
@@ -26,34 +28,6 @@ function registeredGatewayEngine(pids: number[]): string | undefined {
   return listRegisteredProcesses().find(
     (record) => record.kind === "serve" && pids.includes(record.pid),
   )?.engine;
-}
-
-/**
- * 打印 Gateway + lanproxy 就绪结果；供 start 在 daemon handoff / 复用路径后共用。
- */
-async function reportGatewayStackReadiness(): Promise<void> {
-  const ready = await waitForGatewayStackReady();
-  if (ready.lanproxy && ready.gateway.state === "running") {
-    console.log(
-      pc.green(
-        `lanproxy 运行中（PID ${ready.lanproxy.pid}，${ready.lanproxy.host ?? "未知主机"}:${ready.lanproxy.port ?? "未知端口"}），Gateway /health 正常。`,
-      ),
-    );
-    return;
-  }
-  if (ready.lanproxy) {
-    console.error(
-      pc.yellow(
-        `[nuwa-cli] lanproxy 进程存在（PID ${ready.lanproxy.pid}），但 Gateway /health 不可用；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log。`,
-      ),
-    );
-    return;
-  }
-  console.error(
-    pc.yellow(
-      "[nuwa-cli] 未检测到运行中的 lanproxy；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log 或运行 `nuwa-cli doctor`。若脚本在做强制 retry，请先等本命令结束或先 `nuwa-cli status` 确认已就绪，再决定是否再次 --force。",
-    ),
-  );
 }
 
 /**
@@ -81,6 +55,7 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
   let engine = options.engine ?? registeredGatewayEngine(gatewayPids);
   // --all 才包含前台 Console；默认仅 Gateway
   const includeConsole = options.all === true;
+  let stackReady = false;
 
   if (gatewayPids.length > 0 && !options.force) {
     // 开机自启（Windows 计划任务 / 启动文件夹 KeepAlive）常在登录后已拉起 Gateway，
@@ -93,7 +68,7 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
       ),
     );
     const ready = await waitForGatewayStackReady(GATEWAY_STACK_READY_TIMEOUT_MS);
-    if (ready.lanproxy && ready.gateway.state === "running") {
+    if (isGatewayStackReady(ready) && ready.lanproxy) {
       console.log(
         pc.green(`Gateway 已在运行（PID ${gatewayPids.join(", ")}），继续复用。`),
       );
@@ -102,6 +77,7 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
           `lanproxy 运行中（PID ${ready.lanproxy.pid}，${ready.lanproxy.host ?? "未知主机"}:${ready.lanproxy.port ?? "未知端口"}），Gateway /health 正常。`,
         ),
       );
+      stackReady = true;
     } else {
       console.log(
         pc.yellow(
@@ -120,7 +96,7 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
         );
         return;
       }
-      await reportGatewayStackReadiness();
+      stackReady = await reportGatewayStackReadiness();
     }
   } else {
     console.log(
@@ -148,13 +124,22 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
       );
       return;
     }
-    await reportGatewayStackReadiness();
+    stackReady = await reportGatewayStackReadiness();
   }
 
   // 默认（无 --all）只保证 Gateway，不占用当前终端
   if (!includeConsole) {
-    console.log(
-      pc.dim("Gateway 已就绪。需要 Console 时请运行 `nuwa-cli start --all` 或 `nuwa-cli console`。"),
+    if (stackReady) {
+      console.log(
+        pc.dim("Gateway 已就绪。需要 Console 时请运行 `nuwa-cli start --all` 或 `nuwa-cli console`。"),
+      );
+    }
+    return;
+  }
+
+  if (!stackReady) {
+    console.error(
+      pc.red("[nuwa-cli] Gateway 栈未就绪，已取消 Console 启动。"),
     );
     return;
   }

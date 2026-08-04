@@ -8,7 +8,7 @@ import {
 } from "../core/processes/serveSingleton.js";
 import { findUiProcessIds } from "../core/processes/uiSingleton.js";
 import { stopProcessIds } from "../core/processes/processRegistry.js";
-import { waitForGatewayStackReady } from "../core/processes/lanproxyStatus.js";
+import { reportGatewayStackReadiness } from "../core/processes/lanproxyStatus.js";
 import { debugLog } from "../core/debugLog.js";
 
 export interface RestartCommandOptions {
@@ -79,34 +79,6 @@ export async function restartAllServicesForced(
   });
 }
 
-/**
- * 打印 daemon handoff 后的 Gateway + lanproxy 就绪结果（与 start 共用等待逻辑）。
- */
-async function reportGatewayStackReadiness(): Promise<void> {
-  const ready = await waitForGatewayStackReady();
-  if (ready.lanproxy && ready.gateway.state === "running") {
-    console.log(
-      pc.green(
-        `lanproxy 运行中（PID ${ready.lanproxy.pid}，${ready.lanproxy.host ?? "未知主机"}:${ready.lanproxy.port ?? "未知端口"}），Gateway /health 正常。`,
-      ),
-    );
-    return;
-  }
-  if (ready.lanproxy) {
-    console.error(
-      pc.yellow(
-        `[nuwa-cli] lanproxy 进程存在（PID ${ready.lanproxy.pid}），但 Gateway /health 不可用；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log。`,
-      ),
-    );
-    return;
-  }
-  console.error(
-    pc.yellow(
-      "[nuwa-cli] 未检测到运行中的 lanproxy；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log 或运行 `nuwa-cli doctor`。若脚本在做强制 retry，请先等本命令结束或先 `nuwa-cli status` 确认已就绪，再决定是否再次 --force。",
-    ),
-  );
-}
-
 export async function restartCommand(
   options: RestartCommandOptions,
 ): Promise<void> {
@@ -121,7 +93,15 @@ export async function restartCommand(
     return;
   }
 
-  await reportGatewayStackReadiness();
+  const stackReady = await reportGatewayStackReadiness();
+  if (!stackReady) {
+    console.error(
+      pc.red(
+        "[nuwa-cli] Gateway 重启后栈未就绪（exit 1）。请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log 或运行 `nuwa-cli doctor`。",
+      ),
+    );
+    return;
+  }
 
   if (!includeConsole) {
     console.log(
@@ -129,6 +109,21 @@ export async function restartCommand(
         "Gateway 已重启。需要同时重启 Console 时请运行 `nuwa-cli restart --all`。",
       ),
     );
+    // 无 KeepAlive 时提示安装登录自启，避免开机后需手动 start。
+    try {
+      const { getServiceStatus } = await import(
+        "../core/service/serviceManager.js"
+      );
+      if (!getServiceStatus().installed) {
+        console.log(
+          pc.dim(
+            "提示：尚未安装登录自启（KeepAlive）。需要开机自动拉起 Gateway 时请运行 `nuwa-cli service install`（加 `--now` 可立即启动）。",
+          ),
+        );
+      }
+    } catch {
+      // service 探测失败不影响 restart 主流程
+    }
     return;
   }
 

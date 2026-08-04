@@ -365,6 +365,30 @@ function claimGuard(pid: number): void {
   throw new Error("无法取得 serve 单例锁");
 }
 
+/**
+ * daemon 子进程启动时，父进程尚未完成 `transferServeSingleton` 的窗口内，
+ * serve.guard 仍指向父 PID。若子进程立刻 `acquireServeSingleton(false)`，
+ * 会误判「已有 serve」并秒退——表现为 start 打印了后台 pid，但 status 全未运行、
+ * lanproxy 检测超时。此处轮询直到 guard 交给自己或父进程已退出。
+ */
+export async function waitForDaemonGuardHandoff(
+  timeoutMs = 5_000,
+  intervalMs = 50,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    const guard = readGuard();
+    if (!guard || !isGuardAlive(guard) || guard.pid === process.pid) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  } while (Date.now() < deadline);
+  debugLog("serve.guard", "daemon handoff wait timed out", {
+    selfPid: process.pid,
+    guard: readGuard(),
+  });
+}
+
 export async function acquireServeSingleton(force: boolean): Promise<number[]> {
   let existing = findServeProcessIds();
   if (existing.length > 0 && !force) {

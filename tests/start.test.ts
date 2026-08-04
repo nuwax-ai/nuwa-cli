@@ -9,10 +9,17 @@ const mocks = vi.hoisted(() => ({
   credentials: vi.fn(),
   login: vi.fn(),
   waitStack: vi.fn(),
+  reportReady: vi.fn(),
 }));
 
 vi.mock("../src/core/processes/lanproxyStatus.js", () => ({
   waitForGatewayStackReady: (...args: unknown[]) => mocks.waitStack(...args),
+  reportGatewayStackReadiness: (...args: unknown[]) =>
+    mocks.reportReady(...args),
+  isGatewayStackReady: (ready: {
+    gateway?: { state?: string };
+    lanproxy?: unknown;
+  }) => ready?.gateway?.state === "running" && Boolean(ready?.lanproxy),
   waitForLanproxyProcess: vi.fn(),
   findLanproxyProcesses: vi.fn(() => []),
   GATEWAY_STACK_READY_TIMEOUT_MS: 30_000,
@@ -70,6 +77,7 @@ describe("startCommand", () => {
         port: 443,
       },
     });
+    mocks.reportReady.mockReset().mockResolvedValue(true);
     process.exitCode = 0;
   });
 
@@ -93,9 +101,8 @@ describe("startCommand", () => {
     expect(mocks.gateway).toHaveBeenCalledWith(
       expect.objectContaining({ authReady: true }),
     );
-    // 默认不含 Console
     expect(mocks.ui).not.toHaveBeenCalled();
-    expect(mocks.waitStack).toHaveBeenCalled();
+    expect(mocks.reportReady).toHaveBeenCalled();
   });
 
   it("does not start services when login is cancelled or fails", async () => {
@@ -168,7 +175,6 @@ describe("startCommand", () => {
 
     expect(mocks.gateway).not.toHaveBeenCalled();
     expect(mocks.ui).not.toHaveBeenCalled();
-    // 复用路径用完整就绪超时，避免开机自启 tunnel 未完成时误 force
     expect(mocks.waitStack).toHaveBeenCalledWith(30_000);
   });
 
@@ -193,6 +199,7 @@ describe("startCommand", () => {
     expect(mocks.gateway).toHaveBeenCalledWith(
       expect.objectContaining({ daemon: true, force: true }),
     );
+    expect(mocks.reportReady).toHaveBeenCalled();
     expect(logSpy).toHaveBeenCalledWith(
       expect.stringContaining("等待超时后子服务"),
     );
@@ -259,20 +266,23 @@ describe("startCommand", () => {
     expect(mocks.ui).not.toHaveBeenCalled();
   });
 
-  it("waits for gateway stack readiness after daemon start", async () => {
-    mocks.waitStack.mockResolvedValue({
-      gateway: { state: "stopped" },
-      lanproxy: undefined,
-    });
+  it("does not claim ready and skips Console when stack readiness fails", async () => {
+    mocks.reportReady.mockResolvedValue(false);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const { startCommand } = await import("../src/commands/start.js");
 
-    await startCommand({});
+    await startCommand({ all: true });
 
-    expect(mocks.waitStack).toHaveBeenCalled();
+    expect(mocks.reportReady).toHaveBeenCalled();
+    expect(mocks.ui).not.toHaveBeenCalled();
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("未检测到运行中的 lanproxy"),
+      expect.stringContaining("Gateway 栈未就绪"),
     );
+    expect(logSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("Gateway 已就绪"),
+    );
+    logSpy.mockRestore();
     errorSpy.mockRestore();
   });
 });

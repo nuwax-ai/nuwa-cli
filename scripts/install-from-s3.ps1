@@ -155,8 +155,18 @@ $tarballPath = Join-Path $tmpDir $tarball
 try { Fetch "$base/versions/$version/artifacts/$tarball" $tarballPath } catch { Fail "Tarball download failed: $base/versions/$version/artifacts/$tarball" }
 Ok "Download complete"
 
-# --- Stop running lanproxy (its .exe is locked by a live process and blocks
-#     npm's temp-dir cleanup with EPERM on Windows) ---
+# --- Stop full runtime before npm install (align with `nuwa-cli update`) ---
+# Gateway holds dist/cli.js; detached file-server / lanproxy hold binaries.
+# Only killing lanproxy leaves serve half-alive → post-upgrade restart 假成功。
+if ($WasInstalled) {
+    Write-Host "-> Stopping running nuwa-cli services before upgrade..." -ForegroundColor Cyan
+    $prevEapStop = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & nuwa-cli stop --all 2>&1 | Out-Null
+    } catch {}
+    $ErrorActionPreference = $prevEapStop
+}
 Get-Process -Name "nuwax-lanproxy" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 # --- npm install -g <tarball> (deps resolved via npm registry) ---
@@ -243,28 +253,27 @@ if ($WasInstalled) {
     }
     if ($loggedIn) {
         Write-Host "Logged in: restarting nuwa-cli serve in background (post-upgrade)..." -ForegroundColor Cyan
-        # serve --daemon is a fire-and-forget launcher: judge success by exit code
-        # only. Under ErrorActionPreference=Stop (set at top of script), any
-        # native-command stderr — Node DEP0190 shell-spawn warnings, port-change
-        # notices — would otherwise throw into the catch and falsely report
-        # "restart failed" when the daemon actually launched fine. Relax to
-        # Continue for this block only.
+        # restart 现已等待 Gateway+/lanproxy 就绪；未就绪会 exit 1。务必打印输出，
+        # 勿再把「spawn 成功」当成「栈已就绪」。ErrorActionPreference=Continue 避免
+        # Node/DEP 写 stderr 时被 Stop 误判为脚本异常。
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-            # 与 `nuwa-cli restart` 同逻辑：先清理 serve/console/tunnel 子服务，再强制
-            # 重启 Gateway daemon。不要在 restart 仍在跑时再套一层 start --force retry——
-            # 会把自己刚拉起的 lanproxy 杀掉，日志里出现「已启动」紧接着「检测到已有 serve」。
-            # 若需脚本重试：先 `nuwa-cli status` 看 Gateway+lanproxy 是否已就绪，未就绪再 restart。
             $restartOutput = & nuwa-cli restart 2>&1
+            Write-Host ($restartOutput | Out-String)
             if ($LASTEXITCODE -eq 0) {
-                Ok "nuwa-cli serve restarted in background"
+                Ok "nuwa-cli serve restarted (Gateway + lanproxy ready)"
             } else {
-                Write-Host $restartOutput -ForegroundColor Red
-                Warn "serve auto-restart failed (exit $LASTEXITCODE, run manually: nuwa-cli restart)"
+                Warn "serve auto-restart failed (exit $LASTEXITCODE). Run manually: nuwa-cli start"
+                Warn "Check log: $env:USERPROFILE\.nuwa-cli\logs\serve.$(Get-Date -Format 'yyyy-MM-dd').log"
+            }
+            # KeepAlive 提示（无自启时开机不会拉 Gateway）
+            $svcOut = & nuwa-cli service status 2>&1 | Out-String
+            if ($svcOut -match '未安装|not installed') {
+                Write-Host "Tip: login autostart (KeepAlive) is not installed. To start Gateway after reboot: nuwa-cli service install" -ForegroundColor Cyan
             }
         } catch {
-            Warn "serve auto-restart failed: $_ (run manually: nuwa-cli restart)"
+            Warn "serve auto-restart failed: $_. Run manually: nuwa-cli start"
         } finally {
             $ErrorActionPreference = $prevEAP
         }
