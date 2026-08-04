@@ -293,11 +293,6 @@ async function printServeStatus(): Promise<void> {
     console.log(
       `Gateway：${pc.green("运行中")}  端口 ${status.port}  PID ${status.pid}  启动于 ${status.startedAt}`,
     );
-    console.log(
-      pc.dim(
-        `  地址 http://${status.host}:${status.port}（X-Nuwax-Internal-Secret 仅启动时打印，未落盘）`,
-      ),
-    );
   } else if (status.state === "unhealthy") {
     console.log(
       `Gateway：${pc.yellow("异常")}  PID ${status.pid}  端口 ${status.port}（/health 无响应，可能仍在启动或不健康）`,
