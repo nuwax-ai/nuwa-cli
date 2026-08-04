@@ -101,6 +101,8 @@ nuwa-cli restart --all         # 强制重启 Gateway + Console
 nuwa-cli ps                    # 查看运行中的进程
 ```
 
+开机后或脚本里跑 `start`：若已安装登录自启，Gateway 可能已在后台拉起，`start` 会先等待隧道就绪再复用。做 `start --force` / `restart` 重试时请等当前命令结束，或先 `nuwa-cli status` 确认 Gateway 与 lanproxy 已就绪，再决定是否再次强制启动。
+
 ---
 
 ## 核心特性

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Force `start` / `restart` now explicitly stop registered `lanproxy` and detached `file-server` (Windows also `taskkill`s `nuwax-lanproxy.exe`), wait up to ~30s for Gateway `/health` + lanproxy registry after daemon handoff, and no longer forward `--force` into the daemon child. After reboot, `start` also waits the full readiness window before treating an already-running KeepAlive Gateway as “missing children” and force-replacing it—avoiding races that killed a just-started tunnel and printed「未检测到运行中的 lanproxy」。
+
 ### Added
 
 - ACP permission guardrails aligned with NuwaClaw: `PermissionCoordinator`, SSE `acpRequestPermission`, real `POST /computer/notify-resolved`, and pluggable sensitive classifiers (first: local session history). `--approve` now accepts `auto|ask|deny`. See [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).

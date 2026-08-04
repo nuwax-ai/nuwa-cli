@@ -8,16 +8,14 @@ const mocks = vi.hoisted(() => ({
   records: vi.fn(),
   credentials: vi.fn(),
   login: vi.fn(),
-  waitLanproxy: vi.fn(),
-  serveStatus: vi.fn(),
+  waitStack: vi.fn(),
 }));
 
 vi.mock("../src/core/processes/lanproxyStatus.js", () => ({
-  waitForLanproxyProcess: (...args: unknown[]) => mocks.waitLanproxy(...args),
-}));
-
-vi.mock("../src/core/serve/serveLock.js", () => ({
-  getServeStatus: (...args: unknown[]) => mocks.serveStatus(...args),
+  waitForGatewayStackReady: (...args: unknown[]) => mocks.waitStack(...args),
+  waitForLanproxyProcess: vi.fn(),
+  findLanproxyProcesses: vi.fn(() => []),
+  GATEWAY_STACK_READY_TIMEOUT_MS: 30_000,
 }));
 
 vi.mock("../src/core/auth/credentials.js", () => ({
@@ -57,18 +55,20 @@ describe("startCommand", () => {
     mocks.records.mockReset().mockReturnValue([]);
     mocks.credentials.mockReset().mockReturnValue({ configKey: "logged-in" });
     mocks.login.mockReset().mockResolvedValue(undefined);
-    mocks.waitLanproxy.mockReset().mockResolvedValue({
-      pid: 303,
-      kind: "lanproxy",
-      host: "agent.nuwax.com",
-      port: 443,
-    });
-    mocks.serveStatus.mockReset().mockResolvedValue({
-      state: "running",
-      pid: 101,
-      host: "127.0.0.1",
-      port: 60016,
-      startedAt: "2026-07-16T00:00:00.000Z",
+    mocks.waitStack.mockReset().mockResolvedValue({
+      gateway: {
+        state: "running",
+        pid: 101,
+        host: "127.0.0.1",
+        port: 60016,
+        startedAt: "2026-07-16T00:00:00.000Z",
+      },
+      lanproxy: {
+        pid: 303,
+        kind: "lanproxy",
+        host: "agent.nuwax.com",
+        port: 443,
+      },
     });
     process.exitCode = 0;
   });
@@ -95,7 +95,7 @@ describe("startCommand", () => {
     );
     // 默认不含 Console
     expect(mocks.ui).not.toHaveBeenCalled();
-    expect(mocks.waitLanproxy).toHaveBeenCalled();
+    expect(mocks.waitStack).toHaveBeenCalled();
   });
 
   it("does not start services when login is cancelled or fails", async () => {
@@ -168,6 +168,35 @@ describe("startCommand", () => {
 
     expect(mocks.gateway).not.toHaveBeenCalled();
     expect(mocks.ui).not.toHaveBeenCalled();
+    // 复用路径用完整就绪超时，避免开机自启 tunnel 未完成时误 force
+    expect(mocks.waitStack).toHaveBeenCalledWith(30_000);
+  });
+
+  it("waits full readiness window before force-replacing a KeepAlive gateway missing lanproxy", async () => {
+    mocks.findGateway.mockReturnValue([101]);
+    mocks.waitStack.mockResolvedValue({
+      gateway: {
+        state: "running",
+        pid: 101,
+        host: "127.0.0.1",
+        port: 60016,
+        startedAt: "2026-08-04T00:00:00.000Z",
+      },
+      lanproxy: undefined,
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { startCommand } = await import("../src/commands/start.js");
+
+    await startCommand({});
+
+    expect(mocks.waitStack).toHaveBeenCalledWith(30_000);
+    expect(mocks.gateway).toHaveBeenCalledWith(
+      expect.objectContaining({ daemon: true, force: true }),
+    );
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("等待超时后子服务"),
+    );
+    logSpy.mockRestore();
   });
 
   it("with --all reuses healthy Gateway and Console instances", async () => {
@@ -228,5 +257,22 @@ describe("startCommand", () => {
     await startCommand({ all: true });
 
     expect(mocks.ui).not.toHaveBeenCalled();
+  });
+
+  it("waits for gateway stack readiness after daemon start", async () => {
+    mocks.waitStack.mockResolvedValue({
+      gateway: { state: "stopped" },
+      lanproxy: undefined,
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { startCommand } = await import("../src/commands/start.js");
+
+    await startCommand({});
+
+    expect(mocks.waitStack).toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("未检测到运行中的 lanproxy"),
+    );
+    errorSpy.mockRestore();
   });
 });

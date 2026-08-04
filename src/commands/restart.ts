@@ -4,9 +4,11 @@ import { uiCommand } from "./ui.js";
 import {
   findServeProcessIds,
   stopMcpProxyProcesses,
+  stopTunnelChildProcesses,
 } from "../core/processes/serveSingleton.js";
 import { findUiProcessIds } from "../core/processes/uiSingleton.js";
 import { stopProcessIds } from "../core/processes/processRegistry.js";
+import { waitForGatewayStackReady } from "../core/processes/lanproxyStatus.js";
 import { debugLog } from "../core/debugLog.js";
 
 export interface RestartCommandOptions {
@@ -16,9 +18,8 @@ export interface RestartCommandOptions {
 }
 
 /**
- * 停止所有正在运行的 serve(Gateway) + console 进程，给一个干净起点。serve 的
- * detached 子服务（file-server/lanproxy）会随 serve 的优雅关闭/进程树一并清理。
- * 返回停止的进程数；无运行进程时返回 0（no-op）。
+ * 停止所有正在运行的 serve(Gateway) + console + tunnel 子服务，给一个干净起点。
+ * file-server 为 detached，不能依赖「杀 serve 进程树」自动带走，必须显式清理。
  *
  * 供 restart / doctor --fix / 登录后切换系统服务等场景复用，避免各自只停 gateway
  * 而留下 detached 子进程占端口（表现为「只重启了 gateway」）。
@@ -27,17 +28,19 @@ export async function stopAllNuwaProcesses(): Promise<number> {
   const servePids = findServeProcessIds(0); // 0 = 不排除自身，全部清理
   const uiPids = findUiProcessIds();
   const allPids = [...servePids, ...uiPids].filter((pid) => pid !== process.pid);
-  // 即便没有 serve/console，也可能有残留的 mcp-proxy，需一并清理。
-  if (allPids.length === 0) {
-    await stopMcpProxyProcesses();
-    return 0;
-  }
   debugLog("restart", "stopping existing processes", { pids: allPids });
-  await stopProcessIds(allPids);
+  if (allPids.length > 0) {
+    await stopProcessIds(allPids);
+  }
+  // 即便没有 serve/console，也可能残留 detached file-server / lanproxy / mcp-proxy。
+  const tunnelPids = await stopTunnelChildProcesses();
   await stopMcpProxyProcesses();
-  // 给 OS 一点时间释放端口 / 清理 detached 子进程。
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-  return allPids.length;
+  const stopped = allPids.length + tunnelPids.length;
+  // 给 OS 一点时间释放端口；测试环境跳过以免拖慢单测。
+  if (stopped > 0 && !process.env.VITEST) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return stopped;
 }
 
 /**
@@ -76,6 +79,34 @@ export async function restartAllServicesForced(
   });
 }
 
+/**
+ * 打印 daemon handoff 后的 Gateway + lanproxy 就绪结果（与 start 共用等待逻辑）。
+ */
+async function reportGatewayStackReadiness(): Promise<void> {
+  const ready = await waitForGatewayStackReady();
+  if (ready.lanproxy && ready.gateway.state === "running") {
+    console.log(
+      pc.green(
+        `lanproxy 运行中（PID ${ready.lanproxy.pid}，${ready.lanproxy.host ?? "未知主机"}:${ready.lanproxy.port ?? "未知端口"}），Gateway /health 正常。`,
+      ),
+    );
+    return;
+  }
+  if (ready.lanproxy) {
+    console.error(
+      pc.yellow(
+        `[nuwa-cli] lanproxy 进程存在（PID ${ready.lanproxy.pid}），但 Gateway /health 不可用；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log。`,
+      ),
+    );
+    return;
+  }
+  console.error(
+    pc.yellow(
+      "[nuwa-cli] 未检测到运行中的 lanproxy；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log 或运行 `nuwa-cli doctor`。若脚本在做强制 retry，请先等本命令结束或先 `nuwa-cli status` 确认已就绪，再决定是否再次 --force。",
+    ),
+  );
+}
+
 export async function restartCommand(
   options: RestartCommandOptions,
 ): Promise<void> {
@@ -89,6 +120,8 @@ export async function restartCommand(
     );
     return;
   }
+
+  await reportGatewayStackReadiness();
 
   if (!includeConsole) {
     console.log(

@@ -6,13 +6,11 @@ import {
   PACKAGE_NAME,
 } from "../core/version.js";
 import { findOnPath, isBatchShim } from "../util/which.js";
-import {
-  listRegisteredProcesses,
-  stopProcessIds,
-} from "../core/processes/processRegistry.js";
+import { stopProcessIds } from "../core/processes/processRegistry.js";
 import {
   findServeProcessIds,
   stopServeProcesses,
+  stopTunnelChildProcesses,
 } from "../core/processes/serveSingleton.js";
 import { findUiProcessIds } from "../core/processes/uiSingleton.js";
 
@@ -176,18 +174,13 @@ async function stopRuntimeProcessesForUpdate(): Promise<void> {
   const gatewayPids = findServeProcessIds(0).filter(
     (pid) => pid !== process.pid,
   );
-  const registeredChildPids = listRegisteredProcesses()
-    .filter(
-      (record) =>
-        (record.kind === "lanproxy" || record.kind === "file-server") &&
-        record.pid !== process.pid,
-    )
-    .map((record) => record.pid);
   const consolePids = findUiProcessIds().filter((pid) => pid !== process.pid);
 
+  // stopServeProcesses 已内含 stopTunnelChildProcesses；无 gateway 时仍显式清一次
+  // orphan file-server / lanproxy，避免升级时 Windows 锁住 nuwax-lanproxy.exe。
   if (gatewayPids.length > 0) await stopServeProcesses(gatewayPids);
-  const remaining = [...new Set([...registeredChildPids, ...consolePids])];
-  if (remaining.length > 0) await stopProcessIds(remaining);
+  else await stopTunnelChildProcesses();
+  if (consolePids.length > 0) await stopProcessIds(consolePids);
 }
 
 export function normalizeUpdateTarget(target?: string): string {

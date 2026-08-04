@@ -211,9 +211,9 @@ if [ "$WAS_INSTALLED" = "1" ] && command -v nuwa-cli >/dev/null 2>&1; then
   fi
   if [ "$LOGGED_IN" = "1" ]; then
     info "已登录，正在后台重启 nuwa-cli serve（升级后）..."
-    # 与 `nuwa-cli restart` 同逻辑：清理所有 serve/console 进程后强制重启 Gateway
-    # daemon（重新拉起 file-server / lanproxy 等子服务）。不再用 stop + serve
-    # --daemon 分离调用——那会留下 detached 子进程占端口，导致只有 gateway 重启。
+    # 与 `nuwa-cli restart` 同逻辑：清理 serve/console/tunnel 子服务后强制重启 Gateway
+    # daemon。不要在 restart 未结束时再套 start --force retry（会杀掉刚起的 lanproxy）。
+    # 脚本重试前请先 `nuwa-cli status` 确认 Gateway+lanproxy 是否已就绪。
     if nuwa-cli restart 2>&1; then
       ok "已后台重启 nuwa-cli serve"
     else

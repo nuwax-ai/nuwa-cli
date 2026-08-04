@@ -69,6 +69,79 @@ describe("serveSingleton", () => {
     await exited;
   });
 
+  it("force-stop also clears registered lanproxy and file-server children", async () => {
+    const serve = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)"],
+      { stdio: "ignore" },
+    );
+    const lanproxy = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)"],
+      { stdio: "ignore" },
+    );
+    const fileServer = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)"],
+      { stdio: "ignore" },
+    );
+    await Promise.all([
+      once(serve, "spawn"),
+      once(lanproxy, "spawn"),
+      once(fileServer, "spawn"),
+    ]);
+
+    const { registerProcess, isPidAlive, listRegisteredProcesses } =
+      await import("../src/core/processes/processRegistry.js");
+    const { stopServeProcesses } =
+      await import("../src/core/processes/serveSingleton.js");
+
+    registerProcess({
+      pid: serve.pid!,
+      kind: "serve",
+      state: "running",
+      daemon: true,
+      cwd: tempDir,
+    });
+    registerProcess({
+      pid: lanproxy.pid!,
+      kind: "lanproxy",
+      state: "running",
+      daemon: true,
+      cwd: tempDir,
+      host: "testagent.example.com",
+      port: 10076,
+    });
+    registerProcess({
+      pid: fileServer.pid!,
+      kind: "file-server",
+      state: "running",
+      daemon: true,
+      cwd: tempDir,
+      port: 60015,
+    });
+
+    const exits = Promise.all([
+      once(serve, "exit"),
+      once(lanproxy, "exit"),
+      once(fileServer, "exit"),
+    ]);
+    await stopServeProcesses([serve.pid!], { stopSystemService: false });
+    await exits;
+
+    expect(isPidAlive(serve.pid!)).toBe(false);
+    expect(isPidAlive(lanproxy.pid!)).toBe(false);
+    expect(isPidAlive(fileServer.pid!)).toBe(false);
+    expect(
+      listRegisteredProcesses().filter(
+        (r) =>
+          r.kind === "lanproxy" ||
+          r.kind === "file-server" ||
+          r.kind === "serve",
+      ),
+    ).toEqual([]);
+  });
+
   it("doctor repair keeps the lock owner and stops duplicate serves", async () => {
     const first = spawn(
       process.execPath,

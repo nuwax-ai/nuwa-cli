@@ -6,6 +6,7 @@ import {
   ensureDir,
   writeFileAtomic,
 } from "../../util/paths.js";
+import { debugLog } from "../debugLog.js";
 import { readServeLock } from "../serve/serveLock.js";
 import {
   getServiceStatus,
@@ -234,6 +235,45 @@ export function findServeProcessIds(excludePid = process.pid): number[] {
 
 export interface StopServeProcessOptions {
   stopSystemService?: boolean;
+  /**
+   * 是否同时停 lanproxy / file-server。默认 true。
+   * `repairServeSingleton` 只停重复 serve、保留主实例时必须为 false，
+   * 否则会误杀仍在用的 tunnel 子进程。
+   */
+  stopTunnelChildren?: boolean;
+}
+
+/**
+ * 停止注册表中的 tunnel 子服务（lanproxy / file-server）。
+ *
+ * file-server 以 detached 启动，Windows `taskkill /T` 杀 serve 时不会带走它；
+ * 强制 restart / start --force 若只杀 gateway，会留下占端口的孤儿进程，下一轮
+ * 只起起 gateway、lanproxy 却起不来或父进程误判「未检测到」。
+ * 与 `update.ts` 升级前清理对齐；Windows 再按镜像名兜底杀 nuwax-lanproxy。
+ *
+ * @returns 已尝试停止的注册表 PID 列表
+ */
+export async function stopTunnelChildProcesses(): Promise<number[]> {
+  const pids = listRegisteredProcesses()
+    .filter(
+      (record) =>
+        (record.kind === "lanproxy" || record.kind === "file-server") &&
+        record.pid !== process.pid,
+    )
+    .map((record) => record.pid);
+  if (pids.length > 0) {
+    debugLog("process.tunnel", "stopping registered tunnel children", { pids });
+    await stopProcessIds(pids);
+  }
+  // Windows：注册表可能已过期（PID 复用/未 unregister），按可执行文件名再清一次。
+  if (process.platform === "win32" && !process.env.VITEST) {
+    spawnSync("taskkill", ["/F", "/IM", "nuwax-lanproxy.exe"], {
+      encoding: "utf8",
+      timeout: 5000,
+      windowsHide: true,
+    });
+  }
+  return pids;
 }
 
 export async function stopServeProcesses(
@@ -245,6 +285,10 @@ export async function stopServeProcesses(
     if (service.active) stopService();
   }
   await stopProcessIds(pids);
+  // detached file-server / 残留 lanproxy：与 gateway 一并清掉，避免 force 重启残局。
+  if (options.stopTunnelChildren !== false) {
+    await stopTunnelChildProcesses();
+  }
   // mcp-proxy 由引擎按会话 spawn、不在注册表，serve 停止后可能残留 —— 一并清理，
   // 覆盖 logout / stop / login / update 等所有走 stopServeProcesses 的场景。
   await stopMcpProxyProcesses();
@@ -278,7 +322,11 @@ export async function repairServeSingleton(): Promise<RepairServeSingletonResult
   // Do not stop launchd/systemd here: the preferred PID may be the managed
   // service itself. The singleton guard prevents a killed managed duplicate
   // from successfully rejoining if its supervisor attempts a restart.
-  await stopServeProcesses(stoppedPids, { stopSystemService: false });
+  // 也不停 tunnel 子进程：它们挂在 retained serve 上，误杀会导致「gateway 在、lanproxy 无」。
+  await stopServeProcesses(stoppedPids, {
+    stopSystemService: false,
+    stopTunnelChildren: false,
+  });
   claimGuard(keptPid);
   return { keptPid, stoppedPids };
 }

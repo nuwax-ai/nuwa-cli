@@ -252,10 +252,10 @@ if ($WasInstalled) {
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-            # 与 `nuwa-cli restart` 同逻辑：先清理所有 serve/console 进程，再强制重启
-            # Gateway daemon（会重新拉起 file-server / lanproxy 等子服务）。不再用
-            # stop + serve --daemon 分离调用——那会留下 detached 的 file-server /
-            # lanproxy 占端口，导致只有 gateway 实际重启。
+            # 与 `nuwa-cli restart` 同逻辑：先清理 serve/console/tunnel 子服务，再强制
+            # 重启 Gateway daemon。不要在 restart 仍在跑时再套一层 start --force retry——
+            # 会把自己刚拉起的 lanproxy 杀掉，日志里出现「已启动」紧接着「检测到已有 serve」。
+            # 若需脚本重试：先 `nuwa-cli status` 看 Gateway+lanproxy 是否已就绪，未就绪再 restart。
             $restartOutput = & nuwa-cli restart 2>&1
             if ($LASTEXITCODE -eq 0) {
                 Ok "nuwa-cli serve restarted in background"

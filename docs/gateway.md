@@ -51,6 +51,11 @@ nuwa-cli service install --engine claude --now
 
 已有登录态时，`nuwa-cli start` 默认只启动/复用后台 Gateway；加 `--all` 才会在当前终端再启动前台 Console。默认复用健康实例，`--force` 强制替换（仅 Gateway，或与 `--all` 一并替换 Console）。
 
+**开机后 `nuwa-cli start` / 脚本强制 retry 注意：**
+
+- 登录自启（KeepAlive：计划任务或启动文件夹）常已先拉起 Gateway；`start` 会先等待 Gateway `/health` + lanproxy 注册（约 30s）再决定复用或强制重建，避免把仍在拉隧道的自启实例误杀。
+- `start --force` / `restart` 会清掉旧 Gateway 及 detached 的 file-server / lanproxy 再拉起完整栈。请**等当前命令结束**，或先 `nuwa-cli status` 确认已就绪，再决定是否再次 `--force`。叠加 force 会杀掉刚起来的 lanproxy。
+
 ### 自动化/CI
 
 CI 中不适合交互输入密码时，可允许环境变量：

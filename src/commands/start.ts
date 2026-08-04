@@ -1,8 +1,10 @@
 import pc from "picocolors";
 import { readCredentials } from "../core/auth/credentials.js";
 import { listRegisteredProcesses } from "../core/processes/processRegistry.js";
-import { waitForLanproxyProcess } from "../core/processes/lanproxyStatus.js";
-import { getServeStatus } from "../core/serve/serveLock.js";
+import {
+  GATEWAY_STACK_READY_TIMEOUT_MS,
+  waitForGatewayStackReady,
+} from "../core/processes/lanproxyStatus.js";
 import { findServeProcessIds } from "../core/processes/serveSingleton.js";
 import { findUiProcessIds } from "../core/processes/uiSingleton.js";
 import {
@@ -24,6 +26,34 @@ function registeredGatewayEngine(pids: number[]): string | undefined {
   return listRegisteredProcesses().find(
     (record) => record.kind === "serve" && pids.includes(record.pid),
   )?.engine;
+}
+
+/**
+ * 打印 Gateway + lanproxy 就绪结果；供 start 在 daemon handoff / 复用路径后共用。
+ */
+async function reportGatewayStackReadiness(): Promise<void> {
+  const ready = await waitForGatewayStackReady();
+  if (ready.lanproxy && ready.gateway.state === "running") {
+    console.log(
+      pc.green(
+        `lanproxy 运行中（PID ${ready.lanproxy.pid}，${ready.lanproxy.host ?? "未知主机"}:${ready.lanproxy.port ?? "未知端口"}），Gateway /health 正常。`,
+      ),
+    );
+    return;
+  }
+  if (ready.lanproxy) {
+    console.error(
+      pc.yellow(
+        `[nuwa-cli] lanproxy 进程存在（PID ${ready.lanproxy.pid}），但 Gateway /health 不可用；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log。`,
+      ),
+    );
+    return;
+  }
+  console.error(
+    pc.yellow(
+      "[nuwa-cli] 未检测到运行中的 lanproxy；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log 或运行 `nuwa-cli doctor`。若脚本在做强制 retry，请先等本命令结束或先 `nuwa-cli status` 确认已就绪，再决定是否再次 --force。",
+    ),
+  );
 }
 
 /**
@@ -53,19 +83,29 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
   const includeConsole = options.all === true;
 
   if (gatewayPids.length > 0 && !options.force) {
-    // Check if child services (lanproxy, file-server) are healthy.
-    // If not, force restart to bring them all back up — "reuse" a serve
-    // whose children died is worse than a clean restart.
-    const lanproxyAlive = await waitForLanproxyProcess();
-    const gatewayStatus = await getServeStatus();
-    if (lanproxyAlive && gatewayStatus.state === "running") {
+    // 开机自启（Windows 计划任务 / 启动文件夹 KeepAlive）常在登录后已拉起 Gateway，
+    // 但 tunnel（注册 → file-server → lanproxy）仍在进行。这里必须用完整就绪超时
+    // 等待，而不是短轮询后立刻 --force：否则会杀掉刚起来的自启实例，日志表现为
+    // 「lanproxy 已启动」紧接着又 force 停掉，用户侧则报「未检测到 lanproxy」。
+    console.log(
+      pc.dim(
+        `检测到已有 Gateway（PID ${gatewayPids.join(", ")}），正在等待 file-server / lanproxy 就绪（最多 ${Math.round(GATEWAY_STACK_READY_TIMEOUT_MS / 1000)}s）...`,
+      ),
+    );
+    const ready = await waitForGatewayStackReady(GATEWAY_STACK_READY_TIMEOUT_MS);
+    if (ready.lanproxy && ready.gateway.state === "running") {
       console.log(
         pc.green(`Gateway 已在运行（PID ${gatewayPids.join(", ")}），继续复用。`),
+      );
+      console.log(
+        pc.green(
+          `lanproxy 运行中（PID ${ready.lanproxy.pid}，${ready.lanproxy.host ?? "未知主机"}:${ready.lanproxy.port ?? "未知端口"}），Gateway /health 正常。`,
+        ),
       );
     } else {
       console.log(
         pc.yellow(
-          `Gateway PID ${gatewayPids.join(", ")} 存在，但子服务（lanproxy/file-server）缺失，正在强制重启 Gateway 以恢复完整运行环境...`,
+          `Gateway PID ${gatewayPids.join(", ")} 存在，但等待超时后子服务（lanproxy/file-server）仍未就绪，正在强制重启 Gateway 以恢复完整运行环境...`,
         ),
       );
       engine = await gatewayCommand({
@@ -80,6 +120,7 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
         );
         return;
       }
+      await reportGatewayStackReadiness();
     }
   } else {
     console.log(
@@ -107,30 +148,7 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
       );
       return;
     }
-  }
-
-  const lanproxy = await waitForLanproxyProcess();
-  if (lanproxy) {
-    const gatewayStatus = await getServeStatus();
-    if (gatewayStatus.state === "running") {
-      console.log(
-        pc.green(
-          `lanproxy 运行中（PID ${lanproxy.pid}，${lanproxy.host ?? "未知主机"}:${lanproxy.port ?? "未知端口"}），Gateway /health 正常。`,
-        ),
-      );
-    } else {
-      console.error(
-        pc.yellow(
-          `[nuwa-cli] lanproxy 进程存在（PID ${lanproxy.pid}），但 Gateway /health 不可用；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log。`,
-        ),
-      );
-    }
-  } else {
-    console.error(
-      pc.yellow(
-        "[nuwa-cli] 未检测到运行中的 lanproxy；请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log 或运行 `nuwa-cli doctor`。",
-      ),
-    );
+    await reportGatewayStackReadiness();
   }
 
   // 默认（无 --all）只保证 Gateway，不占用当前终端

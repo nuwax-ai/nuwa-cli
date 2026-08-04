@@ -35,7 +35,15 @@ function pushFlag(args: string[], name: string, value?: string): void {
   if (value !== undefined) args.push(name, value);
 }
 
-function buildServeDaemonArgs(
+/**
+ * 构造 daemon 子进程的 serve 参数。
+ *
+ * 刻意不把父进程的 `--force` 传给子进程：父进程在 launchDaemon 之前已经
+ * `acquireServeSingleton(force)` 清过场；子进程再带 `--force` 会在 Windows
+ * 脚本快速 retry 时二次杀进程，和刚拉起的自身/兄弟实例叠加重启竞态
+ * （日志里常见：lanproxy 已启动 → 紧接着「检测到已有 serve」→ 再 force 杀掉）。
+ */
+export function buildServeDaemonArgs(
   options: GatewayCommandOptions,
   engine: EngineKind,
 ): string[] {
@@ -51,7 +59,6 @@ function buildServeDaemonArgs(
   pushFlag(args, "--api-key", options.apiKey);
   pushFlag(args, "--base-url", options.baseUrl);
   pushFlag(args, "--model", options.model);
-  if (options.force) args.push("--force");
   return args;
 }
 
