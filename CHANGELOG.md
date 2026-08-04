@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows bootstrap installers now run npm through an encoded child PowerShell process instead of `Start-Job`, preserving the full argument list, progress updates, exit code, and original npm stdout/stderr.
 - S3 bootstrap installers now default dependency resolution to npmmirror (overridable with `NUWACLI_REGISTRY`).
 
+## [0.1.0-beta.53] - 2026-08-04
+
+### Added
+
+- `nuwa-cli status` and `doctor` now show login/boot KeepAlive (autostart) status.
+- `nuwa-cli doctor --fix` detects first, then auto-remediates: install KeepAlive if missing, rebuild Gateway/lanproxy stack when runtime anomalies (multi-instance, tunnel mismatch) are found; skips restart when healthy. Re-checks after fixes.
+
 ## [0.1.0-beta.52] - 2026-08-04
 
 ### Fixed
