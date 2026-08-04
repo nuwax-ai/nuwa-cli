@@ -21,7 +21,7 @@ describe("chatCommand --resume + --ref-session conflict", () => {
     expect(process.exitCode).toBe(1);
     expect(errSpy).toHaveBeenCalledWith(
       expect.stringContaining(
-        "--resume、--ref-session、--handoff 不能同时使用",
+        "--resume, --ref-session and --handoff cannot be used together",
       ),
     );
     // Proves this is a true fail-fast: the check must run before any engine

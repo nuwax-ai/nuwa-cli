@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import pc from "picocolors";
 import { workspacesDir } from "../util/paths.js";
+import { t } from "../util/i18n/index.js";
 
 export interface WorkspacesCommandOptions {
   user?: string;
@@ -132,14 +133,14 @@ export async function workspacesCommand(
     return;
   }
 
-  console.log(`工作空间：${pc.dim(root)}\n`);
+  console.log(`${t("workspaces.header", { root: pc.dim(root) })}\n`);
 
   if (projects.length === 0) {
     console.log(
       pc.dim(
         options.user
-          ? `用户 ${options.user} 下暂无项目目录。`
-          : "暂无工作空间目录（serve/gateway 运行后，云端会话生成的文件会写入这里）。",
+          ? t("workspaces.empty.user", { user: options.user })
+          : t("workspaces.empty.all"),
       ),
     );
     return;
@@ -153,7 +154,7 @@ export async function workspacesCommand(
   }
 
   for (const [user, list] of byUser) {
-    console.log(`${pc.cyan(`用户 ${user}`)}（${list.length} 个项目）：`);
+    console.log(pc.cyan(t("workspaces.userLine", { user, n: list.length })));
     list
       .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt))
       .forEach((p) => {
@@ -161,7 +162,12 @@ export async function workspacesCommand(
           ? p.modifiedAt.slice(0, 16).replace("T", " ")
           : "-";
         console.log(
-          `  ${pc.green(p.project.padEnd(14))} ${String(p.fileCount).padStart(4)} 文件  ${formatSize(p.totalSize).padStart(9)}  ${pc.dim(time)}`,
+          t("workspaces.row", {
+            project: pc.green(p.project.padEnd(14)),
+            fileCount: String(p.fileCount).padStart(4),
+            size: formatSize(p.totalSize).padStart(9),
+            time: pc.dim(time),
+          }),
         );
         console.log(pc.dim(`        ${p.path}`));
         if (options.long) {
@@ -170,5 +176,5 @@ export async function workspacesCommand(
       });
   }
 
-  console.log(pc.dim(`\n共 ${projects.length} 个项目目录。`));
+  console.log(pc.dim(t("workspaces.summary", { n: projects.length })));
 }

@@ -1,5 +1,6 @@
 import * as http from "node:http";
 import { readServeLock, probeServeHealth } from "../serve/serveLock.js";
+import { t } from "../../util/i18n/index.js";
 
 export type SensitiveAccessPurpose =
   | "user-cli"
@@ -76,7 +77,7 @@ async function postJson(
     req.on("error", reject);
     req.on("timeout", () => {
       req.destroy();
-      reject(new ConsentRequiredError("等待敏感操作审批超时"));
+      reject(new ConsentRequiredError(t("gate.timeout")));
     });
     req.write(payload);
     req.end();
@@ -101,9 +102,7 @@ export async function withSensitiveAccess<T>(
     return op();
   }
   if (process.env.NUWACLI_SENSITIVE_ACCESS === "deny") {
-    throw new ConsentDeniedError(
-      `敏感访问「${args.kind}」已被 NUWACLI_SENSITIVE_ACCESS=deny 拒绝。`,
-    );
+    throw new ConsentDeniedError(t("gate.deniedByEnv", { kind: args.kind }));
   }
 
   const purpose = inferSensitivePurpose(args.purpose);
@@ -113,15 +112,13 @@ export async function withSensitiveAccess<T>(
 
   const lock = readServeLock();
   if (!lock) {
-    throw new ConsentRequiredError(
-      `敏感访问「${args.kind}」需要本机 Gateway 审批，但未检测到运行中的 Gateway。请先运行 nuwa-cli gateway，或在交互终端手动执行该命令。`,
-    );
+    throw new ConsentRequiredError(t("gate.noGateway", { kind: args.kind }));
   }
 
   const healthy = await probeServeHealth(lock.host, lock.port);
   if (!healthy) {
     throw new ConsentRequiredError(
-      `敏感访问「${args.kind}」需要审批，但 serve（端口 ${lock.port}）健康检查失败。`,
+      t("gate.healthFailed", { kind: args.kind, port: lock.port }),
     );
   }
 
@@ -137,19 +134,17 @@ export async function withSensitiveAccess<T>(
 
   if (status === 503 || json.code === "NO_APPROVAL_CHANNEL") {
     throw new ConsentRequiredError(
-      `敏感访问「${args.kind}」需要审批通道：请先打开云端/本机对 serve 的 /computer/progress SSE，再重试。`,
+      t("gate.noChannel", { kind: args.kind }),
     );
   }
   if (status === 403 || json.code === "CONSENT_DENIED") {
-    throw new ConsentDeniedError(
-      `用户拒绝了敏感访问「${args.kind}」。`,
-    );
+    throw new ConsentDeniedError(t("gate.userDenied", { kind: args.kind }));
   }
   if (status < 200 || status >= 300) {
     const message =
       typeof json.message === "string"
         ? json.message
-        : `敏感操作审批失败（HTTP ${status}）`;
+        : t("gate.failed", { status });
     throw new ConsentRequiredError(message);
   }
 

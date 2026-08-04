@@ -1,3 +1,4 @@
+import { t } from "../../util/i18n/index.js";
 import * as fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import * as path from "node:path";
@@ -179,7 +180,9 @@ export async function stopProcessIds(pids: number[]): Promise<void> {
     for (const pid of stubborn) signalProcess(pid, "SIGKILL");
     const stillAlive = await waitUntilStopped(stubborn, 1000);
     if (stillAlive.length > 0) {
-      throw new Error(`无法停止进程：${stillAlive.join(", ")}`);
+      throw new Error(
+        t("processRegistry.stopFailed", { pids: stillAlive.join(", ") }),
+      );
     }
   }
   for (const pid of pids) unregisterProcess(pid);

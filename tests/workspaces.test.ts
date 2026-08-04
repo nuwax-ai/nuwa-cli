@@ -37,11 +37,11 @@ describe("workspaces command", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await workspacesCommand({});
     const out = logSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(out).toContain("工作空间");
-    expect(out).toContain("用户 100");
+    expect(out).toContain("Workspaces");
+    expect(out).toContain("User 100");
     expect(out).toContain("p1");
     expect(out).toContain("p2");
-    expect(out).toContain("共 2 个项目目录");
+    expect(out).toContain("2 project directories in total");
     logSpy.mockRestore();
   });
 
@@ -73,10 +73,10 @@ describe("workspaces command", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await workspacesCommand({ user: "200" });
     const out = logSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(out).toContain("用户 200");
+    expect(out).toContain("User 200");
     expect(out).toContain("p2");
     expect(out).not.toContain("p1");
-    expect(out).toContain("共 1 个项目目录");
+    expect(out).toContain("1 project directories in total");
     logSpy.mockRestore();
   });
 
@@ -102,7 +102,7 @@ describe("workspaces command", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await workspacesCommand({});
     const out = logSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(out).toContain("暂无工作空间目录");
+    expect(out).toContain("No workspace directories");
     logSpy.mockRestore();
   });
 });

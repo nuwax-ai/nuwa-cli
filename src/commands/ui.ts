@@ -11,6 +11,7 @@ import { startUiHttp } from "../core/ui/uiServer.js";
 import { CLI_UI_PORT, findAvailablePort } from "../core/ports.js";
 import { ensureDir, workspacesDir } from "../util/paths.js";
 import { printShuttingDown } from "../util/ui.js";
+import { t } from "../util/i18n/index.js";
 import { findOnPath } from "../util/which.js";
 import {
   registerProcess,
@@ -78,7 +79,7 @@ export async function uiCommand(options: UiCommandOptions): Promise<void> {
     preferredPort < 1 ||
     preferredPort > 65535
   ) {
-    console.error(pc.red(`[nuwa-cli] --port 必须是 1-65535 的整数`));
+    console.error(pc.red(t("ui.err.badPort")));
     process.exitCode = 1;
     return;
   }
@@ -112,9 +113,7 @@ export async function uiCommand(options: UiCommandOptions): Promise<void> {
     const replaced = await acquireUiSingleton(options.force === true);
     if (replaced.length > 0) {
       console.log(
-        pc.yellow(
-          `已通过 --force 停止旧 Console 进程：${replaced.join(", ")}`,
-        ),
+        pc.yellow(t("ui.forceStopped", { pids: replaced.join(", ") })),
       );
     }
   } catch (err) {
@@ -136,9 +135,7 @@ export async function uiCommand(options: UiCommandOptions): Promise<void> {
     });
   } catch (err) {
     releaseUiSingleton();
-    console.error(
-      pc.red(`[nuwa-cli] Console 启动失败：${(err as Error).message}`),
-    );
+    console.error(pc.red(t("ui.startFailed", { msg: (err as Error).message })));
     process.exitCode = 1;
     return;
   }
@@ -159,27 +156,15 @@ export async function uiCommand(options: UiCommandOptions): Promise<void> {
   else server.once("listening", markRunning);
 
   const url = `http://${host}:${port}/?t=${token}`;
-  console.log(pc.green(`nuwa-cli console 已启动：${url}`));
+  console.log(pc.green(t("ui.started", { url })));
   if (permissionMode === "yolo") {
-    console.log(
-      pc.yellow(
-        `[nuwa-cli] 当前为自动批准（yolo）模式，工具调用将自动放行；敏感操作仍会在浏览器内弹出审批。`,
-      ),
-    );
+    console.log(pc.yellow(t("ui.yolo")));
   } else if (permissionMode === "ask") {
-    console.log(
-      pc.dim(
-        `[nuwa-cli] ask 模式：每个工具调用都会在浏览器内弹出审批。`,
-      ),
-    );
+    console.log(pc.dim(t("ui.askMode")));
   } else if (permissionMode === "deny-noninteractive") {
-    console.log(
-      pc.yellow(
-        `[nuwa-cli] deny 模式：所有工具调用将被拒绝（仅可对话，无法写文件/执行命令）。`,
-      ),
-    );
+    console.log(pc.yellow(t("ui.denyMode")));
   }
-  console.log(pc.dim(`Ctrl+C 退出。`));
+  console.log(pc.dim(t("ui.ctrlCExit")));
 
   if (options.open !== false) openBrowser(url);
 

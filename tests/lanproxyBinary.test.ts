@@ -20,7 +20,7 @@ describe("resolveLanproxyBinary", () => {
 
   it("throws when the path doesn't exist", () => {
     expect(() => resolveLanproxyBinary(path.join(tmpDir, "nope"))).toThrow(
-      /不存在/,
+      /does not exist/,
     );
   });
 

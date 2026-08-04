@@ -2,6 +2,7 @@ import * as path from "node:path";
 import * as readline from "node:readline/promises";
 import { AGENT_METHODS } from "@agentclientprotocol/sdk";
 import pc from "picocolors";
+import { t } from "../util/i18n/index.js";
 import { getEngine } from "../core/engines/registry.js";
 import { buildEngineEnv, type EngineKind } from "../core/env/inheritEnv.js";
 import {
@@ -107,7 +108,9 @@ export async function chatCommand(options: ChatCommandOptions): Promise<void> {
   if (contextModes.length > 1) {
     console.error(
       pc.red(
-        `[nuwa-cli] --resume、--ref-session、--handoff 不能同时使用（收到：${contextModes.join(", ")}）。`,
+        t("chat.err.contextModesConflict", {
+          modes: contextModes.join(", "),
+        }),
       ),
     );
     process.exitCode = 1;
@@ -235,7 +238,11 @@ export async function chatCommand(options: ChatCommandOptions): Promise<void> {
 
         console.log(
           pc.dim(
-            `已连接 ${engineId} 引擎（session ${session.sessionId}${resumeTarget ? "，已续接历史" : ""}）。输入 /exit 退出。`,
+            t("chat.connected", {
+              engine: engineId,
+              id: session.sessionId,
+              resumed: resumeTarget ? t("chat.resumedSuffix") : "",
+            }),
           ),
         );
         const rl = readline.createInterface({

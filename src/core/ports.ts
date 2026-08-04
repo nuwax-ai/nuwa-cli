@@ -1,3 +1,4 @@
+import { t } from "../util/i18n/index.js";
 import * as net from "node:net";
 
 export const CLI_AGENT_PORT = 60016;
@@ -56,12 +57,12 @@ export async function findAvailablePort(
     if (await isPortAvailable(candidate, host)) return candidate;
   }
   throw new Error(
-    `从端口 ${preferredPort} 起连续 ${maxAttempts} 个端口都不可用`,
+    t("ports.allUnavailable", { n: maxAttempts, preferred: preferredPort }),
   );
 }
 
 export async function validateTcpPort(port: number): Promise<void> {
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`端口必须是 1-65535 的整数，收到 ${port}`);
+    throw new Error(t("common.err.badPort", { port }));
   }
 }

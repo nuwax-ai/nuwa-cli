@@ -7,6 +7,7 @@ import {
   type ServeStatus,
 } from "../serve/serveLock.js";
 import { serveLogPath } from "../../util/paths.js";
+import { t } from "../../util/i18n/index.js";
 
 /** daemon handoff 后等待 Gateway+/lanproxy 的默认超时（覆盖 file-server ≤10s + 注册余量）。 */
 export const GATEWAY_STACK_READY_TIMEOUT_MS = 30_000;
@@ -88,7 +89,11 @@ export async function reportGatewayStackReadiness(
   if (isGatewayStackReady(ready) && ready.lanproxy) {
     console.log(
       pc.green(
-        `lanproxy 运行中（PID ${ready.lanproxy.pid}，${ready.lanproxy.host ?? "未知主机"}:${ready.lanproxy.port ?? "未知端口"}），Gateway /health 正常。`,
+        t("start.lanproxyReady", {
+          pid: ready.lanproxy.pid,
+          host: ready.lanproxy.host ?? t("daemon.unknownHost"),
+          port: ready.lanproxy.port ?? t("daemon.unknownPort"),
+        }),
       ),
     );
     return true;
@@ -96,14 +101,15 @@ export async function reportGatewayStackReadiness(
   if (ready.lanproxy) {
     console.error(
       pc.yellow(
-        `[nuwa-cli] lanproxy 进程存在（PID ${ready.lanproxy.pid}），但 Gateway /health 不可用；请查看 ${serveLogPath()}。`,
+        t("lanproxy.status.presentUnhealthy", {
+          pid: ready.lanproxy.pid,
+          log: serveLogPath(),
+        }),
       ),
     );
   } else {
     console.error(
-      pc.yellow(
-        `[nuwa-cli] 未检测到运行中的 lanproxy；请查看 ${serveLogPath()} 或运行 \`nuwa-cli doctor\`。升级/安装脚本请勿仅凭 spawn 成功判定；可手动 \`nuwa-cli start\` 或 \`nuwa-cli restart\`。`,
-      ),
+      pc.yellow(t("lanproxy.status.notDetected", { log: serveLogPath() })),
     );
   }
   process.exitCode = 1;

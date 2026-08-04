@@ -1,5 +1,6 @@
 import pc from "picocolors";
 import type { ServeStatus } from "./serveLock.js";
+import { t } from "../../util/i18n/index.js";
 
 /**
  * 统一渲染 Gateway 运行态行，供 `status`（login.ts printServeStatus）与
@@ -11,17 +12,29 @@ import type { ServeStatus } from "./serveLock.js";
 export function printGatewayStatusLine(serve: ServeStatus): void {
   if (serve.state === "running") {
     console.log(
-      `Gateway：${pc.green("运行中")}  http://${serve.host}:${serve.port}  PID ${serve.pid}  启动于 ${serve.startedAt}`,
+      t("gateway.lineRunning", {
+        state: pc.green(t("status.running")),
+        host: serve.host,
+        port: serve.port,
+        pid: serve.pid,
+        startedAt: serve.startedAt,
+      }),
     );
   } else if (serve.state === "unhealthy") {
     console.log(
-      `Gateway：${pc.yellow("异常")}  PID ${serve.pid}  http://${serve.host}:${serve.port}（/health 无响应，可能仍在启动或不健康）`,
+      t("gateway.lineUnhealthy", {
+        state: pc.yellow(t("status.unhealthy")),
+        pid: serve.pid,
+        host: serve.host,
+        port: serve.port,
+      }),
     );
   } else {
     console.log(
-      `Gateway：${pc.dim("未运行")}${
-        serve.note ? `  ${pc.dim(serve.note)}` : ""
-      }（可用 \`nuwa-cli gateway\` 启动）`,
+      t("gateway.lineStopped", {
+        state: pc.dim(t("status.notRunning")),
+        note: serve.note ? `  ${pc.dim(serve.note)}` : "",
+      }),
     );
   }
 }

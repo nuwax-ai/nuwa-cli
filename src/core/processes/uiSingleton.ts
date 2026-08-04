@@ -1,3 +1,4 @@
+import { t } from "../../util/i18n/index.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
@@ -78,10 +79,10 @@ function claimGuard(pid: number): void {
         removeGuard();
         continue;
       }
-      throw new Error(`另一个 Console 正在运行（PID ${owner.pid}）`);
+      throw new Error(t("singleton.ui.running", { pid: owner.pid }));
     }
   }
-  throw new Error("无法取得 Console 单例锁");
+  throw new Error(t("singleton.ui.lockFail"));
 }
 
 export function findUiProcessIds(excludePid = process.pid): number[] {
@@ -104,7 +105,7 @@ export async function acquireUiSingleton(force: boolean): Promise<number[]> {
   const existing = findUiProcessIds();
   if (existing.length > 0 && !force) {
     throw new Error(
-      `检测到已有 nuwa-cli Console 进程（PID ${existing.join(", ")}）。同一时间只允许一个前台实例；确认替换时请加 --force。`,
+      t("singleton.ui.detected", { pids: existing.join(", ") }),
     );
   }
   if (existing.length > 0) {

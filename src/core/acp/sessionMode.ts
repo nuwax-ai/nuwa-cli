@@ -1,3 +1,4 @@
+import { t } from "../../util/i18n/index.js";
 import pc from "picocolors";
 import { AGENT_METHODS, type ClientContext } from "@agentclientprotocol/sdk";
 import type { SessionHandle } from "./sessionHandle.js";
@@ -33,7 +34,10 @@ export async function applySessionMode(
   if (available.length > 0 && !available.includes(modeId)) {
     console.error(
       pc.yellow(
-        `[nuwa-cli] 引擎不支持 mode "${modeId}"，可用：${available.join(", ")}`,
+        t("sessionMode.unsupported", {
+          mode: modeId,
+          available: available.join(", "),
+        }),
       ),
     );
     return undefined;
@@ -50,7 +54,10 @@ export async function applySessionMode(
   } catch (err) {
     console.error(
       pc.yellow(
-        `[nuwa-cli] 设置 mode "${modeId}" 失败：${(err as Error).message}`,
+        t("sessionMode.setFailed", {
+          mode: modeId,
+          msg: (err as Error).message,
+        }),
       ),
     );
     return undefined;

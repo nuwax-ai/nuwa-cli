@@ -114,7 +114,7 @@ describe("resolveResumeTarget", () => {
     const { resolveResumeTarget } =
       await import("../src/commands/resolveResumeTarget.js");
     await expect(resolveResumeTarget(true, "claude")).rejects.toThrow(
-      /未找到任何本地/,
+      /No local.*session history found/,
     );
   });
 

@@ -43,6 +43,7 @@ import {
   serveLogPath,
 } from "../util/paths.js";
 import { printShuttingDown, withSpinner } from "../util/ui.js";
+import { t } from "../util/i18n/index.js";
 import { debugLog } from "../core/debugLog.js";
 import { warmupMcpNpxCache } from "../core/mcp/cacheWarmup.js";
 import {
@@ -82,7 +83,7 @@ function parseBooleanFlag(
   if (value === undefined) return defaultValue;
   if (value === "true") return true;
   if (value === "false") return false;
-  throw new Error(`布尔值只能是 true 或 false，收到 ${value}`);
+  throw new Error(t("serve.err.badBool", { value }));
 }
 
 function parsePortOption(
@@ -93,7 +94,7 @@ function parsePortOption(
   if (value === undefined) return defaultValue;
   const port = Number(value);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`${optionName} 必须是 1-65535 的整数，收到 ${value}`);
+    throw new Error(t("serve.err.badPort", { option: optionName, value }));
   }
   return port;
 }
@@ -108,7 +109,11 @@ async function resolveAvailablePort(
   if (port !== preferredPort) {
     console.error(
       pc.yellow(
-        `[nuwa-cli] ${label} 端口 ${preferredPort} 已不可用，自动改用 ${port}。`,
+        t("serve.portTaken", {
+          label,
+          preferred: preferredPort,
+          port,
+        }),
       ),
     );
   }
@@ -142,15 +147,15 @@ function launchDaemon(argsOverride?: string[]): number {
     }),
     windowsHide: true,
   });
-  if (!child.pid) throw new Error("daemon 子进程启动失败：未取得 PID");
+  if (!child.pid) throw new Error(t("serve.daemonNoPid"));
   child.unref();
   debugLog("serve.daemon", "launched", {
     pid: child.pid,
     logPath,
     args,
   });
-  console.log(pc.green(`nuwa-cli serve 已后台启动（pid ${child.pid}）。`));
-  console.log(pc.dim(`日志：${logPath}`));
+  console.log(pc.green(t("serve.daemonStarted", { pid: child.pid })));
+  console.log(pc.dim(t("serve.daemonLog", { path: logPath })));
   return child.pid;
 }
 
@@ -175,7 +180,7 @@ export async function serveCommand(
     const replaced = await acquireServeSingleton(options.force === true);
     if (replaced.length > 0) {
       console.log(
-        pc.yellow(`已通过 --force 停止旧 serve 进程：${replaced.join(", ")}`),
+        pc.yellow(t("serve.forceStopped", { pids: replaced.join(", ") })),
       );
     }
   } catch (err) {
@@ -365,14 +370,10 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
     engine: engineId,
     acceptedSecrets: acceptedSecrets.length,
   });
-  console.log(pc.green(`nuwa-cli serve 已启动：http://${host}:${port}`));
+  console.log(pc.green(t("serve.started", { host, port })));
   console.log(pc.dim(`X-Nuwax-Internal-Secret: ${secret}`));
   console.log(
-    pc.dim(
-      options.tunnel
-        ? "（仅本次进程有效，不会持久化；本地直连调试可带此 header，云端隧道请求由 lanproxy savedKey 授权）"
-        : "（仅本次进程有效，不会持久化，每个请求需带此 header）",
-    ),
+    pc.dim(options.tunnel ? t("serve.secretNoteTunnel") : t("serve.secretNoteLocal")),
   );
 
   // keepAlive 心跳：定时刷新进程记录，减少被宿主系统判为 idle 而回收的概率。
@@ -409,29 +410,13 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
     // yolo has no path confinement (unlike the Electron client's strict gate):
     // ordinary tool calls are auto-approved, but sensitive classifiers
     // (e.g. local session history) still force ask via SSE/notify-resolved.
-    console.error(pc.yellow("[nuwa-cli] 当前为自动批准（auto/yolo）模式，请注意："));
-    console.error(
-      pc.yellow(
-        "  · 普通工具调用（文件写入/删除、命令执行、网络访问）会自动放行，且无路径限制；",
-      ),
-    );
-    console.error(
-      pc.yellow("  · 本地 sessions 等敏感访问仍需云端/本机审批；"),
-    );
-    console.error(
-      pc.yellow("  · 请确认仅监听本机、X-Nuwax-Internal-Secret 未泄露。"),
-    );
-    console.error(
-      pc.dim(
-        "    全部人工审批请用 --approve ask，全部拒绝请用 --approve deny。",
-      ),
-    );
+    console.error(pc.yellow(t("serve.yolo.header")));
+    console.error(pc.yellow(t("serve.yolo.scope")));
+    console.error(pc.yellow(t("serve.yolo.sensitive")));
+    console.error(pc.yellow(t("serve.yolo.safety")));
+    console.error(pc.dim(t("serve.yolo.alt")));
   } else if (permissionMode === "ask") {
-    console.error(
-      pc.yellow(
-        "[nuwa-cli] 当前为 ask 模式：所有工具调用均通过 SSE acpRequestPermission 等待 /computer/notify-resolved 审批。",
-      ),
-    );
+    console.error(pc.yellow(t("serve.askMode")));
   }
 
   if (options.tunnel) {
@@ -445,11 +430,7 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
       !credentials.configKey ||
       !credentials.savedKey
     ) {
-      console.error(
-        pc.yellow(
-          "[nuwa-cli] --tunnel 需要先登录：nuwa-cli login --domain <host> --saved-key <key>；本次仅提供本地 API，不建立云端隧道。",
-        ),
-      );
+      console.error(pc.yellow(t("serve.tunnelLoginRequired")));
     } else {
       try {
         // 在闭包（spinner 回调）内 TS 会丢失对 credentials.domain 的窄化，先取出。
@@ -467,7 +448,7 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
           [port],
         );
         const reg = await withSpinner(
-          "正在向 Nuwax 注册客户端...",
+          t("serve.spinner.register"),
           () =>
             registerClient(domain, {
               username: credentials.username ?? "",
@@ -497,7 +478,10 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
         ) {
           console.error(
             pc.yellow(
-              `[nuwa-cli] 后端返回的 fileServerPort=${reg.configValue.fileServerPort} 与 CLI 本次可用端口 ${fileServerPort} 不一致，本次以 CLI 端口为准。`,
+              t("serve.fileServerPortMismatch", {
+                backend: reg.configValue.fileServerPort,
+                cli: fileServerPort,
+              }),
             ),
           );
         }
@@ -540,9 +524,7 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
           !Number.isFinite(lanproxyPort) ||
           lanproxyPort <= 0
         ) {
-          throw new Error(
-            "注册成功但缺少 lanproxy serverHost/serverPort；请传 --lanproxy-host 与 --lanproxy-port",
-          );
+          throw new Error(t("serve.lanproxyMissing"));
         }
 
         // register / 解析端口期间若已 Ctrl+C，禁止再 spawn detached file-server。
@@ -554,7 +536,7 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
             if (shuttingDown) break bringUpTunnel;
 
             const fileServerHealthy = await withSpinner(
-              "正在启动 nuwax-file-server 并等待健康检查...",
+              t("serve.spinner.fileServer"),
               async () => {
                 startFileServer(fileServerPort, cwd);
                 // 立刻标记：健康检查等待中若收到 SIGINT，shutdown 才能 stopFileServer。
@@ -578,20 +560,18 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
             });
             if (fileServerHealthy) {
               console.log(
-                pc.green(
-                  `nuwax-file-server 已启动（端口 ${fileServerPort}）。`,
-                ),
+                pc.green(t("serve.fileServer.started", { port: fileServerPort })),
               );
             } else {
               console.error(
                 pc.yellow(
-                  `[nuwa-cli] nuwax-file-server 健康检查未通过（端口 ${fileServerPort}），文件相关接口可能不可用。`,
+                  t("serve.fileServer.unhealthy", { port: fileServerPort }),
                 ),
               );
             }
 
             const lanproxyHealthy = await withSpinner(
-              "正在启动 lanproxy 并等待隧道建立...",
+              t("serve.spinner.lanproxy"),
               async () => {
                 lanproxyHandle = startLanproxy({
                   pathOverride:
@@ -631,13 +611,21 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
             if (lanproxyHealthy) {
               console.log(
                 pc.green(
-                  `lanproxy 已启动（pid ${lanproxyHandle?.pid ?? "unknown"}，${lanproxyHost}:${lanproxyPort}，ssl=${ssl}）。`,
+                  t("serve.lanproxy.started", {
+                    pid: lanproxyHandle?.pid ?? "unknown",
+                    host: lanproxyHost,
+                    port: lanproxyPort,
+                    ssl: String(ssl),
+                  }),
                 ),
               );
             } else {
               console.error(
                 pc.yellow(
-                  `[nuwa-cli] lanproxy 健康检查未通过（pid ${lanproxyHandle?.pid ?? "unknown"}），隧道可能未建立，请查看 ${serveLogPath()}（按天滚动，看当天那份）。`,
+                  t("serve.lanproxy.unhealthy", {
+                    pid: lanproxyHandle?.pid ?? "unknown",
+                    log: serveLogPath(),
+                  }),
                 ),
               );
             }
@@ -650,9 +638,7 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
             err instanceof RegError ? err.message : (err as Error).message;
           debugLog("serve.tunnel", "failed", { message });
           console.error(
-            pc.red(
-              `[nuwa-cli] --tunnel 注册失败：${message}；本次仅提供本地 API。`,
-            ),
+            pc.red(t("serve.tunnel.registerFailed", { msg: message })),
           );
         }
       }

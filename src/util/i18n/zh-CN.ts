@@ -488,4 +488,173 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "service.status.consoleIdle":
     "Console：未运行（Console 不由系统后台服务管理）",
   "service.status.detailsHeader": "\n系统状态详情：",
+  // —— serve ——
+  "serve.err.badBool": "布尔值只能是 true 或 false，收到 {value}",
+  "serve.err.badPort": "{option} 必须是 1-65535 的整数，收到 {value}",
+  "serve.portTaken":
+    "[nuwa-cli] {label} 端口 {preferred} 已不可用，自动改用 {port}。",
+  "serve.daemonNoPid": "daemon 子进程启动失败：未取得 PID",
+  "serve.daemonStarted": "nuwa-cli serve 已后台启动（pid {pid}）。",
+  "serve.daemonLog": "日志：{path}",
+  "serve.forceStopped": "已通过 --force 停止旧 serve 进程：{pids}",
+  "serve.started": "nuwa-cli serve 已启动：http://{host}:{port}",
+  "serve.secretNoteTunnel":
+    "（仅本次进程有效，不会持久化；本地直连调试可带此 header，云端隧道请求由 lanproxy savedKey 授权）",
+  "serve.secretNoteLocal":
+    "（仅本次进程有效，不会持久化，每个请求需带此 header）",
+  "serve.yolo.header": "[nuwa-cli] 当前为自动批准（auto/yolo）模式，请注意：",
+  "serve.yolo.scope":
+    "  · 普通工具调用（文件写入/删除、命令执行、网络访问）会自动放行，且无路径限制；",
+  "serve.yolo.sensitive": "  · 本地 sessions 等敏感访问仍需云端/本机审批；",
+  "serve.yolo.safety": "  · 请确认仅监听本机、X-Nuwax-Internal-Secret 未泄露。",
+  "serve.yolo.alt": "    全部人工审批请用 --approve ask，全部拒绝请用 --approve deny。",
+  "serve.askMode":
+    "[nuwa-cli] 当前为 ask 模式：所有工具调用均通过 SSE acpRequestPermission 等待 /computer/notify-resolved 审批。",
+  "serve.tunnelLoginRequired":
+    "[nuwa-cli] --tunnel 需要先登录：nuwa-cli login --domain <host> --saved-key <key>；本次仅提供本地 API，不建立云端隧道。",
+  "serve.fileServerPortMismatch":
+    "[nuwa-cli] 后端返回的 fileServerPort={backend} 与 CLI 本次可用端口 {cli} 不一致，本次以 CLI 端口为准。",
+  "serve.lanproxyMissing":
+    "注册成功但缺少 lanproxy serverHost/serverPort；请传 --lanproxy-host 与 --lanproxy-port",
+  "serve.spinner.register": "正在向 Nuwax 注册客户端...",
+  "serve.spinner.fileServer": "正在启动 nuwax-file-server 并等待健康检查...",
+  "serve.spinner.lanproxy": "正在启动 lanproxy 并等待隧道建立...",
+  "serve.fileServer.started": "nuwax-file-server 已启动（端口 {port}）。",
+  "serve.fileServer.unhealthy":
+    "[nuwa-cli] nuwax-file-server 健康检查未通过（端口 {port}），文件相关接口可能不可用。",
+  "serve.lanproxy.started":
+    "lanproxy 已启动（pid {pid}，{host}:{port}，ssl={ssl}）。",
+  "serve.lanproxy.unhealthy":
+    "[nuwa-cli] lanproxy 健康检查未通过（pid {pid}），隧道可能未建立，请查看 {log}（按天滚动，看当天那份）。",
+  "serve.tunnel.registerFailed":
+    "[nuwa-cli] --tunnel 注册失败：{msg}；本次仅提供本地 API。",
+  // —— account ——
+  "account.list.empty":
+    "暂无已保存账号。运行 `nuwa-cli login` 或 `nuwa-cli gateway` 添加。",
+  "account.list.unknownComputer": "(未知电脑名)",
+  "account.switch.running":
+    "[nuwa-cli] 当前 Gateway 正在运行或未健康关闭（端口 {port}，PID {pid}）。切换账号前请运行 `nuwa-cli stop --all`。",
+  "account.switch.notFound":
+    "[nuwa-cli] 未找到账号 \"{selector}\"。运行 `nuwa-cli account list` 查看可切换账号。",
+  "account.switch.done":
+    "已切换当前账号：{username}（{domain}）。请重新启动 `nuwa-cli gateway` 或 `nuwa-cli serve --tunnel`。",
+  "account.switch.failed": "[nuwa-cli] 切换账号失败：{msg}",
+  // —— workspaces ——
+  "workspaces.header": "工作空间：{root}",
+  "workspaces.userLine": "用户 {user}（{n} 个项目）：",
+  "workspaces.row": "  {project}  {fileCount} 文件  {size}  {time}",
+  "workspaces.summary": "\n共 {n} 个项目目录。",
+  "workspaces.empty.user": "用户 {user} 下暂无项目目录。",
+  "workspaces.empty.all":
+    "暂无工作空间目录（serve/gateway 运行后，云端会话生成的文件会写入这里）。",
+  "workspaces.filesUnit": " 文件  ",
+  // —— context / sessions shared ——
+  "common.engineMustBeClaudeOrCodex":
+    "[nuwa-cli] --engine 必须是 claude 或 codex",
+  "context.list.empty": "未找到本地可引用上下文。",
+  "context.err.missingRef": "缺少 --ref <engine:sessionId>",
+  "sessions.searchEmpty": "未找到匹配 \"{search}\" 的会话。",
+  "sessions.empty": "未找到本地会话历史。",
+  "sessions.summary.tail":
+    "\n共 {n} 个本地会话。用 `nuwa-cli chat --resume` 续接。",
+  "sessions.summary.missingSessionId": "[nuwa-cli] 缺少 --session-id",
+  "sessions.summary.notFound":
+    "[nuwa-cli] 未在本地 {engine} 会话历史中找到 sessionId \"{id}\"。",
+  // —— ui (console) ——
+  "ui.err.badPort": "[nuwa-cli] --port 必须是 1-65535 的整数",
+  "ui.forceStopped": "已通过 --force 停止旧 Console 进程：{pids}",
+  "ui.startFailed": "[nuwa-cli] Console 启动失败：{msg}",
+  "ui.started": "nuwa-cli console 已启动：{url}",
+  "ui.yolo":
+    "[nuwa-cli] 当前为自动批准（yolo）模式，工具调用将自动放行；敏感操作仍会在浏览器内弹出审批。",
+  "ui.askMode": "[nuwa-cli] ask 模式：每个工具调用都会在浏览器内弹出审批。",
+  "ui.denyMode":
+    "[nuwa-cli] deny 模式：所有工具调用将被拒绝（仅可对话，无法写文件/执行命令）。",
+  "ui.ctrlCExit": "Ctrl+C 退出。",
+  // —— chat ——
+  "chat.err.contextModesConflict":
+    "[nuwa-cli] --resume、--ref-session、--handoff 不能同时使用（收到：{modes}）。",
+  "chat.connected":
+    "已连接 {engine} 引擎（session {id}{resumed}）。输入 /exit 退出。",
+  "chat.resumedSuffix": "，已续接历史",
+  // —— resolveResumeTarget ——
+  "resolve.multipleSelect": "多个会话以 \"{option}\" 开头，选择一个：",
+  "resolve.notFoundId":
+    "未在本地 {engine} 会话历史中找到 sessionId \"{id}\"。运行 `nuwa-cli sessions --engine {engine}` 查看可用会话。",
+  "resolve.noHistory": "未找到任何本地 {engine} 会话历史，无法续接。",
+  "resolve.autocompleteMessage": "搜索或选择要续接的会话：",
+  "resolve.autocompletePlaceholder": "输入 sessionId/关键词过滤...",
+  // —— policy ——
+  "policy.sensitiveNoChannel":
+    "[nuwa-cli] 敏感工具调用需要审批，但当前无审批通道，已拒绝（{reason}）。请使用 serve 的 SSE/notify-resolved，或 --approve deny / 交互式 chat。",
+  "policy.askMessage": "是否允许工具调用「{tool}」？",
+  "policy.badApprove": "--approve 只支持 auto、ask 或 deny，收到 \"{raw}\"。",
+  // —— gateway status line (statusView) ——
+  "status.unhealthy": "异常",
+  "gateway.lineRunning":
+    "Gateway：{state}  http://{host}:{port}  PID {pid}  启动于 {startedAt}",
+  "gateway.lineUnhealthy":
+    "Gateway：{state}  PID {pid}  http://{host}:{port}（/health 无响应，可能仍在启动或不健康）",
+  "gateway.lineStopped": "Gateway：{state}{note}（可用 `nuwa-cli gateway` 启动）",
+  // —— lanproxy readiness report ——
+  "lanproxy.status.presentUnhealthy":
+    "[nuwa-cli] lanproxy 进程存在（PID {pid}），但 Gateway /health 不可用；请查看 {log}。",
+  "lanproxy.status.notDetected":
+    "[nuwa-cli] 未检测到运行中的 lanproxy；请查看 {log} 或运行 `nuwa-cli doctor`。升级/安装脚本请勿仅凭 spawn 成功判定；可手动 `nuwa-cli start` 或 `nuwa-cli restart`。",
+  // —— sensitive access gate ——
+  "gate.timeout": "等待敏感操作审批超时",
+  "gate.deniedByEnv":
+    "敏感访问「{kind}」已被 NUWACLI_SENSITIVE_ACCESS=deny 拒绝。",
+  "gate.noGateway":
+    "敏感访问「{kind}」需要本机 Gateway 审批，但未检测到运行中的 Gateway。请先运行 nuwa-cli gateway，或在交互终端手动执行该命令。",
+  "gate.healthFailed":
+    "敏感访问「{kind}」需要审批，但 serve（端口 {port}）健康检查失败。",
+  "gate.noChannel":
+    "敏感访问「{kind}」需要审批通道：请先打开云端/本机对 serve 的 /computer/progress SSE，再重试。",
+  "gate.userDenied": "用户拒绝了敏感访问「{kind}」。",
+  "gate.failed": "敏感操作审批失败（HTTP {status}）",
+  // —— reg client ——
+  "reg.timeout": "请求超时（{ms}ms）：{url}",
+  "reg.requestFailed": "请求失败：{msg}",
+  "reg.httpError": "HTTP {status}: {statusText}",
+  "reg.envelopeFailed": "请求失败（错误码 {code}）",
+  "reg.error.4010": "未登录",
+  "reg.error.4011": "登录已过期",
+  "reg.error.1001": "客户端未找到",
+  "reg.error.9999": "系统错误",
+  // —— core throws / singletons / misc ——
+  "common.err.badPort": "端口必须是 1-65535 的整数，收到 {port}",
+  "core.consoleServerError": "[nuwa-cli] Console 服务出错：{msg}",
+  "core.serveServerError": "[nuwa-cli] Serve 服务出错：{msg}",
+  "context.ref.badEngine": "context ref 的引擎部分必须是 claude 或 codex",
+  "context.ref.missingSession": "context ref 缺少 sessionId",
+  "singleton.ui.running": "另一个 Console 正在运行（PID {pid}）",
+  "singleton.ui.lockFail": "无法取得 Console 单例锁",
+  "singleton.serve.starting": "另一个 serve 正在启动或运行（PID {pid}）",
+  "singleton.serve.lockFail": "无法取得 serve 单例锁",
+  "singleton.serve.ownerChanged":
+    "serve 单例锁所有者已变化，拒绝启动 daemon",
+  "processRegistry.stopFailed": "无法停止进程：{pids}",
+  "lanproxy.unsupportedPlatform": "lanproxy 暂不支持当前平台 ({key})",
+  "lanproxy.pathNotFound": "--lanproxy-path 路径不存在: {path}",
+  "lanproxy.binaryNotFoundOverride":
+    "在 --lanproxy-path {path} 下未找到 {binary}（也未找到 universal 兜底）。可指向 Electron resources/lanproxy 目录或单个 nuwax-lanproxy 二进制。",
+  "lanproxy.binaryNotFound":
+    "未找到当前平台的 lanproxy 二进制。请重新运行 npm install（不要使用 --omit=optional），或通过 --lanproxy-path / NUWACLI_LANPROXY_PATH 指定二进制。已尝试：{tried}",
+  "engineHome.isolateNoCreds":
+    "[nuwa-cli] {name} 运行于隔离模式且未下发凭据：不会复用 {realHome} 的登录。请用 --api-key/--base-url/--model 下发，或设 NUWACLI_ISOLATE_ENGINES=0 复用本机登录。",
+  "engineHome.isolateMigration":
+    "[nuwa-cli] codex/claude 现运行于隔离模式；旧历史会话仍在 ~/.codex、~/.claude（不再被读取）。如需查看，请设 NUWACLI_ISOLATE_ENGINES=0。",
+  "sessionMode.unsupported":
+    "[nuwa-cli] 引擎不支持 mode \"{mode}\"，可用：{available}",
+  "sessionMode.setFailed": "[nuwa-cli] 设置 mode \"{mode}\" 失败：{msg}",
+  "ports.allUnavailable": "从端口 {preferred} 起连续 {n} 个端口都不可用",
+  "context.ref.badFormat":
+    "context ref 格式应为 <engine>:<sessionId>，如 claude:xxxxxxxx",
+  "context.notFound":
+    "未在本地 {engine} 会话历史中找到 sessionId \"{id}\"。",
+  "singleton.ui.detected":
+    "检测到已有 nuwa-cli Console 进程（PID {pids}）。同一时间只允许一个前台实例；确认替换时请加 --force。",
+  "singleton.serve.detected":
+    "检测到已有 nuwa-cli serve 进程（PID {pids}）。同一时间只允许一个实例；确认替换时请加 --force。",
 };

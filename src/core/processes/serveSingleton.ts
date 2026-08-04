@@ -1,3 +1,4 @@
+import { t } from "../../util/i18n/index.js";
 import * as fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import * as path from "node:path";
@@ -359,10 +360,10 @@ function claimGuard(pid: number): void {
         removeGuard();
         continue;
       }
-      throw new Error(`另一个 serve 正在启动或运行（PID ${owner.pid}）`);
+      throw new Error(t("singleton.serve.starting", { pid: owner.pid }));
     }
   }
-  throw new Error("无法取得 serve 单例锁");
+  throw new Error(t("singleton.serve.lockFail"));
 }
 
 /**
@@ -393,7 +394,7 @@ export async function acquireServeSingleton(force: boolean): Promise<number[]> {
   let existing = findServeProcessIds();
   if (existing.length > 0 && !force) {
     throw new Error(
-      `检测到已有 nuwa-cli serve 进程（PID ${existing.join(", ")}）。同一时间只允许一个实例；确认替换时请加 --force。`,
+      t("singleton.serve.detected", { pids: existing.join(", ") }),
     );
   }
   if (force) {
@@ -413,7 +414,7 @@ export async function acquireServeSingleton(force: boolean): Promise<number[]> {
 export function transferServeSingleton(fromPid: number, toPid: number): void {
   const guard = readGuard();
   if (!guard || guard.pid !== fromPid) {
-    throw new Error("serve 单例锁所有者已变化，拒绝启动 daemon");
+    throw new Error(t("singleton.serve.ownerChanged"));
   }
   const payload = JSON.stringify(
     {

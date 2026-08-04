@@ -43,7 +43,7 @@ describe("resolveRefSessionReminder", () => {
     const { resolveRefSessionReminder } =
       await import("../src/commands/chat.js");
     await expect(resolveRefSessionReminder("gemini:abc")).rejects.toThrow(
-      /claude 或 codex/,
+      /must be claude or codex/,
     );
   });
 

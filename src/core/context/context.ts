@@ -1,3 +1,4 @@
+import { t } from "../../util/i18n/index.js";
 import {
   listLocalSessions,
   type LocalSessionSummary,
@@ -60,17 +61,15 @@ export function parseContextRef(value: string): {
 } {
   const sep = value.indexOf(":");
   if (sep === -1) {
-    throw new Error(
-      `context ref 格式应为 <engine>:<sessionId>，如 claude:xxxxxxxx`,
-    );
+    throw new Error(t("context.ref.badFormat"));
   }
   const engine = value.slice(0, sep);
   const sessionId = value.slice(sep + 1);
   if (engine !== "claude" && engine !== "codex") {
-    throw new Error(`context ref 的引擎部分必须是 claude 或 codex`);
+    throw new Error(t("context.ref.badEngine"));
   }
   if (!sessionId) {
-    throw new Error(`context ref 缺少 sessionId`);
+    throw new Error(t("context.ref.missingSession"));
   }
   return { engine, sessionId };
 }
@@ -92,9 +91,7 @@ export async function resolveContextRef(ref: string): Promise<ContextRef> {
   const sessions = await listLocalSessions(engine);
   const match = sessions.find((s) => s.sessionId === sessionId);
   if (!match) {
-    throw new Error(
-      `未在本地 ${engine} 会话历史中找到 sessionId "${sessionId}"。`,
-    );
+    throw new Error(t("context.notFound", { engine, id: sessionId }));
   }
   return toContextRef(match);
 }

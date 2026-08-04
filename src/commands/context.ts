@@ -1,4 +1,5 @@
 import pc from "picocolors";
+import { t } from "../util/i18n/index.js";
 import { listLocalSessions } from "../core/sessions/discovery.js";
 import {
   buildContextDigest,
@@ -35,7 +36,7 @@ function parseLimit(value: string | undefined): number | undefined {
 }
 
 function requireRef(ref: string | undefined): string {
-  if (!ref) throw new Error("缺少 --ref <engine:sessionId>");
+  if (!ref) throw new Error(t("context.err.missingRef"));
   return ref;
 }
 
@@ -62,7 +63,7 @@ export async function contextListCommand(
 ): Promise<void> {
   const engine = parseEngine(options.engine);
   if (options.engine && !engine) {
-    console.error(pc.red("[nuwa-cli] --engine 必须是 claude 或 codex"));
+    console.error(pc.red(t("common.engineMustBeClaudeOrCodex")));
     process.exitCode = 1;
     return;
   }
@@ -84,7 +85,7 @@ export async function contextListCommand(
     }
 
     if (sessions.length === 0) {
-      console.log(pc.dim("未找到本地可引用上下文。"));
+      console.log(pc.dim(t("context.list.empty")));
       return;
     }
     for (const s of sessions) {

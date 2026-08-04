@@ -1,3 +1,4 @@
+import { t } from "../../util/i18n/index.js";
 /**
  * 引擎隔离 home 解析 —— codex / claude-code 是否隔离到 nuwa-cli 自有 home 的唯一真相源。
  *
@@ -81,8 +82,7 @@ export function warnIfIsolationAuthGap(
   const name = engine === "codex" ? "codex" : "claude-code";
   const realHome = engine === "codex" ? "~/.codex" : "~/.claude";
   process.stderr.write(
-    `[nuwa-cli] ${name} 运行于隔离模式且未下发凭据：不会复用 ${realHome} 的登录。` +
-      `请用 --api-key/--base-url/--model 下发，或设 NUWACLI_ISOLATE_ENGINES=0 复用本机登录。\n`,
+    t("engineHome.isolateNoCreds", { name, realHome }) + "\n",
   );
 }
 
@@ -102,10 +102,7 @@ export function maybeShowIsolationMigrationNotice(): void {
       (fs.existsSync(realCodex) && fs.readdirSync(realCodex).length > 0) ||
       (fs.existsSync(realClaude) && fs.readdirSync(realClaude).length > 0);
     if (hasOld) {
-      process.stderr.write(
-        "[nuwa-cli] codex/claude 现运行于隔离模式；旧历史会话仍在 ~/.codex、~/.claude（不再被读取）。" +
-          "如需查看，请设 NUWACLI_ISOLATE_ENGINES=0。\n",
-      );
+      process.stderr.write(t("engineHome.isolateMigration") + "\n");
     }
     ensureDir(nuwaCliHome());
     fs.writeFileSync(sentinel, "");

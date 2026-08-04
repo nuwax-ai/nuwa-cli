@@ -1,3 +1,4 @@
+import { t } from "../../util/i18n/index.js";
 import * as http from "node:http";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
@@ -941,7 +942,7 @@ export function startServeHttp(options: ServeOptions): {
   };
 
   server.on("error", (err) => {
-    console.error(`[nuwa-cli] Serve 服务出错：${(err as Error).message}`);
+    console.error(t("core.serveServerError", { msg: (err as Error).message }));
     void stop();
   });
 

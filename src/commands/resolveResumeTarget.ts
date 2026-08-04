@@ -1,5 +1,7 @@
 import * as clack from "@clack/prompts";
 import pc from "picocolors";
+import { printCancelled } from "../util/ui.js";
+import { t } from "../util/i18n/index.js";
 import {
   listLocalSessions,
   type LocalSessionSummary,
@@ -48,7 +50,7 @@ export async function resolveResumeTarget(
         match = prefixMatches[0];
       } else if (prefixMatches.length > 1) {
         const picked = await clack.select({
-          message: `多个会话以 "${resumeOption}" 开头，选择一个：`,
+          message: t("resolve.multipleSelect", { option: resumeOption }),
           options: prefixMatches.map((s: LocalSessionSummary) => ({
             value: s.sessionId,
             label: `${s.title}`,
@@ -56,7 +58,7 @@ export async function resolveResumeTarget(
           })),
         });
         if (clack.isCancel(picked)) {
-          console.error(pc.dim("已取消。"));
+          printCancelled();
           process.exit(0);
           return null;
         }
@@ -65,19 +67,19 @@ export async function resolveResumeTarget(
     }
     if (!match) {
       throw new Error(
-        `未在本地 ${engine} 会话历史中找到 sessionId "${resumeOption}"。运行 \`nuwa-cli sessions --engine ${engine}\` 查看可用会话。`,
+        t("resolve.notFoundId", { id: resumeOption, engine }),
       );
     }
     return { sessionId: match.sessionId, cwd: match.cwd };
   }
 
   if (sessions.length === 0) {
-    throw new Error(`未找到任何本地 ${engine} 会话历史，无法续接。`);
+    throw new Error(t("resolve.noHistory", { engine }));
   }
 
   const picked = await clack.autocomplete({
-    message: "搜索或选择要续接的会话：",
-    placeholder: "输入 sessionId/关键词过滤...",
+    message: t("resolve.autocompleteMessage"),
+    placeholder: t("resolve.autocompletePlaceholder"),
     options: sessions.map((s: LocalSessionSummary) => ({
       value: s.sessionId,
       label: `${s.title}`,
@@ -86,7 +88,7 @@ export async function resolveResumeTarget(
   });
 
   if (clack.isCancel(picked)) {
-    console.error(pc.dim("已取消。"));
+    printCancelled();
     process.exit(0);
     return null; // unreachable in production (exit() halts the process); keeps control flow correct if exit is ever intercepted (e.g. tests).
   }

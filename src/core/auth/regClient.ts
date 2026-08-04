@@ -1,12 +1,13 @@
 import { CLI_AGENT_PORT, CLI_FILE_SERVER_PORT } from "../ports.js";
+import { t } from "../../util/i18n/index.js";
 
 const SUCCESS_CODE = "0000";
 
 const ERROR_MESSAGES: Record<string, string> = {
-  "4010": "未登录",
-  "4011": "登录已过期",
-  "1001": "客户端未找到",
-  "9999": "系统错误",
+  "4010": t("reg.error.4010"),
+  "4011": t("reg.error.4011"),
+  "1001": t("reg.error.1001"),
+  "9999": t("reg.error.9999"),
 };
 
 export interface SandboxValue {
@@ -117,13 +118,15 @@ export async function registerClient(
       (err as Error).name === "TimeoutError" ||
       (err as Error).name === "AbortError"
     ) {
-      throw new RegError(`请求超时（${timeoutMs}ms）：${url}`);
+      throw new RegError(t("reg.timeout", { ms: timeoutMs, url }));
     }
-    throw new RegError(`请求失败：${(err as Error).message}`);
+    throw new RegError(t("reg.requestFailed", { msg: (err as Error).message }));
   }
 
   if (!response.ok) {
-    throw new RegError(`HTTP ${response.status}: ${response.statusText}`);
+    throw new RegError(
+      t("reg.httpError", { status: response.status, statusText: response.statusText }),
+    );
   }
 
   const envelope =
@@ -132,7 +135,7 @@ export async function registerClient(
     const message =
       envelope.message ||
       ERROR_MESSAGES[envelope.code] ||
-      `请求失败（错误码 ${envelope.code}）`;
+      t("reg.envelopeFailed", { code: envelope.code });
     throw new RegError(message, envelope.code);
   }
   return envelope.data;

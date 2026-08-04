@@ -75,7 +75,7 @@ describe("registerClient", () => {
     await expect(
       registerClient("https://example.com", params),
     ).rejects.toMatchObject({
-      message: "登录已过期",
+      message: "Login expired",
       code: "4011",
     });
   });

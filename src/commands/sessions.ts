@@ -1,5 +1,6 @@
 import pc from "picocolors";
 import type { Command } from "commander";
+import { t } from "../util/i18n/index.js";
 import {
   listLocalSessions,
   type LocalSessionSummary,
@@ -66,9 +67,9 @@ export async function sessionsCommand(
 
   if (sessions.length === 0) {
     if (options.search) {
-      console.log(pc.dim(`未找到匹配 "${options.search}" 的会话。`));
+      console.log(pc.dim(t("sessions.searchEmpty", { search: options.search })));
     } else {
-      console.log(pc.dim("未找到本地会话历史。"));
+      console.log(pc.dim(t("sessions.empty")));
     }
     return;
   }
@@ -96,9 +97,7 @@ export async function sessionsCommand(
   }
 
   console.log(
-    pc.dim(
-      `\n共 ${sessions.length} 个本地会话。用 \`nuwa-cli chat --resume\` 续接。`,
-    ),
+    pc.dim(t("sessions.summary.tail", { n: sessions.length })),
   );
 }
 
@@ -126,14 +125,14 @@ export async function sessionsSummaryCommand(
       ? merged.engine
       : undefined;
   if (!engine) {
-    console.error(pc.red("[nuwa-cli] --engine 必须是 claude 或 codex"));
+    console.error(pc.red(t("common.engineMustBeClaudeOrCodex")));
     process.exitCode = 1;
     return;
   }
 
   const sessionId = merged.sessionId;
   if (!sessionId) {
-    console.error(pc.red("[nuwa-cli] 缺少 --session-id"));
+    console.error(pc.red(t("sessions.summary.missingSessionId")));
     process.exitCode = 1;
     return;
   }
@@ -153,7 +152,7 @@ export async function sessionsSummaryCommand(
         if (!match) {
           console.error(
             pc.red(
-              `[nuwa-cli] 未在本地 ${engine} 会话历史中找到 sessionId "${sessionId}"。`,
+              t("sessions.summary.notFound", { engine, id: sessionId }),
             ),
           );
           process.exitCode = 1;

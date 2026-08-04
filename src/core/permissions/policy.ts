@@ -1,5 +1,6 @@
 import * as clack from "@clack/prompts";
 import pc from "picocolors";
+import { t } from "../../util/i18n/index.js";
 import type {
   RequestPermissionRequest,
   RequestPermissionResponse,
@@ -95,7 +96,9 @@ export async function decidePermission(
   // serve/yolo 敏感访问却没有 onAsk：安全默认拒绝，避免静默放行
   console.error(
     pc.yellow(
-      `[nuwa-cli] 敏感工具调用需要审批，但当前无审批通道，已拒绝（${decision.kind === "ask" ? decision.reason : "ask"}）。请使用 serve 的 SSE/notify-resolved，或 --approve deny / 交互式 chat。`,
+      t("policy.sensitiveNoChannel", {
+        reason: decision.kind === "ask" ? decision.reason : "ask",
+      }),
     ),
   );
   const reject = firstOptionOfKind(request, ["reject_once", "reject_always"]);
@@ -108,7 +111,7 @@ async function promptInteractive(
 ): Promise<RequestPermissionResponse> {
   const toolTitle = request.toolCall.title ?? request.toolCall.toolCallId;
   const selected = await clack.select({
-    message: `是否允许工具调用「${toolTitle}」？`,
+    message: t("policy.askMessage", { tool: toolTitle }),
     options: request.options.map((option) => ({
       value: option.optionId,
       label: option.name,
@@ -135,6 +138,6 @@ export function parseApproveFlag(
   }
   return {
     ok: false,
-    message: `--approve 只支持 auto、ask 或 deny，收到 "${raw}"。`,
+    message: t("policy.badApprove", { raw }),
   };
 }

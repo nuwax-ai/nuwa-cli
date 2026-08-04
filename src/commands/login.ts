@@ -178,17 +178,17 @@ export async function loginCommand(
 
     const domain = await resolveDomain(options.domain);
     if (!domain) {
-      console.error(pc.dim("已取消。"));
+      printCancelled();
       return;
     }
     const username = await resolveLoginUsername();
     if (username === null) {
-      console.error(pc.dim("已取消。"));
+      printCancelled();
       return;
     }
     const password = await resolveLoginPassword(username, domain);
     if (password === null) {
-      console.error(pc.dim("已取消。"));
+      printCancelled();
       return;
     }
     await performReg(domain, {
