@@ -118,8 +118,8 @@ run_aws s3 cp "$STAGE_DIR/$TARBALL" "$VERSION_BASE/artifacts/$TARBALL" "${AWS_AR
   --cache-control "public, max-age=31536000, immutable" \
   --content-type "application/octet-stream" >/dev/null
 
-# --- install scripts: versioned copy + overwrite bootstrap at prefix root ---
-for s in install-from-s3.sh install-from-s3.ps1; do
+# --- install + uninstall scripts: versioned copy + overwrite bootstrap at prefix root ---
+for s in install-from-s3.sh install-from-s3.ps1 uninstall-from-s3.sh uninstall-from-s3.ps1; do
   src="$SCRIPT_DIR/$s"
   [[ -f "$src" ]] || { echo "  skip $s (not found locally)" >&2; continue; }
   echo "→ scripts/$s"
@@ -177,5 +177,7 @@ echo
 echo "Publish complete: $VERSION on $CHANNEL"
 echo "Discovery (public reads, no credentials):"
 echo "  channel:    $ENDPOINT/$BUCKET/$PREFIX/channels/$CHANNEL.json"
-echo "  bootstrap:  $ENDPOINT/$BUCKET/$PREFIX/install-from-s3.sh"
+echo "  install:    $ENDPOINT/$BUCKET/$PREFIX/install-from-s3.sh"
 echo "              $ENDPOINT/$BUCKET/$PREFIX/install-from-s3.ps1"
+echo "  uninstall:  $ENDPOINT/$BUCKET/$PREFIX/uninstall-from-s3.sh"
+echo "              $ENDPOINT/$BUCKET/$PREFIX/uninstall-from-s3.ps1"

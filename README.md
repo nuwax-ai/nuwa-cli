@@ -27,6 +27,29 @@ nuwa-cli doctor
 
 > npm too slow? `NUWACLI_REGISTRY=https://registry.npmmirror.com` (bash) / `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'` (PowerShell).
 
+## Uninstall
+
+**One-line uninstaller** (stops services, removes the system service if installed, npm-uninstalls the global package):
+
+```bash
+# Windows (PowerShell)
+irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.ps1 | iex
+
+# macOS / Linux
+curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.sh | bash
+```
+
+User data (`~/.nuwa-cli`: credentials / sessions / logs / workspaces) is **kept by default**. Purge it too:
+
+```bash
+# Windows
+$env:NUWACLI_PURGE='1'; irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.ps1 | iex
+# macOS / Linux
+curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.sh | NUWACLI_PURGE=1 bash
+```
+
+Or via npm: `npm uninstall -g @nuwax-ai/nuwa-cli` (stop services first with `nuwa-cli stop`).
+
 ---
 
 ## Quick start

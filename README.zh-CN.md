@@ -27,6 +27,29 @@ nuwa-cli doctor
 
 > npm 太慢？`NUWACLI_REGISTRY=https://registry.npmmirror.com`（bash）/ `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'`（PowerShell）。
 
+## 卸载
+
+**一键卸载**（停止服务、移除系统服务（若已安装）、npm 卸载全局包）：
+
+```bash
+# Windows (PowerShell)
+irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.ps1 | iex
+
+# macOS / Linux
+curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.sh | bash
+```
+
+用户数据（`~/.nuwa-cli`：凭证 / 会话 / 日志 / 工作空间）**默认保留**。一并清除：
+
+```bash
+# Windows
+$env:NUWACLI_PURGE='1'; irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.ps1 | iex
+# macOS / Linux
+curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.sh | NUWACLI_PURGE=1 bash
+```
+
+或通过 npm：`npm uninstall -g @nuwax-ai/nuwa-cli`（先用 `nuwa-cli stop` 停服务）。
+
 ---
 
 ## 快速开始
