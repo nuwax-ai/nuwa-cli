@@ -88,6 +88,7 @@ nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>  # cloud tun
 | `nuwa-cli config` | Get/set domain, lanproxy path, etc. |
 | `nuwa-cli service` | OS-level autostart (LaunchAgent / systemd / Scheduled Task) |
 | `nuwa-cli update` | Upgrade the npm package |
+| `nuwa-cli lang` | Show or set the UI language (`en` / `zh-CN` / `auto`) |
 
 ### Process management
 
@@ -113,6 +114,25 @@ nuwa-cli ps                    # list running processes
 - **Cross-platform.** Windows / macOS / Linux, arm64 / x64. All spawns use `windowsHide`. `.cmd` shims auto-detected.
 - **S3 distribution.** One-line installer from Nuwax S3 mirror; no GitHub or npm login needed. See [`docs/distribution-s3.md`](docs/distribution-s3.md).
 - **Engine stderr logging.** All engine stderr streamed to `~/.nuwa-cli/logs/` for diagnostics.
+
+---
+
+## Language
+
+`nuwa-cli` defaults to **English**. Simplified Chinese (`zh-CN`) is shown automatically when your system locale is Simplified Chinese (`LANG` / `LC_ALL` / `LC_MESSAGES` / `LANGUAGE` containing `zh`, e.g. `zh_CN.UTF-8`, `zh-Hans`). Traditional Chinese locales (`zh-TW` / `zh-HK` / `zh-Hant`) fall back to English.
+
+Override at any time — priority: `NUWACLI_LANG` env > config > auto-detect > English:
+
+```bash
+nuwa-cli lang               # show the current language and how it was resolved
+nuwa-cli lang zh-CN         # persist Simplified Chinese to ~/.nuwa-cli/config.json
+nuwa-cli lang en            # persist English
+nuwa-cli lang auto          # follow the system locale again
+
+NUWACLI_LANG=zh-CN nuwa-cli doctor   # one-off override (highest priority)
+```
+
+> ACP protocol responses (HTTP / SSE / permission outcomes) are always English regardless of this setting — they are consumed by clients and engines, not humans. Only terminal output is localized. See [`docs/i18n.md`](docs/i18n.md).
 
 ---
 
@@ -189,6 +209,7 @@ See [`docs/serve-lifecycle.md`](docs/serve-lifecycle.md) for full lifecycle, aut
 | [`docs/serve-health-check.md`](docs/serve-health-check.md) | file-server + lanproxy health probes |
 | [`docs/distribution-s3.md`](docs/distribution-s3.md) | S3 distribution, publish, install |
 | [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md) | ACP permission flow |
+| [`docs/i18n.md`](docs/i18n.md) | UI language (English default, Simplified Chinese, switching) |
 | [`docs/local-debugging.md`](docs/local-debugging.md) | Local dev setup |
 
 ---

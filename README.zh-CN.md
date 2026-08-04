@@ -89,6 +89,7 @@ nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>  # 云端隧
 | `nuwa-cli config` | 获取/设置 domain、lanproxy 路径等 |
 | `nuwa-cli service` | 系统级开机自启（LaunchAgent / systemd / 计划任务） |
 | `nuwa-cli update` | 升级 npm 包 |
+| `nuwa-cli lang` | 查看或设置界面语言（`en` / `zh-CN` / `auto`） |
 
 ### 进程管理
 
@@ -116,6 +117,25 @@ nuwa-cli ps                    # 查看运行中的进程
 - **跨平台。** Windows / macOS / Linux，arm64 / x64。所有子进程 spawn 使用 `windowsHide`；`.cmd` 脚本自动检测。
 - **S3 分发。** 从 Nuwax S3 镜像一键安装，无需 GitHub 或 npm 登录。详见 [`docs/distribution-s3.md`](docs/distribution-s3.md)。
 - **引擎日志。** 引擎 stderr 实时写入 `~/.nuwa-cli/logs/`，便于诊断。
+
+---
+
+## 语言
+
+`nuwa-cli` **默认英文**。当系统 locale 为简体中文（`LANG` / `LC_ALL` / `LC_MESSAGES` / `LANGUAGE` 含 `zh`，如 `zh_CN.UTF-8`、`zh-Hans`）时自动显示简体中文；繁体中文（`zh-TW` / `zh-HK` / `zh-Hant`）回退英文。
+
+随时可切换——优先级：`NUWACLI_LANG` 环境变量 > 配置 > 自动检测 > 英文：
+
+```bash
+nuwa-cli lang               # 查看当前语言及解析来源
+nuwa-cli lang zh-CN         # 持久化简体中文到 ~/.nuwa-cli/config.json
+nuwa-cli lang en            # 持久化英文
+nuwa-cli lang auto          # 重新跟随系统 locale
+
+NUWACLI_LANG=zh-CN nuwa-cli doctor   # 临时覆盖（优先级最高）
+```
+
+> ACP 协议响应（HTTP / SSE / permission 结果）**始终为英文**，与界面语言无关——它们是给客户端/引擎消费的协议数据，不是给人看的。只有终端输出会本地化。详见 [`docs/i18n.md`](docs/i18n.md)。
 
 ---
 
@@ -192,6 +212,7 @@ nuwa-cli 还会启动本地**文件服务**（HTTP，默认端口 `60015`，`ser
 | [`docs/serve-health-check.md`](docs/serve-health-check.md) | file-server + lanproxy 健康探测 |
 | [`docs/distribution-s3.md`](docs/distribution-s3.md) | S3 分发、发布、安装 |
 | [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md) | ACP 权限审批流程 |
+| [`docs/i18n.md`](docs/i18n.md) | 界面语言（英文默认、简体中文、切换） |
 | [`docs/local-debugging.md`](docs/local-debugging.md) | 本地开发调试 |
 
 ---

@@ -7,13 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-beta.54] - 2026-08-04
+
 ### Added
 
+- **Internationalization (i18n):** English is now the default UI language; Simplified Chinese is shown automatically when the system locale is `zh-CN` / `zh-Hans`. Override at any time with the `NUWACLI_LANG` env var or the new `nuwa-cli lang [en|zh-CN|auto]` command (persisted to `~/.nuwa-cli/config.json`). See [`docs/i18n.md`](docs/i18n.md).
+- `nuwa-cli lang` command to show or set the UI language.
+- Spinner progress feedback for `doctor` (13 checks), `serve --tunnel` bringup, and `start`/`restart` stack-readiness waits; `update` now prints honest `Step n/N` progress instead of a fake percentage bar.
 - ACP permission guardrails aligned with NuwaClaw: `PermissionCoordinator`, SSE `acpRequestPermission`, real `POST /computer/notify-resolved`, and pluggable sensitive classifiers (first: local session history). `--approve` now accepts `auto|ask|deny`. See [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).
 - `/computer/local-sessions/list|read` and `/computer/sensitive-access/await` for consented local-session export; non-TTY `context`/`sessions` CLI paths go through the same bus.
 - A resumable `npm run release:beta` workflow now runs tests/build, publishes npm, syncs only `@nuwax-ai/nuwa-cli` through `cnpm`, verifies npmmirror, and publishes S3.
 - Windows bootstrap installers now run npm through an encoded child PowerShell process instead of `Start-Job`, preserving the full argument list, progress updates, exit code, and original npm stdout/stderr.
 - S3 bootstrap installers now default dependency resolution to npmmirror (overridable with `NUWACLI_REGISTRY`).
+
+### Changed
+
+- **ACP protocol responses are always English** (aligned with NuwaClaw / `@nuwax-ai/agent-kit`); only human-facing terminal output is localized. Chinese that previously leaked into HTTP `error.message` via thrown errors has been removed.
+- `status` and `service status` now share one unified Gateway status-line format (`http://host:port  PID  started`).
+- Unified UI primitives (`src/util/ui.ts`): symbols, semantic colors, `[nuwa-cli]` prefix, spinner, and cancel handling.
+
+### Fixed
+
+- Traditional Chinese locales (`zh-TW` / `zh-HK` / `zh-Hant`) fall back to English instead of incorrectly mapping to the Simplified Chinese bundle.
+- User cancel (Esc / Ctrl+C) in `gateway` / `login` now exits silently with code 130 instead of printing a red "failed" error.
 
 ## [0.1.0-beta.53] - 2026-08-04
 
