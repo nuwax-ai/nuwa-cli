@@ -19,11 +19,11 @@ export function registerAgentCommands(program: Command): void {
   program
     .command("doctor")
     .description(
-      "检测环境、登录态、会话历史以及 Gateway/Console 单例状态",
+      "检测环境、登录态与 Gateway/lanproxy 运行态；加 --fix 时自动修复可处理的问题",
     )
     .option(
       "--fix",
-      "自动修复 Gateway/Console 多实例，各自仅保留一个有效实例",
+      "按检测结果自动修复：补装登录自启、清理多实例、重建异常的 Gateway/lanproxy 栈",
     )
     .action(doctorCommand);
 

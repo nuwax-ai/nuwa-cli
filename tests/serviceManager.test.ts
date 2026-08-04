@@ -10,6 +10,7 @@ import {
   SERVICE_LABEL,
   WINDOWS_TASK_NAME,
   windowsStartupVbsPath,
+  describeAutostartService,
 } from "../src/core/service/serviceManager.js";
 
 describe("serviceManager", () => {
@@ -231,5 +232,44 @@ describe("serviceManager", () => {
     } finally {
       if (oldAppData !== undefined) process.env.APPDATA = oldAppData;
     }
+  });
+});
+
+describe("describeAutostartService", () => {
+  it("summarizes an enabled task-scheduler KeepAlive", () => {
+    const desc = describeAutostartService({
+      installed: true,
+      active: true,
+      details: "",
+      taskName: WINDOWS_TASK_NAME,
+      autostartMethod: "taskScheduler",
+    });
+    expect(desc.installed).toBe(true);
+    expect(desc.methodLabel).toContain("计划任务");
+    expect(desc.methodLabel).toContain(WINDOWS_TASK_NAME);
+    expect(desc.summary).toContain("已启用");
+    expect(desc.summary).toContain("服务运行中");
+  });
+
+  it("summarizes startup-folder fallback with unknown active state", () => {
+    const desc = describeAutostartService({
+      installed: true,
+      active: null,
+      details: "",
+      autostartMethod: "startupFolder",
+    });
+    expect(desc.methodLabel).toBe("启动文件夹");
+    expect(desc.summary).toContain("状态未知");
+  });
+
+  it("summarizes a disabled KeepAlive with install hint", () => {
+    const desc = describeAutostartService({
+      installed: false,
+      active: false,
+      details: "",
+    });
+    expect(desc.installed).toBe(false);
+    expect(desc.summary).toContain("未启用");
+    expect(desc.summary).toContain("service install");
   });
 });

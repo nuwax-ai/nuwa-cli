@@ -26,6 +26,7 @@ import {
   type NuwaProcessRecord,
 } from "../core/processes/processRegistry.js";
 import { findUiProcessIds } from "../core/processes/uiSingleton.js";
+import { describeAutostartService } from "../core/service/serviceManager.js";
 import { stopCommand } from "./processes.js";
 
 export interface LoginCommandOptions {
@@ -331,6 +332,24 @@ async function printServeStatus(): Promise<void> {
   if (consolePids.length > 0) {
     console.log(
       `Console：${pc.green("前台运行中")}  PID ${consolePids.join(", ")}`,
+    );
+  }
+
+  // 开机/登录自启（KeepAlive）：与当前 Gateway 是否在跑无关，看系统启动项是否已装。
+  const autostart = describeAutostartService();
+  if (autostart.installed) {
+    const activeLabel =
+      autostart.active === null
+        ? "状态未知"
+        : autostart.active
+          ? "服务运行中"
+          : "服务未运行";
+    console.log(
+      `开机自启：${pc.green("已启用")}  ${autostart.methodLabel}  ${activeLabel}`,
+    );
+  } else {
+    console.log(
+      `开机自启：${pc.dim("未启用")}（登录后不会自动启动 Gateway，可用 \`nuwa-cli service install\`）`,
     );
   }
 }

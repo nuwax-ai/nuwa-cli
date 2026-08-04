@@ -56,6 +56,7 @@ curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/unins
 
 ```bash
 nuwa-cli doctor                          # 检查环境
+nuwa-cli doctor --fix                     # 检测并自动修复可处理的问题
 nuwa-cli chat -p "列出当前目录下的文件"    # 单次，claude 引擎
 nuwa-cli chat --engine codex -p "hello"  # 单次，codex 引擎
 nuwa-cli console                         # Web 控制台（浏览器）
@@ -70,7 +71,7 @@ nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>  # 云端隧
 
 | 命令 | 说明 |
 |---|---|
-| `nuwa-cli doctor` | 检查 Node、引擎、登录态、lanproxy 健康 |
+| `nuwa-cli doctor` | 检查 Node、引擎、登录态、lanproxy 健康；`--fix` 自动修自启与服务异常 |
 | `nuwa-cli chat` | 交互式 REPL 或单次模式（`-p`），支持 claude/codex |
 | `nuwa-cli console` | 本机 Web 控制台，流式聊天（[文档](docs/console.md)） |
 | `nuwa-cli sessions` | 列出/续接本地 claude/codex 会话历史 |

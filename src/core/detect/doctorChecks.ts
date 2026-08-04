@@ -17,6 +17,7 @@ import {
   claudeProjectsDir,
   isEngineIsolationEnabled,
 } from "../env/engineHome.js";
+import { describeAutostartService } from "../service/serviceManager.js";
 
 export interface DoctorCheckResult {
   id: string;
@@ -244,7 +245,7 @@ export async function checkLanproxy(): Promise<DoctorCheckResult> {
       label: "lanproxy",
       ok: false,
       detail: `进程运行中（PID ${running.map((item) => item.pid).join(", ")}），但 Gateway /health ${gateway.state === "unhealthy" ? "无响应" : "不可用"}；二进制：${binaryPath}`,
-      fix: "运行 `nuwa-cli restart` 重启 Gateway，并检查 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log",
+      fix: "运行 `nuwa-cli doctor --fix` 自动重建 Gateway/lanproxy；并检查 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log",
       severity: "info",
     };
   }
@@ -254,7 +255,7 @@ export async function checkLanproxy(): Promise<DoctorCheckResult> {
       label: "lanproxy",
       ok: false,
       detail: `Gateway /health 正常，但未检测到 lanproxy 进程；二进制：${binaryPath}`,
-      fix: "运行 `nuwa-cli restart` 重建云端隧道，并检查 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log",
+      fix: "运行 `nuwa-cli doctor --fix` 自动重建云端隧道；并检查 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log",
       severity: "info",
     };
   }
@@ -315,6 +316,24 @@ export function checkLocalSessions(): DoctorCheckResult {
   };
 }
 
+/**
+ * 检测是否已安装开机/登录自启（KeepAlive）。
+ * 未安装不阻塞 doctor（手动 gateway 仍可用），仅作 info 提示。
+ */
+export function checkAutostartService(): DoctorCheckResult {
+  const autostart = describeAutostartService();
+  return {
+    id: "autostart",
+    label: "开机自启",
+    ok: autostart.installed,
+    detail: autostart.summary,
+    fix: autostart.installed
+      ? undefined
+      : "运行 `nuwa-cli doctor --fix` 自动安装登录自启；也可手动 `nuwa-cli service install`（`--now` 立即启动）；关闭用 `nuwa-cli service uninstall`",
+    severity: "info",
+  };
+}
+
 export function checkServeSingleton(): DoctorCheckResult {
   const pids = findServeProcessIds();
   const ok = pids.length <= 1;
@@ -330,7 +349,7 @@ export function checkServeSingleton(): DoctorCheckResult {
           : `检测到 ${pids.length} 个实例（PID ${pids.join(", ")}）`,
     fix: ok
       ? undefined
-      : "运行 `nuwa-cli doctor --fix` 自动保留一个有效实例并停止其余实例",
+      : "运行 `nuwa-cli doctor --fix` 清理多余实例并重建 Gateway 栈",
     severity: "info",
   };
 }
@@ -350,7 +369,7 @@ export function checkUiSingleton(): DoctorCheckResult {
           : `检测到 ${pids.length} 个前台实例（PID ${pids.join(", ")}）`,
     fix: ok
       ? undefined
-      : "运行 `nuwa-cli doctor --fix` 自动保留一个 Console 并停止其余实例",
+      : "运行 `nuwa-cli doctor --fix` 清理多余 Console（不自动重开前台；需要时再 `nuwa-cli console`）",
     severity: "info",
   };
 }
@@ -382,6 +401,7 @@ export async function runAllDoctorChecks(): Promise<DoctorCheckResult[]> {
     checkNuwaxLogin(),
     checkNuwaxComputer(),
     await checkLanproxy(),
+    checkAutostartService(),
     checkMcpStdioProxy(),
     checkLocalSessions(),
     checkServeSingleton(),

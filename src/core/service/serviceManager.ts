@@ -630,6 +630,62 @@ export function uninstallService(): void {
   }
 }
 
+/**
+ * 开机/登录自启的人类可读描述，供 `status` / `doctor` 复用。
+ * 语义：用户登录后是否由系统自动拉起 Gateway（KeepAlive），不是当前手动 gateway 是否在跑。
+ */
+export function describeAutostartService(
+  status: ServiceStatus = getServiceStatus(),
+): {
+  installed: boolean;
+  /** 自启机制短名，如 LaunchAgent / 计划任务 */
+  methodLabel: string;
+  active: boolean | null;
+  /** 不含「开机自启：」前缀的单行摘要 */
+  summary: string;
+} {
+  let methodLabel = "系统启动项";
+  if (status.autostartMethod === "startupFolder") {
+    methodLabel = "启动文件夹";
+  } else if (status.autostartMethod === "taskScheduler") {
+    methodLabel = status.taskName
+      ? `计划任务（${status.taskName}）`
+      : "计划任务";
+  } else if (process.platform === "darwin") {
+    methodLabel = "LaunchAgent";
+  } else if (process.platform === "linux") {
+    methodLabel = "systemd user service";
+  } else if (process.platform === "win32") {
+    methodLabel = status.taskName
+      ? `计划任务（${status.taskName}）`
+      : "计划任务";
+  }
+
+  const activeLabel =
+    status.active === null
+      ? "状态未知"
+      : status.active
+        ? "服务运行中"
+        : "服务未运行";
+
+  if (!status.installed) {
+    return {
+      installed: false,
+      methodLabel,
+      active: status.active,
+      summary:
+        "未启用（登录后不会自动启动 Gateway，可用 `nuwa-cli service install`）",
+    };
+  }
+
+  return {
+    installed: true,
+    methodLabel,
+    active: status.active,
+    summary: `已启用  ${methodLabel}  ${activeLabel}`,
+  };
+}
+
 export function getServiceStatus(): ServiceStatus {
   switch (process.platform) {
     case "darwin": {

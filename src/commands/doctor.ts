@@ -1,38 +1,101 @@
 import pc from "picocolors";
-import { runAllDoctorChecks } from "../core/detect/doctorChecks.js";
+import {
+  runAllDoctorChecks,
+  type DoctorCheckResult,
+} from "../core/detect/doctorChecks.js";
 import { restartAllServicesForced } from "./restart.js";
+import { serviceInstallCommand } from "./service.js";
 
 export interface DoctorCommandOptions {
   fix?: boolean;
 }
 
-export async function doctorCommand(
-  options: DoctorCommandOptions = {},
-): Promise<void> {
-  if (options.fix) {
-    // --fix = 强制重启所有服务（Gateway / file-server / lanproxy），与 restart 同逻辑：
-    // 清掉所有旧进程后由 Gateway daemon 重新拉起全部子服务。比单例去重更彻底，能修复
-    // detached 子进程占端口、只重启了 gateway 等运行态问题。
+/** 可由 doctor --fix 自动补装的检查项 */
+const AUTOSTART_CHECK_ID = "autostart";
+
+/**
+ * 运行态异常：多实例、Gateway/lanproxy 不一致等——靠清栈重建修复。
+ * 缺平台包等安装类 lanproxy 失败不在此列（重启无意义）。
+ */
+function needsServiceStackRestart(results: DoctorCheckResult[]): boolean {
+  for (const result of results) {
+    if (result.ok) continue;
+    if (result.id === "serve-singleton" || result.id === "ui-singleton") {
+      return true;
+    }
+    if (result.id === "lanproxy") {
+      const fix = result.fix ?? "";
+      if (fix.includes("重新安装") || fix.includes("--omit=optional")) {
+        continue;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+function needsAutostartInstall(results: DoctorCheckResult[]): boolean {
+  return results.some((r) => r.id === AUTOSTART_CHECK_ID && !r.ok);
+}
+
+/**
+ * doctor --fix：根据预检结果按需自动修复。
+ * - 未装登录自启 → service install（now:false，避免与随后的 restart 抢起）
+ * - 服务运行态异常 → 强制清栈并重建 Gateway（含 file-server / lanproxy）
+ * - 都健康 → 跳过重启，避免无谓打断
+ * Console 多实例会被清掉，但不自动重开前台（避免抢占终端）。
+ */
+async function applyDoctorFixes(precheck: DoctorCheckResult[]): Promise<void> {
+  const installAutostart = needsAutostartInstall(precheck);
+  const restartStack = needsServiceStackRestart(precheck);
+
+  if (!installAutostart && !restartStack) {
+    console.log(pc.dim("未发现需要自动修复的运行态问题。"));
+    console.log();
+    return;
+  }
+
+  if (installAutostart) {
     try {
-      console.log(pc.cyan("正在强制重启所有服务以修复运行状态..."));
+      console.log(pc.cyan("正在安装登录自启（KeepAlive）..."));
+      await serviceInstallCommand({ now: false });
+      console.log();
+    } catch (err) {
+      console.error(
+        pc.red(`[nuwa-cli] 安装登录自启失败：${(err as Error).message}`),
+      );
+      process.exitCode = 1;
+      console.log();
+    }
+  }
+
+  if (restartStack) {
+    try {
+      console.log(pc.cyan("正在修复服务运行态（清理异常进程并重建 Gateway 栈）..."));
       await restartAllServicesForced();
       if (process.exitCode && process.exitCode !== 0) {
-        console.error(pc.red("[nuwa-cli] 服务重启失败。"));
+        console.error(pc.red("[nuwa-cli] 服务修复失败。"));
       } else {
         console.log(
-          pc.green("已强制重启所有服务（Gateway / file-server / lanproxy）。"),
+          pc.green(
+            "已重建 Gateway 栈（Gateway / file-server / lanproxy）。多余 Console 已清理，需要时请再运行 `nuwa-cli console`。",
+          ),
         );
       }
       console.log();
     } catch (err) {
       console.error(
-        pc.red(`[nuwa-cli] 自动重启服务失败：${(err as Error).message}`),
+        pc.red(`[nuwa-cli] 自动修复服务失败：${(err as Error).message}`),
       );
       process.exitCode = 1;
     }
   }
+}
 
-  const results = await runAllDoctorChecks();
+function printDoctorResults(results: DoctorCheckResult[]): {
+  hasRequiredFailure: boolean;
+  hasInfoGap: boolean;
+} {
   let hasRequiredFailure = false;
   let hasInfoGap = false;
 
@@ -68,6 +131,22 @@ export async function doctorCommand(
       pc.red("✖ 没有可用的引擎：claude 和 codex 都未就绪，chat 无法运行。"),
     );
   }
+
+  return { hasRequiredFailure, hasInfoGap };
+}
+
+export async function doctorCommand(
+  options: DoctorCommandOptions = {},
+): Promise<void> {
+  if (options.fix) {
+    console.log(pc.cyan("正在检测可自动修复的问题..."));
+    const precheck = await runAllDoctorChecks();
+    await applyDoctorFixes(precheck);
+  }
+
+  // --fix 后复检，展示修复后的真实状态；纯 doctor 则只检一次。
+  const results = await runAllDoctorChecks();
+  const { hasRequiredFailure, hasInfoGap } = printDoctorResults(results);
 
   console.log();
   if (hasRequiredFailure) {

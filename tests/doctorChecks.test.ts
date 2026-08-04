@@ -15,6 +15,10 @@ const lanproxyMocks = vi.hoisted(() => ({
   serveStatus: vi.fn(),
 }));
 
+const serviceMocks = vi.hoisted(() => ({
+  describeAutostart: vi.fn(),
+}));
+
 vi.mock("../src/core/serve/lanproxyBinary.js", () => ({
   resolveDefaultLanproxyBinary: () => lanproxyMocks.resolveBinary(),
 }));
@@ -25,6 +29,10 @@ vi.mock("../src/core/processes/lanproxyStatus.js", () => ({
 
 vi.mock("../src/core/serve/serveLock.js", () => ({
   getServeStatus: () => lanproxyMocks.serveStatus(),
+}));
+
+vi.mock("../src/core/service/serviceManager.js", () => ({
+  describeAutostartService: () => serviceMocks.describeAutostart(),
 }));
 
 vi.mock("node:os", async (importOriginal) => {
@@ -52,6 +60,13 @@ describe("checkNuwaxLogin", () => {
     lanproxyMocks.resolveBinary.mockReset().mockReturnValue("/bin/lanproxy");
     lanproxyMocks.processes.mockReset().mockReturnValue([]);
     lanproxyMocks.serveStatus.mockReset().mockResolvedValue({ state: "stopped" });
+    serviceMocks.describeAutostart.mockReset().mockReturnValue({
+      installed: false,
+      methodLabel: "系统启动项",
+      active: false,
+      summary:
+        "未启用（登录后不会自动启动 Gateway，可用 `nuwa-cli service install`）",
+    });
   });
 
   afterEach(() => {
@@ -186,6 +201,49 @@ describe("checkLanproxy", () => {
     expect(result.ok).toBe(false);
     expect(result.detail).toContain("缺少 Windows 平台包");
     expect(result.fix).toContain("--omit=optional");
+  });
+});
+
+describe("checkAutostartService", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    serviceMocks.describeAutostart.mockReset();
+  });
+
+  it("reports enabled KeepAlive with method and active state", async () => {
+    serviceMocks.describeAutostart.mockReturnValue({
+      installed: true,
+      methodLabel: "计划任务（NuwaCLI）",
+      active: true,
+      summary: "已启用  计划任务（NuwaCLI）  服务运行中",
+    });
+    const { checkAutostartService } =
+      await import("../src/core/detect/doctorChecks.js");
+    const result = checkAutostartService();
+    expect(result.ok).toBe(true);
+    expect(result.id).toBe("autostart");
+    expect(result.severity).toBe("info");
+    expect(result.detail).toContain("已启用");
+    expect(result.detail).toContain("计划任务");
+    expect(result.fix).toBeUndefined();
+  });
+
+  it("reports disabled KeepAlive with install/uninstall fix hint", async () => {
+    serviceMocks.describeAutostart.mockReturnValue({
+      installed: false,
+      methodLabel: "LaunchAgent",
+      active: false,
+      summary:
+        "未启用（登录后不会自动启动 Gateway，可用 `nuwa-cli service install`）",
+    });
+    const { checkAutostartService } =
+      await import("../src/core/detect/doctorChecks.js");
+    const result = checkAutostartService();
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain("未启用");
+    expect(result.fix).toContain("doctor --fix");
+    expect(result.fix).toContain("service install");
+    expect(result.fix).toContain("service uninstall");
   });
 });
 
