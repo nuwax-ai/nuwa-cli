@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Force `start` / `restart` now explicitly stop registered `lanproxy` and detached `file-server` (Windows also `taskkill`s `nuwax-lanproxy.exe`), wait up to ~30s for Gateway `/health` + lanproxy registry after daemon handoff, and no longer forward `--force` into the daemon child. After reboot, `start` also waits the full readiness window before treating an already-running KeepAlive Gateway as “missing children” and force-replacing it—avoiding races that killed a just-started tunnel and printed「未检测到运行中的 lanproxy」。
-
 ### Added
 
 - ACP permission guardrails aligned with NuwaClaw: `PermissionCoordinator`, SSE `acpRequestPermission`, real `POST /computer/notify-resolved`, and pluggable sensitive classifiers (first: local session history). `--approve` now accepts `auto|ask|deny`. See [`docs/acp-permission-guardrails.md`](docs/acp-permission-guardrails.md).
@@ -18,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A resumable `npm run release:beta` workflow now runs tests/build, publishes npm, syncs only `@nuwax-ai/nuwa-cli` through `cnpm`, verifies npmmirror, and publishes S3.
 - Windows bootstrap installers now run npm through an encoded child PowerShell process instead of `Start-Job`, preserving the full argument list, progress updates, exit code, and original npm stdout/stderr.
 - S3 bootstrap installers now default dependency resolution to npmmirror (overridable with `NUWACLI_REGISTRY`).
+
+## [0.1.0-beta.50] - 2026-08-04
+
+### Fixed
+
+- Force `start` / `restart` now explicitly stop registered `lanproxy` and detached `file-server` (Windows also `taskkill`s `nuwax-lanproxy.exe`), wait up to ~30s for Gateway `/health` + lanproxy registry after daemon handoff, and no longer forward `--force` into the daemon child. After reboot, `start` also waits the full readiness window before treating an already-running KeepAlive Gateway as “missing children” and force-replacing it—avoiding races that killed a just-started tunnel and printed「未检测到运行中的 lanproxy」。
 
 ## [0.1.0-beta.17] - 2026-07-28
 
