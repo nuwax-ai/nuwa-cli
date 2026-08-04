@@ -371,7 +371,7 @@ export function startUiHttp(options: UiServerOptions): {
   // Surface listen errors (e.g. EADDRINUSE from a TOCTOU port grab after
   // findAvailablePort) instead of letting them throw as uncaught exceptions.
   server.on("error", (err) => {
-    console.error(`[nuwa-cli] Console server error: ${(err as Error).message}`);
+    console.error(`[nuwa-cli] Console 服务出错：${(err as Error).message}`);
     void stop();
   });
 

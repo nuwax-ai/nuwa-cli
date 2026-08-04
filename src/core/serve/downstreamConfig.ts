@@ -81,12 +81,12 @@ function stringEnv(value: unknown, label: string): NodeJS.ProcessEnv | undefined
   const source = record(value);
   if (!source) {
     if (value === undefined) return undefined;
-    throw new Error(`${label} 必须是字符串键值对象`);
+    throw new Error(`${label} must be an object of string keys`);
   }
   const result: NodeJS.ProcessEnv = {};
   for (const [name, item] of Object.entries(source)) {
     if (typeof item !== "string") {
-      throw new Error(`${label}.${name} 必须是字符串`);
+      throw new Error(`${label}.${name} must be a string`);
     }
     result[name] = item;
   }
@@ -103,7 +103,7 @@ function envList(value: unknown, label: string): Array<{ name: string; value: st
         typeof entry.name !== "string" ||
         typeof entry.value !== "string"
       ) {
-        throw new Error(`${label}[${index}] 必须包含字符串 name/value`);
+        throw new Error(`${label}[${index}] must contain string name/value`);
       }
       return { name: entry.name, value: entry.value };
     });
@@ -118,7 +118,7 @@ function envList(value: unknown, label: string): Array<{ name: string; value: st
 function stringList(value: unknown, label: string): string[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw new Error(`${label} 必须是字符串数组`);
+    throw new Error(`${label} must be an array of strings`);
   }
   return value as string[];
 }
@@ -131,7 +131,7 @@ function normalizeMcpServer(value: unknown, index: number): McpServer {
   const item = record(value);
   const label = `mcpServers[${index}]`;
   if (!item || typeof item.name !== "string" || !item.name) {
-    throw new Error(`${label}.name 必须是非空字符串`);
+    throw new Error(`${label}.name must be a non-empty string`);
   }
 
   if (typeof item.command === "string" && item.command) {
@@ -161,7 +161,7 @@ function normalizeMcpServer(value: unknown, index: number): McpServer {
     return { type: "acp", name: item.name, serverId: item.serverId };
   }
 
-  throw new Error(`${label} 缺少有效的 command、HTTP/SSE url 或 ACP serverId`);
+  throw new Error(`${label} is missing a valid command, HTTP/SSE url, or ACP serverId`);
 }
 
 function sanitizeMcpServerNames(servers: McpServer[]): McpServer[] {
@@ -309,7 +309,7 @@ export function parseDownstreamSessionConfig(
       agentConfig?.context_servers ?? agentConfig?.contextServers,
     ) ??
     [];
-  if (!Array.isArray(mcpValue)) throw new Error("mcpServers 必须是数组");
+  if (!Array.isArray(mcpValue)) throw new Error("mcpServers must be an array");
 
   const engine = hasModelOverlay
     ? modelOverlay.protocol === "anthropic"

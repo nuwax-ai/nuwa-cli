@@ -8,6 +8,13 @@ import type { EngineKind } from "../core/env/inheritEnv.js";
 import { performReg, resolveDomain, resolveLoginPassword } from "./login.js";
 import { serveCommand, type ServeCommandOptions } from "./serve.js";
 import { debugLog } from "../core/debugLog.js";
+import {
+  CANCEL_EXIT_CODE,
+  UserCancelled,
+  isUserCancelled,
+  printCancelled,
+} from "../util/ui.js";
+import { t } from "../util/i18n/index.js";
 
 export interface GatewayCommandOptions {
   domain?: string;
@@ -65,7 +72,7 @@ export function buildServeDaemonArgs(
 async function ensureRegistered(options: GatewayCommandOptions): Promise<void> {
   if (options.savedKey) {
     const domain = await resolveDomain(options.domain);
-    if (!domain) throw new Error("已取消。");
+    if (!domain) throw new UserCancelled();
     const existing = readCredentials();
     await performReg(domain, {
       username: options.username ?? existing.username ?? "",
@@ -77,9 +84,9 @@ async function ensureRegistered(options: GatewayCommandOptions): Promise<void> {
 
   if (options.username) {
     const domain = await resolveDomain(options.domain);
-    if (!domain) throw new Error("已取消。");
+    if (!domain) throw new UserCancelled();
     const password = await resolveLoginPassword(options.username, domain);
-    if (password === null) throw new Error("已取消。");
+    if (password === null) throw new UserCancelled();
     await performReg(domain, {
       username: options.username,
       password,
@@ -91,7 +98,7 @@ async function ensureRegistered(options: GatewayCommandOptions): Promise<void> {
   const existing = readCredentials();
   if (existing.savedKey) {
     const domain = await resolveDomain(options.domain);
-    if (!domain) throw new Error("已取消。");
+    if (!domain) throw new UserCancelled();
     await performReg(domain, {
       username: existing.username ?? "",
       password: "",
@@ -100,9 +107,7 @@ async function ensureRegistered(options: GatewayCommandOptions): Promise<void> {
     return;
   }
 
-  throw new Error(
-    "首次启动需要 --domain <host> --saved-key <key> 或 --domain <host> -u <username>，或先运行 `nuwa-cli login` 登录。",
-  );
+  throw new Error(t("gateway.firstStartHint"));
 }
 
 export async function gatewayCommand(
@@ -124,7 +129,9 @@ export async function gatewayCommand(
       .join(", ");
     console.log(
       pc.green(
-        `已选择引擎：${engine}${available ? `（可用：${available}）` : ""}`,
+        available
+          ? t("gateway.engineAvailable", { engine, available })
+          : t("gateway.engineSelected", { engine }),
       ),
     );
     debugLog("gateway.command", "engine selected", {
@@ -173,10 +180,16 @@ export async function gatewayCommand(
     await serveCommand(serveOptions);
     return engine;
   } catch (err) {
+    if (isUserCancelled(err)) {
+      // 用户主动取消(Esc / Ctrl+C),不是失败:静默提示并退出。
+      printCancelled();
+      process.exitCode = CANCEL_EXIT_CODE;
+      return undefined;
+    }
     debugLog("gateway.command", "failed", {
       message: (err as Error).message,
     });
-    console.error(pc.red(`[nuwa-cli] gateway 失败：${(err as Error).message}`));
+    console.error(pc.red(t("gateway.failed", { msg: (err as Error).message })));
     process.exitCode = 1;
     return undefined;
   }

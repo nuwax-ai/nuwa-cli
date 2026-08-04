@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawn, spawnSync, type SpawnSyncOptions } from "node:child_process";
 import { ensureDir, logsDir, tmpDir, writeFileAtomic } from "../../util/paths.js";
+import { t } from "../../util/i18n/index.js";
 
 export const SERVICE_LABEL = "com.nuwax.nuwa-cli";
 export const WINDOWS_TASK_NAME = "NuwaCLI";
@@ -52,7 +53,7 @@ function pushFlag(args: string[], name: string, value?: string): void {
 }
 
 export function resolveCliEntryPath(argv1 = process.argv[1]): string {
-  if (!argv1) throw new Error("无法定位当前 nuwa-cli CLI 入口文件。");
+  if (!argv1) throw new Error(t("service.noCliEntry"));
   return path.resolve(argv1);
 }
 
@@ -313,7 +314,7 @@ export function buildWindowsTaskXml(
 export function windowsStartupVbsPath(): string {
   const appData = process.env.APPDATA;
   if (!appData) {
-    throw new Error("无法定位 Windows 启动文件夹：APPDATA 环境变量未设置。");
+    throw new Error(t("service.noAppdata"));
   }
   return path.join(
     appData,
@@ -392,11 +393,17 @@ function run(
   const stdout = decodeProcessOutput(result.stdout);
   const stderr = decodeProcessOutput(result.stderr);
   if (result.error && !options.ignoreFailure) {
-    throw new Error(`${commandText} 执行失败：${result.error.message}`);
+    throw new Error(
+      t("service.runFailed", { cmd: commandText, msg: result.error.message }),
+    );
   }
   if (status !== 0 && !options.ignoreFailure) {
     throw new Error(
-      `${commandText} 退出码 ${status ?? "unknown"}：${stderr || stdout}`,
+      t("service.runExitCode", {
+        cmd: commandText,
+        status: status ?? "unknown",
+        output: stderr || stdout,
+      }),
     );
   }
   return { command: commandText, status, stdout, stderr };
@@ -405,7 +412,7 @@ function run(
 function guiTarget(): string {
   const uid = process.getuid?.();
   if (uid === undefined) {
-    throw new Error("当前 Node 运行时无法获取用户 UID。");
+    throw new Error(t("service.noUid"));
   }
   return `gui/${uid}`;
 }
@@ -460,11 +467,7 @@ function runSchtasks(
     return run(schtasksExe(), args, options);
   } catch (err) {
     const base = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `${base}\n` +
-        "Windows 计划任务创建被拒绝（常见原因：杀毒/EDR 拦截了 schtasks.exe，或需要管理员权限）。" +
-        "可改用「以管理员身份运行的终端」重试 nuwa-cli service install，或在杀毒软件中放行 schtasks.exe。",
-    );
+    throw new Error(`${base}\n${t("service.schtasksDenied")}`);
   }
 }
 
@@ -506,7 +509,10 @@ function installWindowsStartupFallback(
   writeFileAtomic(vbsPath, buildWindowsStartupVbs(options, { platform: "win32" }));
   if (options.now) launchGatewayDaemon(options);
   console.log(
-    `\u8BA1\u5212\u4EFB\u52A1\u521B\u5EFA\u88AB\u62D2\uFF08${reason.split("\n")[0]}\uFF09\uFF0C\u5DF2\u6539\u7528\u300C\u542F\u52A8\u6587\u4EF6\u5939\u300D\u81EA\u542F\uFF1A${vbsPath}`,
+    t("service.schtasksFallback", {
+      reason: reason.split("\n")[0],
+      vbsPath,
+    }),
   );
 }
 
@@ -547,7 +553,9 @@ export function installService(options: ServiceInstallOptions): void {
       installWindowsService(options);
       return;
     default:
-      throw new Error(`暂不支持当前平台：${process.platform}`);
+      throw new Error(
+        t("service.unsupportedPlatform", { platform: process.platform }),
+      );
   }
 }
 
@@ -555,7 +563,7 @@ export function startService(): void {
   switch (process.platform) {
     case "darwin": {
       const plistPath = launchAgentPath();
-      if (!fs.existsSync(plistPath)) throw new Error("尚未安装服务。");
+      if (!fs.existsSync(plistPath)) throw new Error(t("service.notInstalled"));
       run("launchctl", ["bootstrap", guiTarget(), plistPath], {
         ignoreFailure: true,
       });
@@ -574,7 +582,9 @@ export function startService(): void {
       }
       return;
     default:
-      throw new Error(`暂不支持当前平台：${process.platform}`);
+      throw new Error(
+        t("service.unsupportedPlatform", { platform: process.platform }),
+      );
   }
 }
 
@@ -592,7 +602,9 @@ export function stopService(): void {
       });
       return;
     default:
-      throw new Error(`暂不支持当前平台：${process.platform}`);
+      throw new Error(
+        t("service.unsupportedPlatform", { platform: process.platform }),
+      );
   }
 }
 
@@ -626,7 +638,9 @@ export function uninstallService(): void {
       fs.rmSync(windowsStartupVbsPath(), { force: true });
       return;
     default:
-      throw new Error(`暂不支持当前平台：${process.platform}`);
+      throw new Error(
+        t("service.unsupportedPlatform", { platform: process.platform }),
+      );
   }
 }
 
@@ -644,37 +658,36 @@ export function describeAutostartService(
   /** 不含「开机自启：」前缀的单行摘要 */
   summary: string;
 } {
-  let methodLabel = "系统启动项";
+  let methodLabel = t("service.method.system");
   if (status.autostartMethod === "startupFolder") {
-    methodLabel = "启动文件夹";
+    methodLabel = t("service.method.startupFolder");
   } else if (status.autostartMethod === "taskScheduler") {
     methodLabel = status.taskName
-      ? `计划任务（${status.taskName}）`
-      : "计划任务";
+      ? t("service.method.taskSchedulerNamed", { task: status.taskName })
+      : t("service.method.taskScheduler");
   } else if (process.platform === "darwin") {
     methodLabel = "LaunchAgent";
   } else if (process.platform === "linux") {
     methodLabel = "systemd user service";
   } else if (process.platform === "win32") {
     methodLabel = status.taskName
-      ? `计划任务（${status.taskName}）`
-      : "计划任务";
+      ? t("service.method.taskSchedulerNamed", { task: status.taskName })
+      : t("service.method.taskScheduler");
   }
 
   const activeLabel =
     status.active === null
-      ? "状态未知"
+      ? t("status.autostartStateUnknown")
       : status.active
-        ? "服务运行中"
-        : "服务未运行";
+        ? t("status.autostartServiceRunning")
+        : t("status.autostartServiceStopped");
 
   if (!status.installed) {
     return {
       installed: false,
       methodLabel,
       active: status.active,
-      summary:
-        "未启用（登录后不会自动启动 Gateway，可用 `nuwa-cli service install`）",
+      summary: t("service.summary.disabled"),
     };
   }
 
@@ -682,7 +695,7 @@ export function describeAutostartService(
     installed: true,
     methodLabel,
     active: status.active,
-    summary: `已启用  ${methodLabel}  ${activeLabel}`,
+    summary: `${t("status.autostartEnabledWord")}  ${methodLabel}  ${activeLabel}`,
   };
 }
 
@@ -748,7 +761,7 @@ export function getServiceStatus(): ServiceStatus {
         return {
           installed: true,
           active: null,
-          details: "启动文件夹自启（用户登录时静默启动 gateway）",
+          details: t("service.startupFolderDetail"),
           configPath: vbsPath,
           autostartMethod: "startupFolder",
         };
@@ -761,6 +774,8 @@ export function getServiceStatus(): ServiceStatus {
       };
     }
     default:
-      throw new Error(`暂不支持当前平台：${process.platform}`);
+      throw new Error(
+        t("service.unsupportedPlatform", { platform: process.platform }),
+      );
   }
 }

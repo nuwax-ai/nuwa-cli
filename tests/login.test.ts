@@ -240,7 +240,7 @@ describe("login/logout/status commands", () => {
     await loginCommand({ domain: "example.com" });
 
     expect(textMock).toHaveBeenCalledWith(
-      expect.objectContaining({ message: "Nuwax 用户名：" }),
+      expect.objectContaining({ message: "Nuwax username:" }),
     );
     expect(passwordMock).toHaveBeenCalled();
     expect(registerClientMock).toHaveBeenCalledWith(
@@ -299,8 +299,8 @@ describe("login/logout/status commands", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await statusCommand({});
     const printed = logSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(printed).toContain("未登录");
-    expect(printed).toContain("免密重新登录");
+    expect(printed).toContain("Not logged in");
+    expect(printed).toContain("log back in without a password");
     logSpy.mockRestore();
   });
 
@@ -328,7 +328,7 @@ describe("login/logout/status commands", () => {
       expect.objectContaining({ savedKey: "sk" }),
     );
     const printed = logSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(printed).toContain("电脑名：我的电脑001");
+    expect(printed).toContain("Computer name: 我的电脑001");
     logSpy.mockRestore();
   });
 

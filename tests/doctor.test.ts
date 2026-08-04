@@ -88,7 +88,7 @@ describe("doctorCommand exit code", () => {
     await doctorCommand();
     expect(process.exitCode).toBe(1);
     const printed = logSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(printed).toContain("没有可用的引擎");
+    expect(printed).toContain("No engine available");
     logSpy.mockRestore();
   });
 
@@ -114,7 +114,7 @@ describe("doctorCommand exit code", () => {
     await doctorCommand();
     expect(process.exitCode).toBe(0);
     const printed = logSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(printed).toContain("环境检测全部通过");
+    expect(printed).toContain("All environment checks passed");
     logSpy.mockRestore();
   });
 });
@@ -146,7 +146,7 @@ describe("doctorCommand --fix", () => {
     expect(restartAllServicesForcedMock).not.toHaveBeenCalled();
     expect(runAllDoctorChecksMock).toHaveBeenCalledTimes(2);
     const printed = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
-    expect(printed).toContain("登录自启");
+    expect(printed).toContain("login auto-start");
     logSpy.mockRestore();
   });
 
@@ -162,7 +162,7 @@ describe("doctorCommand --fix", () => {
     expect(serviceInstallCommandMock).not.toHaveBeenCalled();
     expect(restartAllServicesForcedMock).not.toHaveBeenCalled();
     const printed = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
-    expect(printed).toContain("未发现需要自动修复");
+    expect(printed).toContain("No runtime issues found");
     logSpy.mockRestore();
   });
 

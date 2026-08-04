@@ -86,7 +86,7 @@ describe("restartCommand", () => {
 
     expect(mocks.ui).not.toHaveBeenCalled();
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Gateway 重启失败"),
+      expect.stringContaining("Gateway restart failed"),
     );
     errorSpy.mockRestore();
   });
@@ -99,7 +99,7 @@ describe("restartCommand", () => {
 
     expect(mocks.ui).not.toHaveBeenCalled();
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("栈未就绪"),
+      expect.stringContaining("stack is not ready"),
     );
     errorSpy.mockRestore();
   });
@@ -111,7 +111,7 @@ describe("restartCommand", () => {
     await restartCommand({});
 
     expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining("尚未安装登录自启"),
+      expect.stringContaining("login auto-start (KeepAlive) is not installed"),
     );
     logSpy.mockRestore();
   });
@@ -124,7 +124,7 @@ describe("restartCommand", () => {
 
     expect(mocks.gateway).not.toHaveBeenCalled();
     expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining("未登录 Nuwax"),
+      expect.stringContaining("Not logged in to Nuwax"),
     );
     logSpy.mockRestore();
   });

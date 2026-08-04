@@ -941,7 +941,7 @@ export function startServeHttp(options: ServeOptions): {
   };
 
   server.on("error", (err) => {
-    console.error(`[nuwa-cli] Serve server error: ${(err as Error).message}`);
+    console.error(`[nuwa-cli] Serve 服务出错：${(err as Error).message}`);
     void stop();
   });
 

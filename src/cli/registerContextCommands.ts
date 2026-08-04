@@ -5,40 +5,41 @@ import {
   contextListCommand,
   contextReadCommand,
 } from "../commands/context.js";
+import { t } from "../util/i18n/index.js";
 
 export function registerContextCommands(program: Command): void {
   const context = program
     .command("context")
-    .description("跨 Agent 上下文引用与交接（ACP 会话之上的只读辅助层）");
+    .description(t("cli.cmd.context.desc"));
 
   context
     .command("list")
-    .description("列出本地可引用上下文")
-    .option("--engine <engine>", "只看某个引擎：claude 或 codex")
-    .option("--json", "以 JSON 输出")
+    .description(t("cli.cmd.context.list.desc"))
+    .option("--engine <engine>", t("cli.opt.engineFilter"))
+    .option("--json", t("cli.opt.json"))
     .action(contextListCommand);
 
   context
     .command("read")
-    .description("读取一个本地会话的规范化消息流 JSON")
-    .requiredOption("--ref <engine:sessionId>", "上下文引用，如 claude:xxxx")
-    .option("--limit <n>", "只返回最近 N 条消息")
-    .option("--json", "以 JSON 输出（当前是唯一输出格式）")
+    .description(t("cli.cmd.context.read.desc"))
+    .requiredOption("--ref <engine:sessionId>", t("cli.opt.ref"))
+    .option("--limit <n>", t("cli.opt.limitMsgs"))
+    .option("--json", t("cli.opt.jsonOnly"))
     .action(contextReadCommand);
 
   context
     .command("digest")
-    .description("输出一个本地会话的规则型压缩摘要 JSON")
-    .requiredOption("--ref <engine:sessionId>", "上下文引用，如 claude:xxxx")
-    .option("--limit <n>", "最多读取最近 N 条消息参与摘要")
-    .option("--json", "以 JSON 输出（当前是唯一输出格式）")
+    .description(t("cli.cmd.context.digest.desc"))
+    .requiredOption("--ref <engine:sessionId>", t("cli.opt.ref"))
+    .option("--limit <n>", t("cli.cmd.context.digest.opt.limit"))
+    .option("--json", t("cli.opt.jsonOnly"))
     .action(contextDigestCommand);
 
   context
     .command("handoff")
-    .description("输出一个适合跨 Agent 接手工作的结构化交接包 JSON")
-    .requiredOption("--ref <engine:sessionId>", "上下文引用，如 claude:xxxx")
-    .option("--limit <n>", "最多读取最近 N 条消息参与交接包")
-    .option("--json", "以 JSON 输出（当前是唯一输出格式）")
+    .description(t("cli.cmd.context.handoff.desc"))
+    .requiredOption("--ref <engine:sessionId>", t("cli.opt.ref"))
+    .option("--limit <n>", t("cli.cmd.context.handoff.opt.limit"))
+    .option("--json", t("cli.opt.jsonOnly"))
     .action(contextHandoffCommand);
 }

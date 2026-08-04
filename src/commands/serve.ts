@@ -42,6 +42,7 @@ import {
   workspacesDir,
   serveLogPath,
 } from "../util/paths.js";
+import { printShuttingDown, withSpinner } from "../util/ui.js";
 import { debugLog } from "../core/debugLog.js";
 import { warmupMcpNpxCache } from "../core/mcp/cacheWarmup.js";
 import {
@@ -329,7 +330,7 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
     process.off("SIGTERM", onSigTerm);
     // 先 abort 健康检查，再停子进程，缩短 Ctrl+C 到进程退出的等待。
     if (!shutdownAbort.signal.aborted) shutdownAbort.abort();
-    console.log(pc.dim("\n正在关闭..."));
+    printShuttingDown(signal);
     debugLog("serve.command", "shutdown start", {
       fileServerStarted,
       activeFileServerPort,
@@ -408,9 +409,21 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
     // yolo has no path confinement (unlike the Electron client's strict gate):
     // ordinary tool calls are auto-approved, but sensitive classifiers
     // (e.g. local session history) still force ask via SSE/notify-resolved.
+    console.error(pc.yellow("[nuwa-cli] 当前为自动批准（auto/yolo）模式，请注意："));
     console.error(
       pc.yellow(
-        "[nuwa-cli] 当前为自动批准（auto/yolo）模式：普通工具调用（含文件写入/删除、命令执行、网络访问）会自动放行且无路径限制；本地 sessions 等敏感访问仍需云端/本机审批。请确认仅监听本机、X-Nuwax-Internal-Secret 未泄露；全部人工审批请用 --approve ask，全部拒绝请用 --approve deny。",
+        "  · 普通工具调用（文件写入/删除、命令执行、网络访问）会自动放行，且无路径限制；",
+      ),
+    );
+    console.error(
+      pc.yellow("  · 本地 sessions 等敏感访问仍需云端/本机审批；"),
+    );
+    console.error(
+      pc.yellow("  · 请确认仅监听本机、X-Nuwax-Internal-Secret 未泄露。"),
+    );
+    console.error(
+      pc.dim(
+        "    全部人工审批请用 --approve ask，全部拒绝请用 --approve deny。",
       ),
     );
   } else if (permissionMode === "ask") {
@@ -439,6 +452,8 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
       );
     } else {
       try {
+        // 在闭包（spinner 回调）内 TS 会丢失对 credentials.domain 的窄化，先取出。
+        const domain = credentials.domain;
         const ssl = parseBooleanFlag(options.lanproxySsl, true);
         debugLog("serve.tunnel", "register start", {
           domain: credentials.domain,
@@ -451,17 +466,22 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
           "file-server",
           [port],
         );
-        const reg = await registerClient(credentials.domain, {
-          username: credentials.username ?? "",
-          password: "",
-          savedKey: credentials.savedKey,
-          deviceId: getDeviceId(),
-          sandboxConfigValue: defaultSandboxValue({
-            agentPort: port,
-            fileServerPort,
-            apiKey: secret,
-          }),
-        });
+        const reg = await withSpinner(
+          "正在向 Nuwax 注册客户端...",
+          () =>
+            registerClient(domain, {
+              username: credentials.username ?? "",
+              password: "",
+              savedKey: credentials.savedKey,
+              deviceId: getDeviceId(),
+              sandboxConfigValue: defaultSandboxValue({
+                agentPort: port,
+                fileServerPort,
+                apiKey: secret,
+              }),
+            }),
+          { signal: shutdownSignal },
+        );
         debugLog("serve.tunnel", "register success", {
           domain: credentials.domain,
           username: credentials.username,
@@ -529,20 +549,25 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
         if (shuttingDown) {
           // shutdown 已跑完；跳过隧道拉起。
         } else {
-          startFileServer(fileServerPort, cwd);
-          // 立刻标记：健康检查等待中若收到 SIGINT，shutdown 才能 stopFileServer。
-          fileServerStarted = true;
-          activeFileServerPort = fileServerPort;
-
           // 用标签块在 await 后快速退出，避免 Ctrl+C 清理后继续拉起 lanproxy。
           bringUpTunnel: {
             if (shuttingDown) break bringUpTunnel;
 
-            const fileServerHealthy = await waitForFileServerHealth(
-              fileServerPort,
-              10_000,
-              200,
-              shutdownSignal,
+            const fileServerHealthy = await withSpinner(
+              "正在启动 nuwax-file-server 并等待健康检查...",
+              async () => {
+                startFileServer(fileServerPort, cwd);
+                // 立刻标记：健康检查等待中若收到 SIGINT，shutdown 才能 stopFileServer。
+                fileServerStarted = true;
+                activeFileServerPort = fileServerPort;
+                return waitForFileServerHealth(
+                  fileServerPort,
+                  10_000,
+                  200,
+                  shutdownSignal,
+                );
+              },
+              { signal: shutdownSignal },
             );
             if (shuttingDown) break bringUpTunnel;
 
@@ -565,37 +590,39 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
               );
             }
 
-            lanproxyHandle = startLanproxy({
-              pathOverride:
-                options.lanproxyPath ?? credentials.lanproxyPath ?? undefined,
-              serverHost: lanproxyHost,
-              serverPort: lanproxyPort,
-              clientKey: reg.configKey,
-              ssl,
-            });
-            await lanproxyHandle.ready;
-            if (shuttingDown) break bringUpTunnel;
-
-            const lanproxyAlive = await confirmLanproxyHealthy(
-              lanproxyHandle.pid,
-              1000,
-              shutdownSignal,
+            const lanproxyHealthy = await withSpinner(
+              "正在启动 lanproxy 并等待隧道建立...",
+              async () => {
+                lanproxyHandle = startLanproxy({
+                  pathOverride:
+                    options.lanproxyPath ?? credentials.lanproxyPath ?? undefined,
+                  serverHost: lanproxyHost,
+                  serverPort: lanproxyPort,
+                  clientKey: reg.configKey,
+                  ssl,
+                });
+                await lanproxyHandle.ready;
+                const lanproxyAlive = await confirmLanproxyHealthy(
+                  lanproxyHandle.pid,
+                  1000,
+                  shutdownSignal,
+                );
+                return lanproxyAlive
+                  ? waitForLanproxyTunnel(
+                      domain,
+                      reg.configKey,
+                      15_000,
+                      500,
+                      shutdownSignal,
+                    )
+                  : false;
+              },
+              { signal: shutdownSignal },
             );
             if (shuttingDown) break bringUpTunnel;
 
-            const lanproxyHealthy = lanproxyAlive
-              ? await waitForLanproxyTunnel(
-                  credentials.domain,
-                  reg.configKey,
-                  15_000,
-                  500,
-                  shutdownSignal,
-                )
-              : false;
-            if (shuttingDown) break bringUpTunnel;
-
             debugLog("serve.lanproxy", "started", {
-              pid: lanproxyHandle.pid,
+              pid: lanproxyHandle?.pid,
               serverHost: lanproxyHost,
               serverPort: lanproxyPort,
               ssl,
@@ -604,13 +631,13 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
             if (lanproxyHealthy) {
               console.log(
                 pc.green(
-                  `lanproxy 已启动（pid ${lanproxyHandle.pid ?? "unknown"}，${lanproxyHost}:${lanproxyPort}，ssl=${ssl}）。`,
+                  `lanproxy 已启动（pid ${lanproxyHandle?.pid ?? "unknown"}，${lanproxyHost}:${lanproxyPort}，ssl=${ssl}）。`,
                 ),
               );
             } else {
               console.error(
                 pc.yellow(
-                  `[nuwa-cli] lanproxy 健康检查未通过（pid ${lanproxyHandle.pid ?? "unknown"}），隧道可能未建立，请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log（按天滚动，看当天那份）。`,
+                  `[nuwa-cli] lanproxy 健康检查未通过（pid ${lanproxyHandle?.pid ?? "unknown"}），隧道可能未建立，请查看 ${serveLogPath()}（按天滚动，看当天那份）。`,
                 ),
               );
             }

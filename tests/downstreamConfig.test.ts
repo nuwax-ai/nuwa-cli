@@ -78,7 +78,7 @@ describe("parseDownstreamSessionConfig", () => {
           },
         ],
       }),
-    ).toThrow("mcpServers[0].env.TOKEN 必须是字符串");
+    ).toThrow("mcpServers[0].env.TOKEN must be a string");
   });
 
   it("parses the NuwaClaw agent_config/model_provider contract", () => {

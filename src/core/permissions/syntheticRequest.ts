@@ -28,17 +28,17 @@ export function buildSyntheticPermissionRequest(args: {
     options: [
       {
         optionId: "allow_once",
-        name: "允许本次",
+        name: "Allow once",
         kind: "allow_once",
       },
       {
         optionId: "allow_always",
-        name: "本会话始终允许",
+        name: "Allow always (this session)",
         kind: "allow_always",
       },
       {
         optionId: "reject_once",
-        name: "拒绝",
+        name: "Deny",
         kind: "reject_once",
       },
     ],

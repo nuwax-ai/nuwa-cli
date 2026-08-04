@@ -52,7 +52,7 @@ describe("config get/set", () => {
     const printed = logSpy.mock.calls.map((c) => c[0]).join("\n");
     expect(printed).toContain("example.com");
     expect(printed).toContain("alice");
-    expect(printed).toContain("computer-name: 我的电脑001");
+    expect(printed).toContain("Computer name: 我的电脑001");
     logSpy.mockRestore();
   });
 });

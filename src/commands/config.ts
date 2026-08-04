@@ -5,6 +5,7 @@ import {
   updateCredentials,
 } from "../core/auth/credentials.js";
 import { normalizeServerHost } from "../core/auth/regClient.js";
+import { t } from "../util/i18n/index.js";
 
 const SETTABLE_KEYS = [
   "domain",
@@ -20,34 +21,54 @@ function isSettableKey(key: string): key is SettableKey {
 
 export async function configGetCommand(key?: string): Promise<void> {
   const credentials = readCredentials();
+  const unset = t("config.stateUnset");
   if (!key) {
-    console.log(`domain: ${credentials.domain ?? "(未设置)"}`);
-    console.log(`username: ${credentials.username ?? "(未设置)"}`);
-    console.log(`computer-name: ${credentials.computerName ?? "(未设置)"}`);
-    console.log(`accounts: ${listStoredAccounts(credentials).length}`);
-    console.log(`saved-key: ${credentials.savedKey ? "(已设置)" : "(未设置)"}`);
-    console.log(`lanproxy-path: ${credentials.lanproxyPath ?? "(未设置)"}`);
+    console.log(
+      t("config.domain", { value: credentials.domain ?? unset }),
+    );
+    console.log(
+      t("config.username", { value: credentials.username ?? unset }),
+    );
+    console.log(
+      t("config.computerName", { value: credentials.computerName ?? unset }),
+    );
+    console.log(
+      t("config.accounts", { n: listStoredAccounts(credentials).length }),
+    );
+    console.log(
+      t("config.savedKey", {
+        state: credentials.savedKey ? t("config.stateSet") : unset,
+      }),
+    );
+    console.log(
+      t("config.lanproxyPath", {
+        value: credentials.lanproxyPath ?? unset,
+      }),
+    );
     return;
   }
   if (!isSettableKey(key)) {
     console.error(
       pc.red(
-        `[nuwa-cli] 未知配置项 "${key}"，可用：${SETTABLE_KEYS.join(", ")}`,
+        t("config.unknownKey", {
+          key,
+          keys: SETTABLE_KEYS.join(", "),
+        }),
       ),
     );
     process.exitCode = 1;
     return;
   }
   if (key === "saved-key") {
-    console.log(credentials.savedKey ? "(已设置)" : "(未设置)");
+    console.log(credentials.savedKey ? t("config.stateSet") : unset);
     return;
   }
   if (key === "lanproxy-path") {
-    console.log(credentials.lanproxyPath ?? "(未设置)");
+    console.log(credentials.lanproxyPath ?? unset);
     return;
   }
   console.log(
-    credentials[key === "domain" ? "domain" : "username"] ?? "(未设置)",
+    credentials[key === "domain" ? "domain" : "username"] ?? unset,
   );
 }
 
@@ -58,7 +79,10 @@ export async function configSetCommand(
   if (!isSettableKey(key)) {
     console.error(
       pc.red(
-        `[nuwa-cli] 未知配置项 "${key}"，可用：${SETTABLE_KEYS.join(", ")}`,
+        t("config.unknownKey", {
+          key,
+          keys: SETTABLE_KEYS.join(", "),
+        }),
       ),
     );
     process.exitCode = 1;
@@ -73,5 +97,5 @@ export async function configSetCommand(
   } else {
     updateCredentials({ username: value });
   }
-  console.log(pc.green(`已更新 ${key}。`));
+  console.log(pc.green(t("config.updated", { key })));
 }

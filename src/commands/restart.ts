@@ -10,6 +10,9 @@ import { findUiProcessIds } from "../core/processes/uiSingleton.js";
 import { stopProcessIds } from "../core/processes/processRegistry.js";
 import { reportGatewayStackReadiness } from "../core/processes/lanproxyStatus.js";
 import { debugLog } from "../core/debugLog.js";
+import { serveLogPath } from "../util/paths.js";
+import { CANCEL_EXIT_CODE } from "../util/ui.js";
+import { t } from "../util/i18n/index.js";
 
 export interface RestartCommandOptions {
   all?: boolean;
@@ -56,22 +59,18 @@ export async function restartAllServicesForced(
   // ensureRegistered 的「需要 --domain」报错（那条对自动重启场景不贴切）。
   const { readCredentials } = await import("../core/auth/credentials.js");
   if (!readCredentials().configKey) {
-    console.log(
-      pc.yellow(
-        "未登录 Nuwax，已跳过服务重启。请先运行 `nuwa-cli login` 登录，再运行 `nuwa-cli gateway` 启动服务。",
-      ),
-    );
+    console.log(pc.yellow(t("restart.notLoggedIn")));
     return;
   }
-  console.log(pc.dim("正在清理所有已运行的 Gateway / Console 进程..."));
+  console.log(pc.dim(t("restart.cleaning")));
   const stopped = await stopAllNuwaProcesses();
   if (stopped > 0) {
-    console.log(pc.green(`已停止 ${stopped} 个旧进程。`));
+    console.log(pc.green(t("restart.stoppedOld", { n: stopped })));
   } else {
-    console.log(pc.dim("没有需要清理的旧进程。"));
+    console.log(pc.dim(t("restart.noOldProcess")));
   }
 
-  console.log(pc.dim("正在强制重启 Gateway Server..."));
+  console.log(pc.dim(t("restart.restartingGateway")));
   await gatewayCommand({
     engine: options.engine,
     daemon: true,
@@ -87,39 +86,31 @@ export async function restartCommand(
   await restartAllServicesForced({ engine: options.engine });
 
   if (process.exitCode && process.exitCode !== 0) {
-    console.error(
-      pc.red("[nuwa-cli] Gateway 重启失败。"),
-    );
+    if (process.exitCode !== CANCEL_EXIT_CODE) {
+      console.error(pc.red(t("daemon.gatewayRestartFailed")));
+    }
     return;
   }
 
-  const stackReady = await reportGatewayStackReadiness();
+  const stackReady = await reportGatewayStackReadiness({
+    spinnerMessage: t("common.waitStack"),
+  });
   if (!stackReady) {
     console.error(
-      pc.red(
-        "[nuwa-cli] Gateway 重启后栈未就绪（exit 1）。请查看 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log 或运行 `nuwa-cli doctor`。",
-      ),
+      pc.red(t("restart.stackNotReady", { log: serveLogPath() })),
     );
     return;
   }
 
   if (!includeConsole) {
-    console.log(
-      pc.dim(
-        "Gateway 已重启。需要同时重启 Console 时请运行 `nuwa-cli restart --all`。",
-      ),
-    );
+    console.log(pc.dim(t("restart.gatewayRestarted")));
     // 无 KeepAlive 时提示安装登录自启，避免开机后需手动 start。
     try {
       const { getServiceStatus } = await import(
         "../core/service/serviceManager.js"
       );
       if (!getServiceStatus().installed) {
-        console.log(
-          pc.dim(
-            "提示：尚未安装登录自启（KeepAlive）。需要开机自动拉起 Gateway 时请运行 `nuwa-cli service install`（加 `--now` 可立即启动）。",
-          ),
-        );
+        console.log(pc.dim(t("restart.hintKeepAlive")));
       }
     } catch {
       // service 探测失败不影响 restart 主流程
@@ -127,7 +118,7 @@ export async function restartCommand(
     return;
   }
 
-  console.log(pc.dim("正在强制重启前台 Console..."));
+  console.log(pc.dim(t("restart.restartingConsole")));
   await uiCommand({
     engine: options.engine,
     force: true,

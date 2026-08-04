@@ -1,6 +1,7 @@
 import pc from "picocolors";
 import { readCredentials } from "../core/auth/credentials.js";
 import { getServeStatus } from "../core/serve/serveLock.js";
+import { printGatewayStatusLine } from "../core/serve/statusView.js";
 import { findUiProcessIds } from "../core/processes/uiSingleton.js";
 import {
   getServiceStatus,
@@ -10,6 +11,7 @@ import {
   uninstallService,
   type ServiceInstallOptions,
 } from "../core/service/serviceManager.js";
+import { t } from "../util/i18n/index.js";
 
 function hasUsableDefaultAccount(): boolean {
   const credentials = readCredentials();
@@ -18,30 +20,16 @@ function hasUsableDefaultAccount(): boolean {
 
 function requireDefaultAccount(): void {
   if (hasUsableDefaultAccount()) return;
-  throw new Error(
-    "未找到可用于启动的默认账号。请先运行 `nuwa-cli login --domain <host> --saved-key <key>`，或 `nuwa-cli gateway --domain <host> -u <username>` 成功注册一次。",
-  );
+  throw new Error(t("service.requireAccount"));
 }
 
 function printPlatformNote(): void {
   if (process.platform === "darwin") {
-    console.log(
-      pc.dim(
-        "macOS 使用当前用户 LaunchAgent：用户登录后自动启动；未登录前不会运行。",
-      ),
-    );
+    console.log(pc.dim(t("service.note.macos")));
   } else if (process.platform === "linux") {
-    console.log(
-      pc.dim(
-        "Linux 使用 systemd user service：默认用户登录后启动；如需未登录也随系统启动，请在系统上启用 linger（例如 `loginctl enable-linger $USER`，可能需要管理员权限）。",
-      ),
-    );
+    console.log(pc.dim(t("service.note.linux")));
   } else if (process.platform === "win32") {
-    console.log(
-      pc.dim(
-        "Windows 使用当前用户计划任务：用户登录时自动启动；不需要把密码写入计划任务。若计划任务被杀软/EDR 拦截，会自动改用「启动文件夹」自启。",
-      ),
-    );
+    console.log(pc.dim(t("service.note.windows")));
   }
 }
 
@@ -54,20 +42,16 @@ export async function serviceInstallCommand(
     console.log(
       pc.green(
         options.now
-          ? "Gateway 后台服务已安装并启动。"
-          : "Gateway 后台服务已安装，将在下次用户登录时自动启动。",
+          ? t("service.install.installedNow")
+          : t("service.install.installedLater"),
       ),
     );
     printPlatformNote();
   } catch (err) {
     console.error(
-      pc.red(`[nuwa-cli] 安装后台服务失败：${(err as Error).message}`),
+      pc.red(t("service.install.failed", { msg: (err as Error).message })),
     );
-    console.log(
-      pc.dim(
-        "（后台服务用于开机/登录自启动；此步骤失败不影响登录态，可手动运行 nuwa-cli serve 启动 Gateway。）",
-      ),
-    );
+    console.log(pc.dim(t("service.install.failedHint")));
     process.exitCode = 1;
   }
 }
@@ -76,10 +60,10 @@ export async function serviceStartCommand(): Promise<void> {
   try {
     requireDefaultAccount();
     startService();
-    console.log(pc.green("Gateway 后台服务已启动。"));
+    console.log(pc.green(t("service.start.done")));
   } catch (err) {
     console.error(
-      pc.red(`[nuwa-cli] 启动后台服务失败：${(err as Error).message}`),
+      pc.red(t("service.start.failed", { msg: (err as Error).message })),
     );
     process.exitCode = 1;
   }
@@ -88,10 +72,10 @@ export async function serviceStartCommand(): Promise<void> {
 export async function serviceStopCommand(): Promise<void> {
   try {
     stopService();
-    console.log(pc.green("Gateway 后台服务已停止。"));
+    console.log(pc.green(t("service.stop.done")));
   } catch (err) {
     console.error(
-      pc.red(`[nuwa-cli] 停止后台服务失败：${(err as Error).message}`),
+      pc.red(t("service.stop.failed", { msg: (err as Error).message })),
     );
     process.exitCode = 1;
   }
@@ -100,10 +84,10 @@ export async function serviceStopCommand(): Promise<void> {
 export async function serviceUninstallCommand(): Promise<void> {
   try {
     uninstallService();
-    console.log(pc.green("Gateway 后台服务已卸载。"));
+    console.log(pc.green(t("service.uninstall.done")));
   } catch (err) {
     console.error(
-      pc.red(`[nuwa-cli] 卸载后台服务失败：${(err as Error).message}`),
+      pc.red(t("service.uninstall.failed", { msg: (err as Error).message })),
     );
     process.exitCode = 1;
   }
@@ -112,48 +96,50 @@ export async function serviceUninstallCommand(): Promise<void> {
 export async function serviceStatusCommand(): Promise<void> {
   try {
     const service = getServiceStatus();
-    const installed = service.installed ? "已安装" : "未安装";
+    const installed = service.installed
+      ? t("service.status.installedWord")
+      : t("service.status.notInstalledWord");
     const active =
-      service.active === null ? "未知" : service.active ? "运行中" : "未运行";
-    console.log(`系统启动项：${installed}，${active}`);
+      service.active === null
+        ? t("service.status.activeUnknown")
+        : service.active
+          ? t("service.status.activeRunning")
+          : t("service.status.activeStopped");
+    console.log(t("service.status.line", { installed, active }));
     if (service.configPath)
-      console.log(pc.dim(`配置文件：${service.configPath}`));
-    if (service.taskName) console.log(pc.dim(`计划任务：${service.taskName}`));
+      console.log(pc.dim(t("service.status.configPath", { path: service.configPath })));
+    if (service.taskName)
+      console.log(
+        pc.dim(t("service.status.taskNameLine", { name: service.taskName })),
+      );
     if (service.autostartMethod)
       console.log(
         pc.dim(
-          `自启方式：${service.autostartMethod === "taskScheduler" ? "计划任务" : "启动文件夹"}`,
+          t("service.status.autostartMethodLine", {
+            method:
+              service.autostartMethod === "taskScheduler"
+                ? t("service.method.taskScheduler")
+                : t("service.method.startupFolder"),
+          }),
         ),
       );
 
     const serve = await getServeStatus();
-    if (serve.state === "running") {
-      console.log(
-        `Gateway：运行中 http://${serve.host}:${serve.port}（pid ${serve.pid}）`,
-      );
-    } else if (serve.state === "unhealthy") {
-      console.log(
-        pc.yellow(
-          `Gateway：进程存在但 /health 不可用 http://${serve.host}:${serve.port}（pid ${serve.pid}）`,
-        ),
-      );
-    } else {
-      console.log(`Gateway：未运行${serve.note ? `（${serve.note}）` : ""}`);
-    }
+    printGatewayStatusLine(serve);
     const consolePids = findUiProcessIds();
     console.log(
       consolePids.length > 0
-        ? `Console：前台运行中（pid ${consolePids.join(", ")}）`
-        : "Console：未运行（Console 不由系统后台服务管理）",
+        ? t("service.status.consoleRunning", { pids: consolePids.join(", ") })
+        : t("service.status.consoleIdle"),
     );
 
     if (service.details.trim()) {
-      console.log(pc.dim("\n系统状态详情："));
+      console.log(pc.dim(t("service.status.detailsHeader")));
       console.log(pc.dim(service.details.trim()));
     }
   } catch (err) {
     console.error(
-      pc.red(`[nuwa-cli] 查看后台服务失败：${(err as Error).message}`),
+      pc.red(t("service.status.failed", { msg: (err as Error).message })),
     );
     process.exitCode = 1;
   }

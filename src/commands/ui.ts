@@ -10,6 +10,7 @@ import {
 import { startUiHttp } from "../core/ui/uiServer.js";
 import { CLI_UI_PORT, findAvailablePort } from "../core/ports.js";
 import { ensureDir, workspacesDir } from "../util/paths.js";
+import { printShuttingDown } from "../util/ui.js";
 import { findOnPath } from "../util/which.js";
 import {
   registerProcess,
@@ -186,7 +187,7 @@ export async function uiCommand(options: UiCommandOptions): Promise<void> {
   const shutdown = async (sig: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(pc.dim(`\n[nuwa-cli] 收到 ${sig}，关闭中...`));
+    printShuttingDown(sig);
     await stop().catch(() => {});
     releaseUiSingleton();
     process.exit(0);

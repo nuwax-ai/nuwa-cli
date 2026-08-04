@@ -58,9 +58,9 @@ describe("update command", () => {
 
     expect(runner).not.toHaveBeenCalled();
     const printed = logSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(printed).toContain("升级目标：@nuwax-ai/nuwa-cli@0.2.0");
+    expect(printed).toContain("Upgrade target: @nuwax-ai/nuwa-cli@0.2.0");
     expect(printed).toContain(
-      "执行：npm install -g @nuwax-ai/nuwa-cli@0.2.0 --progress=true",
+      "Run: npm install -g @nuwax-ai/nuwa-cli@0.2.0 --progress=true",
     );
   });
 
@@ -77,7 +77,7 @@ describe("update command", () => {
       expect.objectContaining({ stdio: "pipe" }),
     );
     const printed = logSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(printed).toContain("@nuwax-ai/nuwa-cli@beta：0.2.0");
+    expect(printed).toContain("@nuwax-ai/nuwa-cli@beta: 0.2.0");
   });
 
   it("ignores Commander's third action argument instead of treating it as a runner", async () => {
@@ -154,20 +154,23 @@ describe("update command", () => {
       expect.objectContaining({ stdio: "pipe" }),
     );
     expect(logSpy.mock.calls.flat().join("\n")).toContain(
-      "已是最新版本，无需重新安装",
+      "Already the latest version; no reinstall needed",
     );
   });
 
-  it("renders a bounded install progress bar with a percentage", async () => {
-    const { estimateInstallPercent, formatProgressBar } =
-      await import("../src/commands/update.js");
+  it("prints honest step labels instead of a fake percentage bar", async () => {
+    const { updateCommand } = await import("../src/commands/update.js");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const runner = vi.fn(() => ({ status: 0 }));
 
-    expect(estimateInstallPercent(30, 0)).toBe(30);
-    expect(estimateInstallPercent(30, 20)).toBe(62);
-    expect(estimateInstallPercent(30, 10_000)).toBeLessThanOrEqual(95);
-    const rendered = formatProgressBar(62, "安装中");
-    expect(rendered).toContain("62% 安装中");
-    expect(rendered).toHaveLength(30 + 2 + 1 + 3 + 2 + 3);
+    await updateCommand(undefined, {}, runner);
+
+    const printed = logSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(printed).toContain("Step 1/4");
+    expect(printed).toContain("Step 3/4");
+    // 旧的假百分比进度条应已移除
+    expect(printed).not.toMatch(/\[%{0,2}#+\]/);
+    expect(printed).not.toContain("30%");
   });
 
   it("runs npm-cli.js directly on Windows when npm resolves to a .cmd shim", async () => {

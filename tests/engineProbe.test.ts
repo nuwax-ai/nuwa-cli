@@ -38,7 +38,7 @@ describe("selectEngine", () => {
   it("fails when the explicit engine is unavailable", async () => {
     mocks.resolveCodex.mockRejectedValue(new Error("missing auth"));
     const { selectEngine } = await import("../src/core/engines/probe.js");
-    await expect(selectEngine("codex")).rejects.toThrow(/codex 不可用/);
+    await expect(selectEngine("codex")).rejects.toThrow(/codex unavailable/);
   });
 
   it("selects the only available engine", async () => {
@@ -60,6 +60,6 @@ describe("selectEngine", () => {
     mocks.resolveClaude.mockRejectedValue(new Error("missing claude"));
     mocks.resolveCodex.mockRejectedValue(new Error("missing codex"));
     const { selectEngine } = await import("../src/core/engines/probe.js");
-    await expect(selectEngine()).rejects.toThrow(/未找到可用 Agent 引擎/);
+    await expect(selectEngine()).rejects.toThrow(/no available agent engine/);
   });
 });

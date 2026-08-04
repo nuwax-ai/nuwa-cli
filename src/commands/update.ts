@@ -13,6 +13,8 @@ import {
   stopTunnelChildProcesses,
 } from "../core/processes/serveSingleton.js";
 import { findUiProcessIds } from "../core/processes/uiSingleton.js";
+import { withSpinner, success, dim } from "../util/ui.js";
+import { t } from "../util/i18n/index.js";
 
 export interface UpdateOptions {
   check?: boolean;
@@ -54,25 +56,6 @@ function runCommand(
     stderr: typeof result.stderr === "string" ? result.stderr : undefined,
     error: result.error,
   };
-}
-
-export function estimateInstallPercent(
-  startPercent: number,
-  elapsedSeconds: number,
-): number {
-  return Math.min(
-    95,
-    startPercent +
-      Math.floor(
-        ((95 - startPercent) * elapsedSeconds) / (elapsedSeconds + 20),
-      ),
-  );
-}
-
-export function formatProgressBar(percent: number, label: string): string {
-  const width = 30;
-  const filled = Math.floor((percent * width) / 100);
-  return `[${"#".repeat(filled)}${"-".repeat(width - filled)}] ${String(percent).padStart(3)}% ${label}`;
 }
 
 async function runInstallWithProgress(
@@ -119,9 +102,7 @@ async function restartServeIfLoggedIn(): Promise<void> {
   try {
     const { readCredentials } = await import("../core/auth/credentials.js");
     if (!readCredentials().configKey) {
-      console.log(
-        "未登录 Nuwax，已跳过升级后的服务自动重启。请先运行 `nuwa-cli login` 登录，再运行 `nuwa-cli gateway` 启动服务。",
-      );
+      console.log(t("update.notLoggedIn"));
       return;
     }
     const cliEntry = process.argv[1];
@@ -136,15 +117,15 @@ async function restartServeIfLoggedIn(): Promise<void> {
       child.once("close", (code) => resolve(code));
     });
     if (exitCode === 0) {
-      console.log("已登录，已重启所有服务（Gateway 正在后台拉起子服务）。");
+      console.log(t("update.restarted"));
     } else {
-      console.log(
-        `serve 自动重启可能未完成（restart 退出码 ${exitCode}）。可手动运行 \`nuwa-cli gateway\`。`,
-      );
+      console.log(t("update.restartMaybeFailed", { code: exitCode ?? "unknown" }));
     }
   } catch (err) {
     console.log(
-      `serve 自动重启跳过：${err instanceof Error ? err.message : String(err)}`,
+      t("update.restartSkipped", {
+        msg: err instanceof Error ? err.message : String(err),
+      }),
     );
   }
 }
@@ -186,9 +167,7 @@ async function stopRuntimeProcessesForUpdate(): Promise<void> {
 export function normalizeUpdateTarget(target?: string): string {
   const value = (target || DEFAULT_DIST_TAG).trim();
   if (!value || value.startsWith("-")) {
-    throw new Error(
-      "升级版本不能为空。示例：nuwa-cli update beta 或 nuwa-cli update 0.1.0-beta.2",
-    );
+    throw new Error(t("update.emptyTarget"));
   }
   return value.startsWith("v") && /^\d/.test(value.slice(1))
     ? value.slice(1)
@@ -246,7 +225,7 @@ export async function updateCommand(
     const target = normalizeUpdateTarget(targetArg);
     const command = resolveCommand();
     if (!command) {
-      throw new Error("未找到 npm。请先安装 Node.js/npm 后重试。");
+      throw new Error(t("update.noNpm"));
     }
 
     const packageSpec = `${PACKAGE_NAME}@${target}`;
@@ -262,53 +241,71 @@ export async function updateCommand(
       if (result.error) throw result.error;
       if (result.status !== 0) {
         throw new Error(
-          (result.stderr || result.stdout || "查询 npm 版本失败。").trim(),
+          (result.stderr || result.stdout || t("update.queryFailed")).trim(),
         );
       }
       const remoteVersion = (result.stdout || "").trim();
-      console.log(`当前版本：${CLI_VERSION}`);
-      console.log(`${packageSpec}：${remoteVersion}`);
-      if (remoteVersion === CLI_VERSION) console.log("已是目标版本。");
-      else console.log(`可升级：${CLI_VERSION} -> ${remoteVersion}`);
+      console.log(t("update.currentVersion", { version: CLI_VERSION }));
+      console.log(
+        t("update.targetSpec", { spec: packageSpec, version: remoteVersion }),
+      );
+      if (remoteVersion === CLI_VERSION) console.log(t("update.alreadyTarget"));
+      else
+        console.log(
+          t("update.canUpgrade", { from: CLI_VERSION, to: remoteVersion }),
+        );
       return;
     }
 
     const installArgs = buildInstallArgs(packageSpec, options.registry);
     if (options.dryRun) {
-      console.log(`当前版本：${CLI_VERSION}`);
-      console.log(`升级目标：${packageSpec}`);
-      console.log(`执行：${printableCommand("npm", installArgs)}`);
+      console.log(t("update.currentVersion", { version: CLI_VERSION }));
+      console.log(t("update.upgradeTarget", { spec: packageSpec }));
+      console.log(
+        t("update.execute", { cmd: printableCommand("npm", installArgs) }),
+      );
       return;
     }
 
-    console.log(formatProgressBar(0, "正在检查目标版本..."));
-    const versionResult = runner(
-      command,
-      buildViewArgs(packageSpec, options.registry),
-      {
-        encoding: "utf-8",
-        env,
-        stdio: "pipe",
+    // 步骤 1/4：检查目标版本（stdio pipe，无终端输出，spinner 可独占行）
+    const remoteVersion = await withSpinner(
+      t("update.step1"),
+      async () => {
+        const versionResult = runner(
+          command,
+          buildViewArgs(packageSpec, options.registry),
+          {
+            encoding: "utf-8",
+            env,
+            stdio: "pipe",
+          },
+        );
+        if (versionResult.error) throw versionResult.error;
+        return versionResult.status === 0
+          ? (versionResult.stdout || "").trim()
+          : "";
       },
     );
-    if (versionResult.error) throw versionResult.error;
-    const remoteVersion =
-      versionResult.status === 0 ? (versionResult.stdout || "").trim() : "";
     if (remoteVersion === CLI_VERSION) {
-      console.log(formatProgressBar(100, "已是最新版本，无需重新安装。"));
+      console.log(success(t("update.alreadyLatest")));
       return;
     }
 
-    console.log(`当前版本：${CLI_VERSION}`);
-    if (remoteVersion) console.log(`目标版本：${remoteVersion}`);
-    console.log(`升级目标：${packageSpec}`);
-    console.log(`执行：${printableCommand("npm", installArgs)}`);
+    console.log(t("update.currentVersion", { version: CLI_VERSION }));
+    if (remoteVersion)
+      console.log(t("update.targetVersion", { version: remoteVersion }));
+    console.log(t("update.upgradeTarget", { spec: packageSpec }));
+    console.log(
+      t("update.execute", { cmd: printableCommand("npm", installArgs) }),
+    );
 
-    console.log(formatProgressBar(20, "正在准备升级..."));
-    console.log("正在停止 Gateway、Console、lanproxy 和文件服务，以释放升级文件...");
-    await stopRuntimeProcessesForUpdate();
+    // 步骤 2/4：停止运行中的服务（异步、无 console 输出，spinner 可独占行）
+    await withSpinner(t("update.step2"), () => stopRuntimeProcessesForUpdate());
+    console.log(success(t("update.stopped")));
 
-    console.log(formatProgressBar(30, "正在安装依赖..."));
+    // 步骤 3/4：安装依赖。保持 stdio:"inherit" 让 npm 自渲染进度条/spinner——
+    // 不在其上叠加 CLI spinner，否则会与 npm 输出在同一终端行打架闪烁（历史踩坑）。
+    console.log(dim(t("update.step3")) + packageSpec);
     const result =
       typeof runnerArg === "function"
         ? runner(command, installArgs, {
@@ -321,11 +318,11 @@ export async function updateCommand(
       process.exitCode = result.status ?? 1;
       return;
     }
-    console.log(formatProgressBar(100, "安装完成。"));
-    console.log(
-      "升级命令已完成。请重新运行 `nuwa-cli --version` 确认当前 shell 解析到的新版本。",
-    );
-    // 升级后静默后台重启 serve（已登录时；未登录跳过）
+    console.log(success(t("update.installDone")));
+    console.log(t("update.doneHint"));
+    // 步骤 4/4：升级后按登录态重启 serve。restart 子进程走 stdio:inherit 自带输出，
+    // 故这里只打一行步骤提示，不用 live spinner（避免与 inherit 输出交错）。
+    console.log(dim(t("update.step4")));
     await restartServeIfLoggedIn();
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));

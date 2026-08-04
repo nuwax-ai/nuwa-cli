@@ -7,8 +7,10 @@ import {
   discoverLegacyNuwaProcesses,
   findServeProcessIds,
   stopServeProcesses,
+  stopTunnelChildProcesses,
 } from "../core/processes/serveSingleton.js";
 import { findUiProcessIds } from "../core/processes/uiSingleton.js";
+import { t } from "../util/i18n/index.js";
 
 export interface ProcessesCommandOptions {
   json?: boolean;
@@ -21,10 +23,11 @@ function endpoint(host?: string, port?: number): string {
 function processLabel(
   kind: "serve" | "ui" | "chat" | "lanproxy" | "file-server",
 ): string {
-  if (kind === "serve") return "gateway";
-  if (kind === "ui") return "console";
-  if (kind === "lanproxy") return "lanproxy";
-  return kind;
+  if (kind === "serve") return t("processes.label.gateway");
+  if (kind === "ui") return t("processes.label.console");
+  if (kind === "lanproxy") return t("processes.label.lanproxy");
+  if (kind === "chat") return t("processes.label.chat");
+  return t("processes.label.fileServer");
 }
 
 export function processesCommand(options: ProcessesCommandOptions): void {
@@ -51,18 +54,24 @@ export function processesCommand(options: ProcessesCommandOptions): void {
   }
 
   if (records.length === 0) {
-    console.log("未发现仍在运行的 nuwa-cli 进程。");
+    console.log(t("processes.none"));
     return;
   }
 
-  console.log("PID\t类型\t状态\t模式\t地址\t启动时间");
+  console.log(t("processes.header"));
   for (const record of records) {
     const state =
       record.state === "running"
-        ? pc.green("running")
-        : pc.yellow("starting");
+        ? pc.green(t("processes.state.running"))
+        : pc.yellow(t("processes.state.starting"));
+    const mode =
+      record.daemon === null
+        ? t("processes.mode.legacy")
+        : record.daemon
+          ? t("processes.mode.daemon")
+          : t("processes.mode.foreground");
     console.log(
-      `${record.pid}\t${processLabel(record.kind)}\t${state}\t${record.daemon === null ? "legacy" : record.daemon ? "daemon" : "foreground"}\t${endpoint(record.host, record.port)}\t${record.startedAt ?? "-"}`,
+      `${record.pid}\t${processLabel(record.kind)}\t${state}\t${mode}\t${endpoint(record.host, record.port)}\t${record.startedAt ?? "-"}`,
     );
   }
 }
@@ -84,17 +93,29 @@ export async function stopCommand(
     if (stopGateway) await stopServeProcesses(gatewayPids);
     if (stopConsole) await stopProcessIds(consolePids);
     if (gatewayPids.length > 0) {
-      console.log(pc.green(`已停止 Gateway（PID ${gatewayPids.join(", ")}）。`));
+      console.log(
+        pc.green(
+          t("processes.stoppedGateway", { pids: gatewayPids.join(", ") }),
+        ),
+      );
     }
     if (consolePids.length > 0) {
-      console.log(pc.green(`已停止 Console（PID ${consolePids.join(", ")}）。`));
+      console.log(
+        pc.green(
+          t("processes.stoppedConsole", { pids: consolePids.join(", ") }),
+        ),
+      );
     }
     if (gatewayPids.length === 0 && consolePids.length === 0) {
-      console.log("未发现选定范围内正在运行的服务。");
+      console.log(t("processes.noneInRange"));
     }
   } catch (err) {
     console.error(
-      pc.red(`[nuwa-cli] 停止服务失败：${(err as Error).message}`),
+      pc.red(
+        t("processes.stopFailed", {
+          msg: (err as Error).message,
+        }),
+      ),
     );
     process.exitCode = 1;
   }

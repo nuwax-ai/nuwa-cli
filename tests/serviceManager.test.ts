@@ -245,10 +245,10 @@ describe("describeAutostartService", () => {
       autostartMethod: "taskScheduler",
     });
     expect(desc.installed).toBe(true);
-    expect(desc.methodLabel).toContain("计划任务");
+    expect(desc.methodLabel).toContain("scheduled task");
     expect(desc.methodLabel).toContain(WINDOWS_TASK_NAME);
-    expect(desc.summary).toContain("已启用");
-    expect(desc.summary).toContain("服务运行中");
+    expect(desc.summary).toContain("enabled");
+    expect(desc.summary).toContain("service running");
   });
 
   it("summarizes startup-folder fallback with unknown active state", () => {
@@ -258,8 +258,8 @@ describe("describeAutostartService", () => {
       details: "",
       autostartMethod: "startupFolder",
     });
-    expect(desc.methodLabel).toBe("启动文件夹");
-    expect(desc.summary).toContain("状态未知");
+    expect(desc.methodLabel).toBe("startup folder");
+    expect(desc.summary).toContain("state unknown");
   });
 
   it("summarizes a disabled KeepAlive with install hint", () => {
@@ -269,7 +269,7 @@ describe("describeAutostartService", () => {
       details: "",
     });
     expect(desc.installed).toBe(false);
-    expect(desc.summary).toContain("未启用");
+    expect(desc.summary).toContain("disabled");
     expect(desc.summary).toContain("service install");
   });
 });

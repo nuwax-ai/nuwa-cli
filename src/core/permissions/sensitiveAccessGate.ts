@@ -76,7 +76,7 @@ async function postJson(
     req.on("error", reject);
     req.on("timeout", () => {
       req.destroy();
-      reject(new ConsentRequiredError("sensitive-access await timed out"));
+      reject(new ConsentRequiredError("等待敏感操作审批超时"));
     });
     req.write(payload);
     req.end();
@@ -149,7 +149,7 @@ export async function withSensitiveAccess<T>(
     const message =
       typeof json.message === "string"
         ? json.message
-        : `sensitive-access failed (HTTP ${status})`;
+        : `敏感操作审批失败（HTTP ${status}）`;
     throw new ConsentRequiredError(message);
   }
 

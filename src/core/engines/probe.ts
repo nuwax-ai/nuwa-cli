@@ -12,8 +12,8 @@ const ENGINE_IDS: EngineKind[] = ["claude", "codex"];
 
 function fixForEngine(id: EngineKind): string {
   return id === "claude"
-    ? "重新安装 nuwa-cli，并确认 claude-agent-sdk 当前平台包已安装"
-    : "重新安装 nuwa-cli，并确认 @nuwax-ai/nuwax-codex-acp-ts 已安装";
+    ? "reinstall nuwa-cli and ensure the claude-agent-sdk platform package is installed"
+    : "reinstall nuwa-cli and ensure @nuwax-ai/nuwax-codex-acp-ts is installed";
 }
 
 export async function probeEngine(id: EngineKind): Promise<EngineProbeResult> {
@@ -46,13 +46,13 @@ export async function selectEngine(
 
   if (explicit) {
     if (explicit !== "claude" && explicit !== "codex") {
-      throw new Error(`未知引擎 "${explicit}"，可用引擎：claude, codex`);
+      throw new Error(`unknown engine "${explicit}", available: claude, codex`);
     }
     const selected = probes.find((probe) => probe.id === explicit);
     if (!selected?.ok) {
       throw new Error(
-        `${explicit} 不可用：${selected?.detail ?? "未知错误"}${
-          selected?.fix ? `。${selected.fix}` : ""
+        `${explicit} unavailable: ${selected?.detail ?? "unknown error"}${
+          selected?.fix ? `. ${selected.fix}` : ""
         }`,
       );
     }
@@ -64,11 +64,11 @@ export async function selectEngine(
     const details = probes
       .map(
         (probe) =>
-          `- ${probe.id}: ${probe.detail}${probe.fix ? `；${probe.fix}` : ""}`,
+          `- ${probe.id}: ${probe.detail}${probe.fix ? `; ${probe.fix}` : ""}`,
       )
       .join("\n");
     throw new Error(
-      `未找到可用 Agent 引擎。请确认 Claude/Codex ACP 的当前平台包已安装。\n${details}`,
+      `no available agent engine. Ensure the Claude/Codex ACP platform package for the current platform is installed.\n${details}`,
     );
   }
 

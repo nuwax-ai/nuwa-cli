@@ -472,7 +472,7 @@ export class SessionHub {
                   handle.prompt(prompt),
                   new Promise<never>((_, reject) =>
                     setTimeout(
-                      () => reject(new Error("引擎响应超时（5 分钟无输出）")),
+                      () => reject(new Error("engine response timeout (no output for 5m)")),
                       PROMPT_TIMEOUT_MS,
                     ),
                   ),

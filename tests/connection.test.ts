@@ -137,7 +137,7 @@ describe("withEngineConnection", () => {
           await session.prompt("trigger-error");
         },
       ),
-    ).rejects.toThrow(/异常退出/);
+    ).rejects.toThrow(/exited unexpectedly/);
   });
 
   it("replays history via session/load and delivers it as agent text", async () => {
@@ -171,6 +171,6 @@ describe("withEngineConnection", () => {
     // Let initialize + session/new + session/prompt round-trip, then abort.
     await new Promise((resolve) => setTimeout(resolve, 200));
     controller.abort();
-    await expect(result).rejects.toThrow(/已被中止/);
+    await expect(result).rejects.toThrow(/engine session aborted/);
   });
 });

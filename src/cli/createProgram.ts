@@ -6,15 +6,15 @@ import { registerContextCommands } from "./registerContextCommands.js";
 import { registerServiceCommands } from "./registerServiceCommands.js";
 import { registerUpdateCommand } from "./registerUpdateCommand.js";
 import { registerUiCommand } from "./registerUiCommand.js";
+import { registerLangCommand } from "../commands/lang.js";
+import { t } from "../util/i18n/index.js";
 
 export function createProgram(): Command {
   const program = new Command();
 
   program
     .name("nuwa-cli")
-    .description(
-      "Headless multi-engine agent CLI — attaches to your already-installed claude/codex CLIs over ACP",
-    )
+    .description(t("cli.description"))
     .version(CLI_VERSION);
 
   registerAgentCommands(program);
@@ -23,6 +23,7 @@ export function createProgram(): Command {
   registerServiceCommands(program);
   registerUiCommand(program);
   registerUpdateCommand(program);
+  registerLangCommand(program);
 
   return program;
 }

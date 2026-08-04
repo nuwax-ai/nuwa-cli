@@ -1,37 +1,23 @@
 import type { Command } from "commander";
 import { CLI_AGENT_PORT, CLI_UI_PORT } from "../core/ports.js";
+import { t } from "../util/i18n/index.js";
 
 export function addCloudLoginOptions(command: Command): Command {
   return command
-    .option("--domain <host>", "Nuwax 服务器地址；不传则使用当前默认 domain")
-    .option(
-      "--saved-key <key>",
-      "已有 savedKey；会保存为当前账号并加入多账号 JSON 映射",
-    )
-    .option(
-      "-u, --username <username>",
-      "账号名；同 domain+username 已保存时会复用 savedKey，密码仅用于本次请求",
-    );
+    .option("--domain <host>", t("cli.login.opt.domain"))
+    .option("--saved-key <key>", t("cli.login.opt.savedKey"))
+    .option("-u, --username <username>", t("cli.login.opt.username"));
 }
 
 export function addCloudLoginHelp(command: Command): Command {
-  return command.addHelpText(
-    "after",
-    [
-      "",
-      "说明：",
-      "  - 不使用 SQLite，凭证保存在 ~/.nuwa-cli/credentials.json。",
-      "  - 同一 domain+username 再次登录会复用已保存 savedKey，避免后端新建电脑。",
-      "  - 不传 --domain / -u 时，会用当前默认账号的 savedKey 免密重新注册。",
-    ].join("\n"),
-  );
+  return command.addHelpText("after", t("cli.login.help.block"));
 }
 
 export function addModelOverlayOptions(command: Command): Command {
   return command
-    .option("--api-key <key>", "覆盖模型 API key")
-    .option("--base-url <url>", "覆盖模型 API base URL")
-    .option("--model <model>", "覆盖模型名称");
+    .option("--api-key <key>", t("cli.opt.apiKey"))
+    .option("--base-url <url>", t("cli.opt.baseUrl"))
+    .option("--model <model>", t("cli.opt.model"));
 }
 
 export function addUiOptions(command: Command): Command {
@@ -39,33 +25,23 @@ export function addUiOptions(command: Command): Command {
     command
       .option(
         "--port <port>",
-        "Console 监听端口；占用时自动向后寻找可用端口",
+        t("cli.ui.opt.port"),
         String(CLI_UI_PORT),
       )
-      .option(
-        "--host <host>",
-        "Console 监听地址（仅建议 127.0.0.1）",
-        "127.0.0.1",
-      )
+      .option("--host <host>", t("cli.ui.opt.host"), "127.0.0.1")
       .option(
         "--engine <engine>",
-        "默认引擎：claude 或 codex（界面内仍可切换）",
+        t("cli.ui.opt.engine"),
         "claude",
       )
-      .option(
-        "--cwd <dir>",
-        "新会话的默认工作目录；不传时使用默认工作区",
-      )
+      .option("--cwd <dir>", t("cli.ui.opt.cwd"))
       .option(
         "--approve <policy>",
-        "权限策略：auto（默认，自动批准）/ ask（逐个审批）/ deny",
+        t("cli.ui.opt.approve"),
         "auto",
       )
-      .option(
-        "--force",
-        "发现已有 Console 时，先停止旧的前台实例再启动",
-      )
-      .option("--no-open", "启动后不自动打开浏览器"),
+      .option("--force", t("cli.ui.opt.force"))
+      .option("--no-open", t("cli.ui.opt.noOpen")),
   );
 }
 
@@ -74,64 +50,69 @@ export function addServeRuntimeOptions(command: Command): Command {
     command
       .option(
         "--port <port>",
-        "HTTP API 优先监听端口；占用时自动向后寻找可用端口",
+        t("cli.serve.opt.port"),
         String(CLI_AGENT_PORT),
       )
-      .option("--host <host>", "HTTP API 监听地址", "127.0.0.1")
-      .option(
-        "--cwd <dir>",
-        "当前项目目录；不传时按 ~/.nuwa-cli/workspaces/<project_id> 自动创建",
-      )
+      .option("--host <host>", t("cli.serve.opt.host"), "127.0.0.1")
+      .option("--cwd <dir>", t("cli.serve.opt.cwd"))
       .option(
         "--approve <policy>",
-        "权限策略：auto（默认，普通工具自动批准；敏感访问仍需审批）、ask（全部人工审批）或 deny",
+        t("cli.serve.opt.approve"),
         "auto",
       )
       .option(
         "--lanproxy-path <path>",
-        "覆盖 npm 平台包：指定 lanproxy 二进制或 Electron resources 目录",
-      )
-      .option("--lanproxy-host <host>", "覆盖注册返回的 lanproxy serverHost")
-      .option("--lanproxy-port <port>", "覆盖注册返回的 lanproxy serverPort")
-      .option("--lanproxy-ssl <true|false>", "lanproxy 是否启用 ssl", "true")
-      .option(
-        "--daemon",
-        "后台运行（stdout/stderr 写入 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log）",
+        t("cli.serve.opt.lanproxyPath"),
       )
       .option(
-        "--force",
-        "发现已有 Gateway/serve 时，先停止旧实例再启动",
-      ),
+        "--lanproxy-host <host>",
+        t("cli.serve.opt.lanproxyHost"),
+      )
+      .option(
+        "--lanproxy-port <port>",
+        t("cli.serve.opt.lanproxyPort"),
+      )
+      .option(
+        "--lanproxy-ssl <true|false>",
+        t("cli.serve.opt.lanproxySsl"),
+        "true",
+      )
+      .option("--daemon", t("cli.serve.opt.daemon"))
+      .option("--force", t("cli.serve.opt.force")),
   );
 }
 
 export function addServiceInstallOptions(command: Command): Command {
   return command
-    .option(
-      "--engine <engine>",
-      "服务启动时使用的引擎：claude 或 codex；不传则由 Gateway 自动检测",
-    )
+    .option("--engine <engine>", t("cli.service.opt.engine"))
     .option(
       "--port <port>",
-      "HTTP API 优先监听端口；占用时自动向后寻找可用端口",
+      t("cli.serve.opt.port"),
       String(CLI_AGENT_PORT),
     )
-    .option("--host <host>", "HTTP API 监听地址", "127.0.0.1")
-    .option(
-      "--cwd <dir>",
-      "当前项目目录；不传时按 ~/.nuwa-cli/workspaces/<project_id> 自动创建",
-    )
+    .option("--host <host>", t("cli.serve.opt.host"), "127.0.0.1")
+    .option("--cwd <dir>", t("cli.serve.opt.cwd"))
     .option(
       "--approve <policy>",
-      "权限策略：auto（默认，普通工具自动批准；敏感访问仍需审批）、ask（全部人工审批）或 deny",
+      t("cli.serve.opt.approve"),
       "auto",
     )
     .option(
       "--lanproxy-path <path>",
-      "覆盖 npm 平台包：指定 lanproxy 二进制或 Electron resources 目录",
+      t("cli.serve.opt.lanproxyPath"),
     )
-    .option("--lanproxy-host <host>", "覆盖注册返回的 lanproxy serverHost")
-    .option("--lanproxy-port <port>", "覆盖注册返回的 lanproxy serverPort")
-    .option("--lanproxy-ssl <true|false>", "lanproxy 是否启用 ssl", "true")
-    .option("--now", "安装后立即启动服务");
+    .option(
+      "--lanproxy-host <host>",
+      t("cli.serve.opt.lanproxyHost"),
+    )
+    .option(
+      "--lanproxy-port <port>",
+      t("cli.serve.opt.lanproxyPort"),
+    )
+    .option(
+      "--lanproxy-ssl <true|false>",
+      t("cli.serve.opt.lanproxySsl"),
+      "true",
+    )
+    .option("--now", t("cli.service.opt.now"));
 }

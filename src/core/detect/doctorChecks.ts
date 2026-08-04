@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { cliCredentialsPath } from "../../util/paths.js";
+import { cliCredentialsPath, serveLogPath } from "../../util/paths.js";
 import { findOnPath, getVersion } from "../../util/which.js";
 import { findServeProcessIds } from "../processes/serveSingleton.js";
 import { findUiProcessIds } from "../processes/uiSingleton.js";
@@ -18,6 +18,7 @@ import {
   isEngineIsolationEnabled,
 } from "../env/engineHome.js";
 import { describeAutostartService } from "../service/serviceManager.js";
+import { t } from "../../util/i18n/index.js";
 
 export interface DoctorCheckResult {
   id: string;
@@ -45,8 +46,8 @@ export function checkNodeVersion(): DoctorCheckResult {
     id: "node",
     label: "Node.js",
     ok,
-    detail: ok ? `v${version}` : `v${version}（需要 >= 22）`,
-    fix: ok ? undefined : "安装 Node.js 22 或更高版本：https://nodejs.org",
+    detail: ok ? `v${version}` : t("doctor.node.detailFail", { version }),
+    fix: ok ? undefined : t("doctor.node.fix"),
     severity: "required",
   };
 }
@@ -61,8 +62,10 @@ export async function checkClaude(): Promise<DoctorCheckResult> {
       label: "Claude ACP",
       ok: true,
       detail: binPath
-        ? `运行时可用；本机 CLI：${binPath}${version ? ` (${version})` : ""}`
-        : `内置运行时可用（${resolved.args[0]}）；未安装本机 CLI，本地历史/配置可能为空，可使用 ACP 下发配置`,
+        ? version
+          ? t("doctor.claude.detailCliVer", { bin: binPath, ver: version })
+          : t("doctor.claude.detailCli", { bin: binPath })
+        : t("doctor.claude.detailBuiltin", { arg: resolved.args[0] }),
     };
   } catch (err) {
     return {
@@ -70,7 +73,7 @@ export async function checkClaude(): Promise<DoctorCheckResult> {
       label: "Claude ACP",
       ok: false,
       detail: (err as Error).message,
-      fix: "重新安装 nuwa-cli（不要使用 --omit=optional）",
+      fix: t("doctor.fix.reinstall"),
     };
   }
 }
@@ -82,21 +85,26 @@ export async function checkCodex(): Promise<DoctorCheckResult> {
   const hasAuth = fs.existsSync(authFile);
   try {
     const resolved = await codexEngine.resolve();
+    const sep = t("doctor.detailSep");
+    const cliPart = binPath
+      ? version
+        ? t("doctor.codex.detailCliVer", { bin: binPath, ver: version })
+        : t("doctor.codex.detailCli", { bin: binPath })
+      : t("doctor.codex.detailNoCli");
+    const authPart = isEngineIsolationEnabled()
+      ? t("doctor.codex.detailIsolated")
+      : hasAuth
+        ? t("doctor.codex.detailHasAuth")
+        : t("doctor.codex.detailNoAuth");
     return {
       id: "codex",
       label: "Codex ACP",
       ok: true,
       detail: [
-        `运行时可用（${resolved.args[0]}）`,
-        binPath
-          ? `本机 CLI：${binPath}${version ? ` (${version})` : ""}`
-          : "未安装本机 CLI",
-        isEngineIsolationEnabled()
-          ? "隔离模式运行（认证经 ACP/env 下发，不复用 ~/.codex）"
-          : hasAuth
-            ? "已检测到本地登录/配置"
-            : "无本地登录/配置；本地历史与模型提示可能为空，可使用 ACP 下发配置",
-      ].join("；"),
+        t("doctor.codex.detailRuntime", { arg: resolved.args[0] }),
+        cliPart,
+        authPart,
+      ].join(sep),
     };
   } catch (err) {
     return {
@@ -104,7 +112,7 @@ export async function checkCodex(): Promise<DoctorCheckResult> {
       label: "Codex ACP",
       ok: false,
       detail: (err as Error).message,
-      fix: "重新安装 nuwa-cli（不要使用 --omit=optional）",
+      fix: t("doctor.fix.reinstall"),
     };
   }
 }
@@ -116,8 +124,8 @@ export function checkUv(): DoctorCheckResult {
       id: "uv",
       label: "uv",
       ok: false,
-      detail: "未在 PATH 中找到（可选，部分 MCP 依赖需要）",
-      fix: "安装 uv：https://docs.astral.sh/uv/getting-started/installation/",
+      detail: t("doctor.uv.detailMissing"),
+      fix: t("doctor.uv.fix"),
       severity: "info",
     };
   }
@@ -136,20 +144,14 @@ export function checkTccRisk(): DoctorCheckResult {
   const risky = process.platform === "darwin" && /\/Downloads(\/|$)/.test(cwd);
   return {
     id: "tcc",
-    label: "macOS 权限（TCC）",
+    label: t("doctor.label.tcc"),
     ok: !risky,
     detail: risky
-      ? `当前目录 ${cwd} 在系统权限保护范围内，子进程可能因权限不足崩溃`
-      : "当前目录无已知 TCC 风险",
-    fix: risky
-      ? "在「系统设置 → 隐私与安全性」授予终端对该目录的完全磁盘访问权限，或切换到非受保护目录"
-      : undefined,
+      ? t("doctor.tcc.detailRisky", { cwd })
+      : t("doctor.tcc.detailOk"),
+    fix: risky ? t("doctor.tcc.fix") : undefined,
     severity: "info",
   };
-}
-
-function noOwnLoginFixHint(): string {
-  return "运行 `nuwa-cli login --domain <host> --saved-key <key>` 登录";
 }
 
 export function checkNuwaxLogin(): DoctorCheckResult {
@@ -157,10 +159,10 @@ export function checkNuwaxLogin(): DoctorCheckResult {
   if (!fs.existsSync(credPath)) {
     return {
       id: "nuwax-login",
-      label: "Nuwax 云账号",
+      label: t("doctor.label.login"),
       ok: false,
-      detail: "未登录",
-      fix: noOwnLoginFixHint(),
+      detail: t("doctor.login.detailNotLoggedIn"),
+      fix: t("doctor.login.fixHint"),
       severity: "info",
     };
   }
@@ -172,27 +174,29 @@ export function checkNuwaxLogin(): DoctorCheckResult {
     const ok = Boolean(raw?.configKey);
     return {
       id: "nuwax-login",
-      label: "Nuwax 云账号",
+      label: t("doctor.label.login"),
       ok,
       detail: ok
-        ? `已登录（${raw.domain ?? "未知域名"}）`
+        ? t("doctor.login.detailOk", {
+            domain: raw.domain ?? t("doctor.login.domainUnknown"),
+          })
         : raw?.savedKey
-          ? "未登录（savedKey 已保存，可免密重新登录）"
-          : "凭证文件存在但未登录",
+          ? t("doctor.login.detailSavedKey")
+          : t("doctor.login.detailCredNoLogin"),
       fix: ok
         ? undefined
         : raw?.savedKey
-          ? "运行 `nuwa-cli login` 免密重新登录"
-          : noOwnLoginFixHint(),
+          ? t("doctor.login.fixLogin")
+          : t("doctor.login.fixHint"),
       severity: "info",
     };
   } catch {
     return {
       id: "nuwax-login",
-      label: "Nuwax 云账号",
+      label: t("doctor.label.login"),
       ok: false,
-      detail: "凭证文件损坏",
-      fix: "运行 `nuwa-cli login` 重新登录",
+      detail: t("doctor.login.detailCorrupt"),
+      fix: t("doctor.login.fixRelogin"),
       severity: "info",
     };
   }
@@ -206,17 +210,17 @@ export function checkNuwaxComputer(): DoctorCheckResult {
       typeof raw?.computerName === "string" ? raw.computerName.trim() : "";
     return {
       id: "nuwax-computer",
-      label: "我的电脑",
+      label: t("doctor.label.computer"),
       ok: Boolean(computerName),
-      detail: computerName || "尚未注册，登录后由 Nuwax 分配电脑名",
+      detail: computerName || t("doctor.computer.detailUnset"),
       severity: "info",
     };
   } catch {
     return {
       id: "nuwax-computer",
-      label: "我的电脑",
+      label: t("doctor.label.computer"),
       ok: false,
-      detail: "尚未注册，登录后由 Nuwax 分配电脑名",
+      detail: t("doctor.computer.detailUnset"),
       severity: "info",
     };
   }
@@ -232,7 +236,7 @@ export async function checkLanproxy(): Promise<DoctorCheckResult> {
       label: "lanproxy",
       ok: false,
       detail: (err as Error).message,
-      fix: "重新安装 nuwa-cli（不要使用 --omit=optional），并确认当前 npm 源已同步平台包",
+      fix: t("doctor.lanproxy.fixReinstall"),
       severity: "info",
     };
   }
@@ -244,8 +248,15 @@ export async function checkLanproxy(): Promise<DoctorCheckResult> {
       id: "lanproxy",
       label: "lanproxy",
       ok: false,
-      detail: `进程运行中（PID ${running.map((item) => item.pid).join(", ")}），但 Gateway /health ${gateway.state === "unhealthy" ? "无响应" : "不可用"}；二进制：${binaryPath}`,
-      fix: "运行 `nuwa-cli doctor --fix` 自动重建 Gateway/lanproxy；并检查 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log",
+      detail: t("doctor.lanproxy.detailRunningUnhealthy", {
+        pids: running.map((item) => item.pid).join(", "),
+        state:
+          gateway.state === "unhealthy"
+            ? t("doctor.lanproxy.healthNoResp")
+            : t("doctor.lanproxy.healthDown"),
+        bin: binaryPath,
+      }),
+      fix: t("doctor.lanproxy.fixRebuildGw", { log: serveLogPath() }),
       severity: "info",
     };
   }
@@ -254,8 +265,8 @@ export async function checkLanproxy(): Promise<DoctorCheckResult> {
       id: "lanproxy",
       label: "lanproxy",
       ok: false,
-      detail: `Gateway /health 正常，但未检测到 lanproxy 进程；二进制：${binaryPath}`,
-      fix: "运行 `nuwa-cli doctor --fix` 自动重建云端隧道；并检查 ~/.nuwa-cli/logs/serve.YYYY-MM-DD.log",
+      detail: t("doctor.lanproxy.detailGatewayOkNoLanproxy", { bin: binaryPath }),
+      fix: t("doctor.lanproxy.fixRebuildTunnel", { log: serveLogPath() }),
       severity: "info",
     };
   }
@@ -265,8 +276,11 @@ export async function checkLanproxy(): Promise<DoctorCheckResult> {
     ok: true,
     detail:
       running.length > 0
-        ? `运行中（PID ${running.map((item) => item.pid).join(", ")}），Gateway /health 正常；二进制：${binaryPath}`
-        : `已安装，当前未运行；二进制：${binaryPath}`,
+        ? t("doctor.lanproxy.detailRunningOk", {
+            pids: running.map((item) => item.pid).join(", "),
+            bin: binaryPath,
+          })
+        : t("doctor.lanproxy.detailInstalledNotRunning", { bin: binaryPath }),
     severity: "info",
   };
 }
@@ -309,9 +323,12 @@ export function checkLocalSessions(): DoctorCheckResult {
   );
   return {
     id: "local-sessions",
-    label: "本地会话历史",
+    label: t("doctor.label.sessions"),
     ok: true,
-    detail: `claude: ${claudeCount} 个会话，codex: ${codexCount} 个会话`,
+    detail: t("doctor.sessions.detail", {
+      claude: claudeCount,
+      codex: codexCount,
+    }),
     severity: "info",
   };
 }
@@ -324,12 +341,10 @@ export function checkAutostartService(): DoctorCheckResult {
   const autostart = describeAutostartService();
   return {
     id: "autostart",
-    label: "开机自启",
+    label: t("doctor.label.autostart"),
     ok: autostart.installed,
     detail: autostart.summary,
-    fix: autostart.installed
-      ? undefined
-      : "运行 `nuwa-cli doctor --fix` 自动安装登录自启；也可手动 `nuwa-cli service install`（`--now` 立即启动）；关闭用 `nuwa-cli service uninstall`",
+    fix: autostart.installed ? undefined : t("doctor.autostart.fix"),
     severity: "info",
   };
 }
@@ -339,17 +354,18 @@ export function checkServeSingleton(): DoctorCheckResult {
   const ok = pids.length <= 1;
   return {
     id: "serve-singleton",
-    label: "serve 单例",
+    label: t("doctor.label.serveSingleton"),
     ok,
     detail:
       pids.length === 0
-        ? "未运行（单例状态正常）"
+        ? t("doctor.serveSingleton.detailNone")
         : pids.length === 1
-          ? `运行中（PID ${pids[0]}）`
-          : `检测到 ${pids.length} 个实例（PID ${pids.join(", ")}）`,
-    fix: ok
-      ? undefined
-      : "运行 `nuwa-cli doctor --fix` 清理多余实例并重建 Gateway 栈",
+          ? t("doctor.serveSingleton.detailOne", { pid: pids[0] })
+          : t("doctor.serveSingleton.detailMany", {
+              n: pids.length,
+              pids: pids.join(", "),
+            }),
+    fix: ok ? undefined : t("doctor.serveSingleton.fix"),
     severity: "info",
   };
 }
@@ -359,17 +375,18 @@ export function checkUiSingleton(): DoctorCheckResult {
   const ok = pids.length <= 1;
   return {
     id: "ui-singleton",
-    label: "Console 单例",
+    label: t("doctor.label.uiSingleton"),
     ok,
     detail:
       pids.length === 0
-        ? "未运行（单例状态正常）"
+        ? t("doctor.uiSingleton.detailNone")
         : pids.length === 1
-          ? `前台运行中（PID ${pids[0]}）`
-          : `检测到 ${pids.length} 个前台实例（PID ${pids.join(", ")}）`,
-    fix: ok
-      ? undefined
-      : "运行 `nuwa-cli doctor --fix` 清理多余 Console（不自动重开前台；需要时再 `nuwa-cli console`）",
+          ? t("doctor.uiSingleton.detailOne", { pid: pids[0] })
+          : t("doctor.uiSingleton.detailMany", {
+              n: pids.length,
+              pids: pids.join(", "),
+            }),
+    fix: ok ? undefined : t("doctor.uiSingleton.fix"),
     severity: "info",
   };
 }
@@ -382,29 +399,44 @@ export function checkMcpStdioProxy(): DoctorCheckResult {
     label: "MCP stdio proxy",
     ok,
     detail: ok
-      ? `已解析 ${entryPath}`
-      : "未找到 @nuwax-ai/mcp-proxy-ts 入口（dist/index.js）",
-    fix: ok
-      ? undefined
-      : "确认已安装依赖：npm install @nuwax-ai/mcp-proxy-ts",
+      ? t("doctor.mcp.detailOk", { path: entryPath ?? "" })
+      : t("doctor.mcp.detailMissing"),
+    fix: ok ? undefined : t("doctor.mcp.fix"),
     severity: "info",
   };
 }
 
-export async function runAllDoctorChecks(): Promise<DoctorCheckResult[]> {
-  return [
-    checkNodeVersion(),
-    await checkClaude(),
-    await checkCodex(),
-    checkUv(),
-    checkTccRisk(),
-    checkNuwaxLogin(),
-    checkNuwaxComputer(),
-    await checkLanproxy(),
-    checkAutostartService(),
-    checkMcpStdioProxy(),
-    checkLocalSessions(),
-    checkServeSingleton(),
-    checkUiSingleton(),
-  ];
+type DoctorCheckFn = () => DoctorCheckResult | Promise<DoctorCheckResult>;
+
+/** 单项检测步:进行中文案 + 执行函数。顺序即检测顺序。 */
+interface DoctorCheckStep {
+  label: string;
+  run: DoctorCheckFn;
+}
+
+const DOCTOR_CHECK_STEPS: ReadonlyArray<DoctorCheckStep> = [
+  { label: t("doctor.step.node"), run: () => checkNodeVersion() },
+  { label: t("doctor.step.claude"), run: () => checkClaude() },
+  { label: t("doctor.step.codex"), run: () => checkCodex() },
+  { label: t("doctor.step.uv"), run: () => checkUv() },
+  { label: t("doctor.step.tcc"), run: () => checkTccRisk() },
+  { label: t("doctor.step.login"), run: () => checkNuwaxLogin() },
+  { label: t("doctor.step.computer"), run: () => checkNuwaxComputer() },
+  { label: t("doctor.step.lanproxy"), run: () => checkLanproxy() },
+  { label: t("doctor.step.autostart"), run: () => checkAutostartService() },
+  { label: t("doctor.step.mcp"), run: () => checkMcpStdioProxy() },
+  { label: t("doctor.step.sessions"), run: () => checkLocalSessions() },
+  { label: t("doctor.step.serveSingleton"), run: () => checkServeSingleton() },
+  { label: t("doctor.step.uiSingleton"), run: () => checkUiSingleton() },
+];
+
+export async function runAllDoctorChecks(opts?: {
+  onProgress?: (msg: string) => void;
+}): Promise<DoctorCheckResult[]> {
+  const results: DoctorCheckResult[] = [];
+  for (const step of DOCTOR_CHECK_STEPS) {
+    opts?.onProgress?.(step.label);
+    results.push(await step.run());
+  }
+  return results;
 }

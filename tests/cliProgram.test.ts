@@ -37,6 +37,7 @@ describe("createProgram", () => {
       "service",
       "console",
       "update",
+      "lang",
     ]);
   });
 

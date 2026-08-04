@@ -124,7 +124,7 @@ export async function withEngineConnection<T>(
     exitInfo: { code: number | null; signal: NodeJS.Signals | null } | null;
   } = { spawnErrorMessage: null, exitInfo: null };
   proc.once("error", (err) => {
-    processState.spawnErrorMessage = `引擎进程启动失败: ${err.message}`;
+    processState.spawnErrorMessage = `engine process failed to start: ${err.message}`;
   });
   proc.once("exit", (code, signal) => {
     processState.exitInfo = { code, signal };
@@ -172,7 +172,7 @@ export async function withEngineConnection<T>(
   try {
     return await run;
   } catch (err) {
-    if (signal?.aborted) throw new Error("引擎会话已被中止");
+    if (signal?.aborted) throw new Error("engine session aborted");
     if (processState.spawnErrorMessage)
       throw new Error(processState.spawnErrorMessage);
     if (!processState.exitInfo) {
@@ -185,7 +185,7 @@ export async function withEngineConnection<T>(
     const exitInfo = processState.exitInfo;
     if (exitInfo && exitInfo.code !== 0 && exitInfo.code !== null) {
       throw new Error(
-        `引擎进程异常退出 (code=${exitInfo.code}${exitInfo.signal ? `, signal=${exitInfo.signal}` : ""})\n${getStderrTail()}`,
+        `engine process exited unexpectedly (code=${exitInfo.code}${exitInfo.signal ? `, signal=${exitInfo.signal}` : ""})\n${getStderrTail()}`,
       );
     }
     throw err;

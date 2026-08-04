@@ -78,7 +78,7 @@ describe("checkNuwaxLogin", () => {
       await import("../src/core/detect/doctorChecks.js");
     const result = checkNuwaxLogin();
     expect(result.ok).toBe(false);
-    expect(result.detail).toContain("未登录");
+    expect(result.detail).toContain("Not logged in");
     expect(result.fix).toContain("--domain");
     expect(result.fix).not.toContain("NuwaClaw 客户端");
   });
@@ -117,7 +117,7 @@ describe("checkNuwaxLogin", () => {
       await import("../src/core/detect/doctorChecks.js");
     const result = checkNuwaxLogin();
     expect(result.ok).toBe(false);
-    expect(result.detail).toContain("免密重新登录");
+    expect(result.detail).toContain("log back in without a password");
   });
 
   it("reports failure when credentials.json has neither configKey nor savedKey", async () => {
@@ -141,7 +141,7 @@ describe("checkNuwaxLogin", () => {
       await import("../src/core/detect/doctorChecks.js");
     const result = checkNuwaxLogin();
     expect(result.ok).toBe(false);
-    expect(result.detail).toContain("损坏");
+    expect(result.detail).toContain("corrupted");
   });
 });
 
@@ -158,7 +158,7 @@ describe("checkLanproxy", () => {
       await import("../src/core/detect/doctorChecks.js");
     const result = await checkLanproxy();
     expect(result.ok).toBe(true);
-    expect(result.detail).toContain("已安装，当前未运行");
+    expect(result.detail).toContain("Installed, not currently running");
     expect(result.detail).toContain("nuwax-lanproxy.exe");
   });
 
@@ -167,8 +167,8 @@ describe("checkLanproxy", () => {
     lanproxyMocks.serveStatus.mockResolvedValue({ state: "running" });
     const { checkLanproxy } =
       await import("../src/core/detect/doctorChecks.js");
-    expect((await checkLanproxy()).detail).toContain("运行中（PID 2468）");
-    expect((await checkLanproxy()).detail).toContain("/health 正常");
+    expect((await checkLanproxy()).detail).toContain("Running (PID 2468)");
+    expect((await checkLanproxy()).detail).toContain("Gateway /health OK");
   });
 
   it("reports an unhealthy tunnel when Gateway is healthy but lanproxy is absent", async () => {
@@ -177,8 +177,8 @@ describe("checkLanproxy", () => {
       await import("../src/core/detect/doctorChecks.js");
     const result = await checkLanproxy();
     expect(result.ok).toBe(false);
-    expect(result.detail).toContain("Gateway /health 正常");
-    expect(result.detail).toContain("未检测到 lanproxy 进程");
+    expect(result.detail).toContain("Gateway /health is OK");
+    expect(result.detail).toContain("no lanproxy process detected");
   });
 
   it("reports an unhealthy target when lanproxy lives but Gateway health fails", async () => {
@@ -188,7 +188,7 @@ describe("checkLanproxy", () => {
       await import("../src/core/detect/doctorChecks.js");
     const result = await checkLanproxy();
     expect(result.ok).toBe(false);
-    expect(result.detail).toContain("Gateway /health 无响应");
+    expect(result.detail).toContain("Gateway /health not responding");
   });
 
   it("shows an install fix when the platform binary is missing", async () => {

@@ -201,7 +201,7 @@ describe("startCommand", () => {
     );
     expect(mocks.reportReady).toHaveBeenCalled();
     expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining("等待超时后子服务"),
+      expect.stringContaining("not ready after the wait timeout"),
     );
     logSpy.mockRestore();
   });
@@ -277,10 +277,10 @@ describe("startCommand", () => {
     expect(mocks.reportReady).toHaveBeenCalled();
     expect(mocks.ui).not.toHaveBeenCalled();
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Gateway 栈未就绪"),
+      expect.stringContaining("Gateway stack is not ready"),
     );
     expect(logSpy).not.toHaveBeenCalledWith(
-      expect.stringContaining("Gateway 已就绪"),
+      expect.stringContaining("Gateway is ready"),
     );
     logSpy.mockRestore();
     errorSpy.mockRestore();

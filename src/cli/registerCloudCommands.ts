@@ -10,69 +10,52 @@ import {
   statusCommand,
 } from "../commands/login.js";
 import { addCloudLoginHelp, addCloudLoginOptions } from "./options.js";
+import { t } from "../util/i18n/index.js";
 
 export function registerCloudCommands(program: Command): void {
   addCloudLoginHelp(
     addCloudLoginOptions(
-      program
-        .command("login")
-        .description(
-          "登录 Nuwax 云账号；不传 domain/username 时使用当前默认账号",
-        ),
+      program.command("login").description(t("cli.cmd.login.desc")),
     ),
   ).action(loginCommand);
 
   program
     .command("logout")
-    .description("退出登录（保留 savedKey，可免密重新登录）")
+    .description(t("cli.cmd.logout.desc"))
     .action(logoutCommand);
 
   program
     .command("status")
-    .description("查看 Nuwax 登录状态以及 Gateway/Console 运行状态")
-    .option("--remote", "额外向服务器校验 savedKey 是否仍然有效")
+    .description(t("cli.cmd.status.desc"))
+    .option("--remote", t("cli.cmd.status.opt.remote"))
     .action(statusCommand);
 
   const config = program
     .command("config")
-    .description("查看/修改当前默认账号配置（多账号请用 account 命令）");
+    .description(t("cli.cmd.config.desc"));
 
   config
     .command("get [key]")
-    .description("查看配置项，省略 key 时列出全部")
+    .description(t("cli.cmd.config.get.desc"))
     .action(configGetCommand);
 
   config
     .command("set <key> <value>")
-    .description("设置配置项（domain/saved-key/username/lanproxy-path）")
+    .description(t("cli.cmd.config.set.desc"))
     .action(configSetCommand);
 
   const account = program
     .command("account")
-    .description(
-      "管理 credentials.json 中保存的多个 Nuwax 账号（轻量 JSON，无 SQLite）",
-    );
+    .description(t("cli.cmd.account.desc"));
 
   account
     .command("list")
-    .description("列出已保存账号，并用 * 标记当前默认账号")
+    .description(t("cli.cmd.account.list.desc"))
     .action(accountListCommand);
 
   account
     .command("switch <account>")
-    .description("切换当前默认账号；serve 运行中会拒绝，需先 Ctrl-C 停服务")
-    .addHelpText(
-      "after",
-      [
-        "",
-        "参数：",
-        "  account  可用 `nuwa-cli account list` 输出的 key，例如 testagent.xspaceagi.com_18011447397；",
-        "           也可传唯一 username。",
-        "",
-        "说明：",
-        "  切换账号会重新注册当前账号，并要求重新启动 serve/file-server/lanproxy。",
-        "  如果 Gateway 正在运行，本命令会拒绝执行；请先运行 `nuwa-cli stop --all`。",
-      ].join("\n"),
-    )
+    .description(t("cli.cmd.account.switch.desc"))
+    .addHelpText("after", t("cli.cmd.account.switch.help"))
     .action(accountSwitchCommand);
 }

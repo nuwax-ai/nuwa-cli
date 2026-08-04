@@ -15,7 +15,7 @@ export function getEngine(id: string): EngineSpec {
   const engine = registry[id];
   if (!engine) {
     const known = Object.keys(registry).join(", ");
-    throw new Error(`未知引擎 "${id}"，可用引擎：${known}`);
+    throw new Error(`unknown engine "${id}", available: ${known}`);
   }
   return engine;
 }

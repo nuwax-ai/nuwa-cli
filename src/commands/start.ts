@@ -15,6 +15,8 @@ import {
 } from "./gateway.js";
 import { uiCommand } from "./ui.js";
 import { loginCommand } from "./login.js";
+import { CANCEL_EXIT_CODE, withSpinner } from "../util/ui.js";
+import { t } from "../util/i18n/index.js";
 
 export interface StartCommandOptions extends GatewayCommandOptions {
   /**
@@ -37,14 +39,14 @@ function registeredGatewayEngine(pids: number[]): string | undefined {
 export async function startCommand(options: StartCommandOptions): Promise<void> {
   let authReady = false;
   if (!readCredentials().configKey) {
-    console.log(pc.dim("尚未登录 Nuwax，请先完成登录。"));
+    console.log(pc.dim(t("start.notLoggedIn")));
     await loginCommand({
       domain: options.domain,
       username: options.username,
       savedKey: options.savedKey,
     });
     if (!readCredentials().configKey) {
-      console.error(pc.dim("未完成登录，已取消启动。"));
+      console.error(pc.dim(t("start.loginCancelled")));
       return;
     }
     authReady = true;
@@ -62,26 +64,31 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
     // 但 tunnel（注册 → file-server → lanproxy）仍在进行。这里必须用完整就绪超时
     // 等待，而不是短轮询后立刻 --force：否则会杀掉刚起来的自启实例，日志表现为
     // 「lanproxy 已启动」紧接着又 force 停掉，用户侧则报「未检测到 lanproxy」。
-    console.log(
-      pc.dim(
-        `检测到已有 Gateway（PID ${gatewayPids.join(", ")}），正在等待 file-server / lanproxy 就绪（最多 ${Math.round(GATEWAY_STACK_READY_TIMEOUT_MS / 1000)}s）...`,
-      ),
+    const ready = await withSpinner(
+      t("start.waitExisting", {
+        pids: gatewayPids.join(", "),
+        secs: Math.round(GATEWAY_STACK_READY_TIMEOUT_MS / 1000),
+      }),
+      () => waitForGatewayStackReady(GATEWAY_STACK_READY_TIMEOUT_MS),
     );
-    const ready = await waitForGatewayStackReady(GATEWAY_STACK_READY_TIMEOUT_MS);
     if (isGatewayStackReady(ready) && ready.lanproxy) {
       console.log(
-        pc.green(`Gateway 已在运行（PID ${gatewayPids.join(", ")}），继续复用。`),
+        pc.green(t("start.reusing", { pids: gatewayPids.join(", ") })),
       );
       console.log(
         pc.green(
-          `lanproxy 运行中（PID ${ready.lanproxy.pid}，${ready.lanproxy.host ?? "未知主机"}:${ready.lanproxy.port ?? "未知端口"}），Gateway /health 正常。`,
+          t("start.lanproxyReady", {
+            pid: ready.lanproxy.pid,
+            host: ready.lanproxy.host ?? t("daemon.unknownHost"),
+            port: ready.lanproxy.port ?? t("daemon.unknownPort"),
+          }),
         ),
       );
       stackReady = true;
     } else {
       console.log(
         pc.yellow(
-          `Gateway PID ${gatewayPids.join(", ")} 存在，但等待超时后子服务（lanproxy/file-server）仍未就绪，正在强制重启 Gateway 以恢复完整运行环境...`,
+          t("start.forceRestartReason", { pids: gatewayPids.join(", ") }),
         ),
       );
       engine = await gatewayCommand({
@@ -91,19 +98,22 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
         ...(authReady ? { authReady: true } : {}),
       });
       if (process.exitCode && process.exitCode !== 0) {
-        console.error(
-          pc.red("[nuwa-cli] Gateway 重启失败。"),
-        );
+        // 130 = 用户取消(已在 gatewayCommand 内打印灰色提示),不算失败。
+        if (process.exitCode !== CANCEL_EXIT_CODE) {
+          console.error(pc.red(t("daemon.gatewayRestartFailed")));
+        }
         return;
       }
-      stackReady = await reportGatewayStackReadiness();
+      stackReady = await reportGatewayStackReadiness({
+        spinnerMessage: t("common.waitStack"),
+      });
     }
   } else {
     console.log(
       pc.dim(
         options.force
-          ? "正在强制启动 Gateway Server（daemon）..."
-          : "正在启动 Gateway Server（daemon）...",
+          ? t("start.startingDaemonForce")
+          : t("start.startingDaemon"),
       ),
     );
     // 剥离 start 专属选项，避免传给 gatewayCommand
@@ -115,39 +125,39 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
       ...(authReady ? { authReady: true } : {}),
     });
     if (process.exitCode && process.exitCode !== 0) {
-      console.error(
-        pc.red(
-          includeConsole
-            ? "[nuwa-cli] Gateway 启动失败，已取消 Console 启动。"
-            : "[nuwa-cli] Gateway 启动失败。",
-        ),
-      );
+      if (process.exitCode !== CANCEL_EXIT_CODE) {
+        console.error(
+          pc.red(
+            includeConsole
+              ? t("start.gatewayStartFailedConsole")
+              : t("start.gatewayStartFailed"),
+          ),
+        );
+      }
       return;
     }
-    stackReady = await reportGatewayStackReadiness();
+    stackReady = await reportGatewayStackReadiness({
+      spinnerMessage: t("common.waitStack"),
+    });
   }
 
   // 默认（无 --all）只保证 Gateway，不占用当前终端
   if (!includeConsole) {
     if (stackReady) {
-      console.log(
-        pc.dim("Gateway 已就绪。需要 Console 时请运行 `nuwa-cli start --all` 或 `nuwa-cli console`。"),
-      );
+      console.log(pc.dim(t("start.gatewayReady")));
     }
     return;
   }
 
   if (!stackReady) {
-    console.error(
-      pc.red("[nuwa-cli] Gateway 栈未就绪，已取消 Console 启动。"),
-    );
+    console.error(pc.red(t("start.stackNotReady")));
     return;
   }
 
   if (consolePids.length > 0 && !options.force) {
     console.log(
       pc.green(
-        `Console 已在运行（PID ${consolePids.join(", ")}），完整运行环境已就绪。`,
+        t("start.consoleAlreadyRunning", { pids: consolePids.join(", ") }),
       ),
     );
     return;
@@ -155,7 +165,9 @@ export async function startCommand(options: StartCommandOptions): Promise<void> 
 
   console.log(
     pc.dim(
-      options.force ? "正在强制启动前台 Console..." : "正在启动前台 Console...",
+      options.force
+        ? t("start.startingConsoleForce")
+        : t("start.startingConsole"),
     ),
   );
   await uiCommand({
