@@ -33,7 +33,7 @@ function Invoke-NpmWithProgress($NpmArgs, $StartPercent) {
     $argsBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($argsJson))
     $childScript = '$ErrorActionPreference = "Stop"; $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' +
         $argsBase64 +
-        '")); $npmArgs = @(ConvertFrom-Json $json); & npm @npmArgs; exit $LASTEXITCODE'
+        '")); $npmArgs = @(ConvertFrom-Json $json); $npmCli = $null; $npmCmd = Get-Command npm -ErrorAction SilentlyContinue; if ($npmCmd) { $candidate = Join-Path (Split-Path $npmCmd.Source) "node_modules\npm\bin\npm-cli.js"; if (Test-Path $candidate) { $npmCli = $candidate } }; if ($npmCli) { & node $npmCli @npmArgs } else { & npm @npmArgs }; exit $LASTEXITCODE'
     $encodedCommand = [Convert]::ToBase64String(
         [Text.Encoding]::Unicode.GetBytes($childScript)
     )
@@ -212,7 +212,18 @@ if ($all -contains $prefixNorm) {
 # --- Verify ---
 $nuwa = Get-Command nuwa-cli -ErrorAction SilentlyContinue
 if ($nuwa) {
-    $ver = try { (nuwa-cli --version 2>$null) } catch { "installed" }
+    $ver = try { (nuwa-cli --version 2>$null).Trim() } catch { "" }
+    # When an install was actually attempted (not skipped), require the resulting
+    # version to match the target. Windows npm.cmd can exit 0 even when the install
+    # failed (e.g. mangled args), which would otherwise leave the OLD version active
+    # and print a false "Install succeeded".
+    if (-not $SkipInstall) {
+        if (-not $ver) {
+            Fail "Install verification failed: nuwa-cli is present but 'nuwa-cli --version' returned nothing. The npm install did not complete (Windows npm.cmd can swallow errors). Re-run the installer, or: npm i -g @nuwax-ai/nuwa-cli@$channel"
+        } elseif ($ver -ne $version) {
+            Fail "Install verification failed: expected nuwa-cli $version but found $ver. The npm install did not complete (Windows npm.cmd can swallow errors); the previous install is still active. Re-run the installer, or: npm i -g @nuwax-ai/nuwa-cli@$channel"
+        }
+    }
     Ok "nuwa-cli ready: $ver"
     Write-Host ""
     Write-Host "Install succeeded. Run nuwa-cli -h for help." -ForegroundColor Green

@@ -186,7 +186,17 @@ fi
 
 # --- Verify ---
 if command -v nuwa-cli >/dev/null 2>&1; then
-  ok "nuwa-cli 已就绪: $(nuwa-cli --version 2>/dev/null || echo installed)"
+  VER="$(nuwa-cli --version 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
+  # 实际尝试了安装（非跳过）时，要求结果版本 == 目标。npm 偶发失败却退出 0，
+  # 否则会留下旧版本并打印假的「安装成功」。
+  if [ "$SKIP_INSTALL" = "0" ]; then
+    if [ -z "$VER" ]; then
+      fail "安装校验失败：nuwa-cli 存在但 nuwa-cli --version 无输出，npm 安装未完成。请重跑安装脚本，或手动：npm i -g @nuwax-ai/nuwa-cli@$CHANNEL"
+    elif [ "$VER" != "$VERSION" ]; then
+      fail "安装校验失败：期望 nuwa-cli $VERSION，实际 $VER（仍为旧版本）。npm 安装未完成。请重跑安装脚本，或手动：npm i -g @nuwax-ai/nuwa-cli@$CHANNEL"
+    fi
+  fi
+  ok "nuwa-cli 已就绪: ${VER:-installed}"
   printf '\n%s安装成功!运行 nuwa-cli -h 查看帮助。%s\n\n' "$GREEN" "$NC"
 else
   warn "nuwa-cli 已安装,但当前 shell 未识别。请重开终端后运行: nuwa-cli -h"
