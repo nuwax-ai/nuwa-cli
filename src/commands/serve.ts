@@ -119,12 +119,26 @@ function launchDaemon(argsOverride?: string[]): number {
     argsOverride ?? process.argv.slice(1).filter((arg) => arg !== "--daemon");
   ensureDir(logsDir());
   const logPath = serveLogPath();
+  // Windows：无 BOM 时 Get-Content 默认按系统 ANSI 读，UTF-8 中文会乱码。
+  // 新建/空文件先写 UTF-8 BOM，方便记事本与 PowerShell 正确打开。
+  try {
+    if (!fs.existsSync(logPath) || fs.statSync(logPath).size === 0) {
+      fs.writeFileSync(logPath, "\uFEFF", { encoding: "utf8" });
+    }
+  } catch {
+    // best-effort
+  }
   const out = fs.openSync(logPath, "a");
   const err = fs.openSync(logPath, "a");
   const child = spawn(process.execPath, args, {
     detached: true,
     stdio: ["ignore", out, err],
-    env: buildCliChildEnv({ NUWACLI_SERVE_DAEMONIZED: "1" }),
+    // stdout/stderr 重定向到文件：关颜色，避免日志里残留 [22m/[39m；
+    // picocolors 在 win32 上默认开色，即便不是 TTY。
+    env: buildCliChildEnv({
+      NUWACLI_SERVE_DAEMONIZED: "1",
+      NO_COLOR: "1",
+    }),
     windowsHide: true,
   });
   if (!child.pid) throw new Error("daemon 子进程启动失败：未取得 PID");

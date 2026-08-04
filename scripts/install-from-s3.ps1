@@ -10,7 +10,8 @@
 # Self-signed endpoint: $env:NUWAX_S3_INSECURE='1'
 #
 # Messages are ASCII English only: Windows PowerShell 5.1 + irm|iex often
-# mojibakes UTF-8 CJK in the console.
+# mojibakes UTF-8 CJK in the console. When we MUST print UTF-8 from nuwa-cli
+# (post-upgrade restart), use Invoke-NativeUtf8 so capture/decoding matches.
 $ErrorActionPreference = "Stop"
 
 $endpoint = if ($env:NUWAX_S3_ENDPOINT) { $env:NUWAX_S3_ENDPOINT } else { "https://s3.nuwax.com:9443" }
@@ -24,6 +25,34 @@ function Ok($m)   { Write-Host "[OK] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[!]  $m" -ForegroundColor Yellow }
 function Fail($m) { Write-Host "[X]  $m" -ForegroundColor Red; exit 1 }
 function Step($n, $total, $m) { Write-Host "[$n/$total] $m" -ForegroundColor Cyan }
+
+# PowerShell 默认用 OEM/ANSI（中文 Windows 常为 CP936）解码外部进程 stdout。
+# Node/nuwa-cli 写 UTF-8；捕获进变量时会把中文解成乱码。临时切 UTF-8 再跑。
+function Invoke-NativeUtf8([scriptblock]$Script) {
+    $prevOut = [Console]::OutputEncoding
+    $prevIn  = [Console]::InputEncoding
+    $prevOE  = $OutputEncoding
+    try {
+        $utf8 = New-Object System.Text.UTF8Encoding $false
+        [Console]::OutputEncoding = $utf8
+        [Console]::InputEncoding  = $utf8
+        $script:OutputEncoding    = $utf8
+        & $Script
+    } finally {
+        [Console]::OutputEncoding = $prevOut
+        [Console]::InputEncoding  = $prevIn
+        $script:OutputEncoding    = $prevOE
+    }
+}
+
+# picocolors 写入的 ANSI 在非 VT 控制台会显示成 [22m/[39m 残渣；剥离后再打印。
+function Format-CliCapture($Captured) {
+    $text = ($Captured | Out-String)
+    # CSI ... m 与裸 [Nm 色码
+    $text = [regex]::Replace($text, '\x1B\[[0-9;]*m', '')
+    $text = [regex]::Replace($text, '\[(?:\d{1,3};)*\d{1,3}m', '')
+    return $text.TrimEnd()
+}
 
 function Invoke-NpmWithProgress($NpmArgs, $StartPercent) {
     # Run npm in a child PowerShell process. Start-Job is intentionally avoided:
@@ -259,8 +288,9 @@ if ($WasInstalled) {
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-            $restartOutput = & nuwa-cli restart 2>&1
-            Write-Host ($restartOutput | Out-String)
+            $restartOutput = Invoke-NativeUtf8 { & nuwa-cli restart 2>&1 }
+            $formatted = Format-CliCapture $restartOutput
+            if ($formatted) { Write-Host $formatted }
             if ($LASTEXITCODE -eq 0) {
                 Ok "nuwa-cli serve restarted (Gateway + lanproxy ready)"
             } else {
@@ -268,8 +298,9 @@ if ($WasInstalled) {
                 Warn "Check log: $env:USERPROFILE\.nuwa-cli\logs\serve.$(Get-Date -Format 'yyyy-MM-dd').log"
             }
             # KeepAlive 提示（无自启时开机不会拉 Gateway）
-            $svcOut = & nuwa-cli service status 2>&1 | Out-String
-            if ($svcOut -match '未安装|not installed') {
+            $svcOut = Invoke-NativeUtf8 { & nuwa-cli service status 2>&1 }
+            $svcText = Format-CliCapture $svcOut
+            if ($svcText -match '未安装|not installed') {
                 Write-Host "Tip: login autostart (KeepAlive) is not installed. To start Gateway after reboot: nuwa-cli service install" -ForegroundColor Cyan
             }
         } catch {

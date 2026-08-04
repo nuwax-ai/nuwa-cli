@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows bootstrap installers now run npm through an encoded child PowerShell process instead of `Start-Job`, preserving the full argument list, progress updates, exit code, and original npm stdout/stderr.
 - S3 bootstrap installers now default dependency resolution to npmmirror (overridable with `NUWACLI_REGISTRY`).
 
+## [0.1.0-beta.52] - 2026-08-04
+
+### Fixed
+
+- Windows S3 installer: decode `nuwa-cli restart` UTF-8 output correctly (set console encoding when capturing) and strip ANSI color codes so post-upgrade restart no longer prints mojibake / `[22m` residue.
+- Daemon serve logs: write UTF-8 BOM on new log files and set `NO_COLOR=1` so Windows `Get-Content` reads Chinese correctly and logs stay free of picocolors escape sequences.
+
 ## [0.1.0-beta.51] - 2026-08-04
 
 ### Fixed
