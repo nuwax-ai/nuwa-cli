@@ -4,8 +4,8 @@
 # One-liner:
 #   irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.ps1 | iex
 #
-# Pin a channel:        $env:NUWACLI_CHANNEL='beta'
-# Pin a version:        $env:NUWACLI_VERSION='0.1.0-beta.3'
+# Pin a channel:        $env:NUWACLI_CHANNEL='stable' (default) / 'beta'
+# Pin a version:        $env:NUWACLI_VERSION='0.2.0'
 # Override npm registry: $env:NUWACLI_REGISTRY='https://registry.npmjs.org'
 # Self-signed endpoint: $env:NUWAX_S3_INSECURE='1'
 #
@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 $endpoint = if ($env:NUWAX_S3_ENDPOINT) { $env:NUWAX_S3_ENDPOINT } else { "https://s3.nuwax.com:9443" }
 $bucket   = if ($env:NUWAX_S3_BUCKET)   { $env:NUWAX_S3_BUCKET }   else { "nuwax-packages" }
 $prefix   = if ($env:NUWAX_S3_PREFIX)   { $env:NUWAX_S3_PREFIX }   else { "agent-engines/nuwa-cli" }
-$channel  = if ($env:NUWACLI_CHANNEL)   { $env:NUWACLI_CHANNEL }   else { "beta" }
+$channel  = if ($env:NUWACLI_CHANNEL)   { $env:NUWACLI_CHANNEL }   else { "stable" }
 $pinned   = $env:NUWACLI_VERSION
 $insecure = ($env:NUWAX_S3_INSECURE -eq "1")
 

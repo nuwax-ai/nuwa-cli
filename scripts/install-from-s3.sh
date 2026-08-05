@@ -6,7 +6,7 @@
 # One-liner:
 #   curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.sh | bash
 #
-# Pin a channel:        NUWACLI_CHANNEL=beta   (default)
+# Pin a channel:        NUWACLI_CHANNEL=stable (default) / beta
 # Pin a version:        NUWACLI_VERSION=0.1.0-beta.3
 # Override npm registry: NUWACLI_REGISTRY=https://registry.npmjs.org
 # Self-signed endpoint: NUWAX_S3_INSECURE=1
@@ -15,7 +15,7 @@ set -euo pipefail
 ENDPOINT="${NUWAX_S3_ENDPOINT:-https://s3.nuwax.com:9443}"
 BUCKET="${NUWAX_S3_BUCKET:-nuwax-packages}"
 PREFIX="${NUWAX_S3_PREFIX:-agent-engines/nuwa-cli}"
-CHANNEL="${NUWACLI_CHANNEL:-beta}"
+CHANNEL="${NUWACLI_CHANNEL:-stable}"
 PINNED_VERSION="${NUWACLI_VERSION:-}"
 INSECURE="${NUWAX_S3_INSECURE:-0}"
 
