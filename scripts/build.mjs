@@ -28,7 +28,12 @@ await esbuild.build({
   legalComments: "none",
   define: {
     __NUWACLI_VERSION__: JSON.stringify(pkg.version),
-    __NUWACLI_DIST_TAG__: JSON.stringify(pkg.publishConfig?.tag || "latest"),
+    // `nuwa-cli update` 的默认通道按版本稳定性判定：预发布版（含 `-`）→ beta，
+    // 正式版 → latest。不能直接用 publishConfig.tag（它始终是 beta，会导致正式版
+    // 用户 `nuwa-cli update` 反而降到 beta 通道）。
+    __NUWACLI_DIST_TAG__: JSON.stringify(
+      pkg.version.includes("-") ? "beta" : "latest",
+    ),
   },
   // These are CJS packages that do runtime `require("node:*")` inside their
   // own module bodies (node-machine-id -> child_process; which -> isexe ->

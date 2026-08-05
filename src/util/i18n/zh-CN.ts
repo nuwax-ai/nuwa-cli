@@ -210,6 +210,8 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "update.restartMaybeFailed":
     "serve 自动重启可能未完成（restart 退出码 {code}）。可手动运行 `nuwa-cli gateway`。",
   "update.restartSkipped": "serve 自动重启跳过：{msg}",
+  "update.olderTarget":
+    "目标版本 {target} 比当前 {current} 旧，已跳过以免降级。确需切换请手动 \`npm i -g @nuwax-ai/nuwa-cli@{target}\`。",
   // —— config ——
   "config.domain": "域名：{value}",
   "config.username": "用户：{value}",

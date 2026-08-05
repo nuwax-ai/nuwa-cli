@@ -158,6 +158,18 @@ describe("update command", () => {
     );
   });
 
+  it("compareSemver orders versions, stable-vs-prerelease, and numeric prereleases", async () => {
+    const { compareSemver } = await import("../src/commands/update.js");
+    expect(compareSemver("0.1.0", "0.0.0")).toBeGreaterThan(0);
+    // stable (0.2.0) must outrank an older beta prerelease — the regression fix
+    expect(compareSemver("0.2.0", "0.1.0-beta.55")).toBeGreaterThan(0);
+    expect(compareSemver("0.1.0-beta.55", "0.1.0")).toBeLessThan(0);
+    // numeric prerelease comparison (not lexicographic): 55 > 6
+    expect(compareSemver("0.1.0-beta.55", "0.1.0-beta.6")).toBeGreaterThan(0);
+    expect(compareSemver("0.1.0-beta.5", "0.1.0-beta.55")).toBeLessThan(0);
+    expect(compareSemver("1.2.3", "1.2.3")).toBe(0);
+  });
+
   it("prints honest step labels instead of a fake percentage bar", async () => {
     const { updateCommand } = await import("../src/commands/update.js");
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});

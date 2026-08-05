@@ -254,6 +254,8 @@ export const en = {
   "update.restartMaybeFailed":
     "serve auto-restart may be incomplete (restart exit code {code}). Run `nuwa-cli gateway` manually.",
   "update.restartSkipped": "serve auto-restart skipped: {msg}",
+  "update.olderTarget":
+    "Target {target} is older than the current {current}; skipped to avoid a downgrade. To switch anyway, run `npm i -g @nuwax-ai/nuwa-cli@{target}`.",
   // —— config ——
   "config.domain": "Domain: {value}",
   "config.username": "Username: {value}",

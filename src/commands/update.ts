@@ -13,7 +13,7 @@ import {
   stopTunnelChildProcesses,
 } from "../core/processes/serveSingleton.js";
 import { findUiProcessIds } from "../core/processes/uiSingleton.js";
-import { withSpinner, success, dim } from "../util/ui.js";
+import { withSpinner, success, dim, warn } from "../util/ui.js";
 import { t } from "../util/i18n/index.js";
 
 export interface UpdateOptions {
@@ -164,6 +164,51 @@ async function stopRuntimeProcessesForUpdate(): Promise<void> {
   if (consolePids.length > 0) await stopProcessIds(consolePids);
 }
 
+/** 解析 semver(核心 + 预发布);非 semver 返回 null。 */
+function parseSemver(
+  v: string,
+): { core: [number, number, number]; pre: string[] | null } | null {
+  const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(
+    v,
+  );
+  if (!m) return null;
+  return { core: [+m[1], +m[2], +m[3]], pre: m[4] ? m[4].split(".") : null };
+}
+
+function cmpPre(a: string[], b: string[]): number {
+  const n = Math.max(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    if (a[i] === undefined) return -1; // 字段更少 = 更低
+    if (b[i] === undefined) return 1;
+    const an = /^\d+$/.test(a[i]);
+    const bn = /^\d+$/.test(b[i]);
+    if (an && bn) {
+      const d = +a[i] - +b[i];
+      if (d) return d < 0 ? -1 : 1;
+    } else if (an !== bn) {
+      return an ? -1 : 1; // 数字标识 < 字母标识
+    } else if (a[i] !== b[i]) {
+      return a[i] < b[i] ? -1 : 1;
+    }
+  }
+  return 0;
+}
+
+/** semver 优先级比较:a<b→-1, a==b→0, a>b→1。非 semver 退化为字符串比较。 */
+export function compareSemver(a: string, b: string): number {
+  const pa = parseSemver(a);
+  const pb = parseSemver(b);
+  if (!pa || !pb) return a < b ? -1 : a > b ? 1 : 0;
+  for (let i = 0; i < 3; i++) {
+    if (pa.core[i] !== pb.core[i]) return pa.core[i] < pb.core[i] ? -1 : 1;
+  }
+  // 核心相等:无预发布 > 有预发布
+  if (!pa.pre && !pb.pre) return 0;
+  if (!pa.pre) return 1;
+  if (!pb.pre) return -1;
+  return cmpPre(pa.pre, pb.pre);
+}
+
 export function normalizeUpdateTarget(target?: string): string {
   const value = (target || DEFAULT_DIST_TAG).trim();
   if (!value || value.startsWith("-")) {
@@ -288,6 +333,20 @@ export async function updateCommand(
     );
     if (remoteVersion === CLI_VERSION) {
       console.log(success(t("update.alreadyLatest")));
+      return;
+    }
+
+    // 防降级:目标版本比当前旧(例如正式版用户的 `nuwa-cli update` 命中 beta 通道)
+    // 则跳过安装,不把用户降级。确需切换/降级请显式 `npm i -g ...@<version>`。
+    if (remoteVersion && compareSemver(remoteVersion, CLI_VERSION) < 0) {
+      console.log(
+        warn(
+          t("update.olderTarget", {
+            current: CLI_VERSION,
+            target: remoteVersion,
+          }),
+        ),
+      );
       return;
     }
 
