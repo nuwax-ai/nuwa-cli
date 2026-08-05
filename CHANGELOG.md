@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-05
+
+First stable release. Includes everything from the `0.1.0-beta.*` line, notably:
+
+- **i18n:** English default UI with automatic Simplified-Chinese detection and manual switching (`NUWACLI_LANG`, `nuwa-cli lang`). ACP protocol responses stay English. See [`docs/i18n.md`](docs/i18n.md).
+- **UX:** spinner progress for `doctor` / `serve --tunnel` / `start` / `restart`; honest `Step n/N` progress for `update`; unified `status` & `service status` Gateway line; user cancel exits `130` instead of a red error.
+- **Bilingual README** (English / 简体中文, in-page switch) shown on npm.
+- Distributed as npm `latest` and an S3 `stable` channel (`channels/stable.json`); the beta channel continues for pre-releases.
+
 ## [0.1.0-beta.54] - 2026-08-04
 
 ### Added
