@@ -11,7 +11,7 @@ const mirrorRegistry = "https://registry.npmmirror.com";
 const dryRun = process.argv.includes("--dry-run");
 
 function step(number, message) {
-  console.log(`\n[${number}/6] ${message}`);
+  console.log(`\n[${number}/7] ${message}`);
 }
 
 function run(command, args, options = {}) {
@@ -70,11 +70,13 @@ if (pkg.publishConfig?.tag !== "beta") {
 
 if (dryRun) {
   console.log(`Beta 发布计划：${packageSpec}`);
-  console.log("1. 校验干净工作树并运行完整测试/构建");
-  console.log("2. 发布 npm（已存在则跳过）并校正 beta dist-tag");
-  console.log(`3. cnpm sync ${pkg.name}`);
-  console.log("4. 核验 npmmirror exact version 与 beta dist-tag");
-  console.log("5. 发布 S3 tarball、channel 和安装脚本");
+  console.log("1. 校验干净工作树与 beta 版本");
+  console.log("2. 核验核心依赖 exact pin 与 registry latest 对齐");
+  console.log("3. 运行完整测试/构建");
+  console.log("4. 发布 npm（已存在则跳过）并校正 beta dist-tag");
+  console.log(`5. cnpm sync ${pkg.name}`);
+  console.log("6. 核验 npmmirror exact version 与 beta dist-tag");
+  console.log("7. 发布 S3 tarball、channel 和安装脚本");
   process.exit(0);
 }
 
@@ -88,11 +90,14 @@ if (worktree) {
 }
 run("node", ["scripts/assert-beta-release.mjs"], { mutating: false });
 
-step(2, "运行完整测试与构建");
+step(2, "核验核心依赖 exact pin");
+run("node", ["scripts/sync-core-deps.mjs", "--check"], { mutating: false });
+
+step(3, "运行完整测试与构建");
 run("npm", ["test", "--", "--run"], { mutating: false });
 run("npm", ["run", "build"], { mutating: false });
 
-step(3, "发布 npm beta");
+step(4, "发布 npm beta");
 if (viewVersion(packageSpec, npmRegistry) === pkg.version) {
   console.log(`npm 已存在 ${packageSpec}，跳过重复 publish。`);
 } else {
@@ -120,13 +125,13 @@ if (viewVersion(`${pkg.name}@beta`, npmRegistry) !== pkg.version) {
   ]);
 }
 
-step(4, "同步 npmmirror");
+step(5, "同步 npmmirror");
 run("cnpm", ["sync", pkg.name]);
 
-step(5, "核验 npmmirror");
+step(6, "核验 npmmirror");
 await waitForMirror();
 
-step(6, "发布 S3 beta");
+step(7, "发布 S3 beta");
 run("bash", [
   "scripts/publish-s3.sh",
   "--version",

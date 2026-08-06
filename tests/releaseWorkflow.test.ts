@@ -18,6 +18,8 @@ describe("beta release workflow", () => {
     expect(verify).toBeGreaterThan(sync);
     expect(s3).toBeGreaterThan(verify);
     expect(script).not.toContain('cnpm", ["sync", "@nuwax-ai/lanproxy');
+    // 发布前强制核验核心依赖 exact pin（相对 registry latest）。
+    expect(script).toContain('scripts/sync-core-deps.mjs", "--check"');
   });
 
   it("is wired to npm run release:beta with a dry-run companion", () => {

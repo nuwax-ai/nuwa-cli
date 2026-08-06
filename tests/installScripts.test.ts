@@ -55,4 +55,18 @@ describe("install script progress", () => {
       '"https://registry.npmmirror.com"',
     );
   });
+
+  it("skips npm install when CLI is already at the resolved target version", () => {
+    const sh = readScript("install.sh");
+    expect(sh).toContain("SKIP_INSTALL=0");
+    expect(sh).toContain('view "${PACKAGE}@${TAG}" version');
+    expect(sh).toContain("已安装，跳过 npm install");
+    expect(sh).toContain('if [ "$SKIP_INSTALL" = "0" ]; then');
+
+    const ps1 = readScript("install.ps1");
+    expect(ps1).toContain("$SkipInstall = $false");
+    expect(ps1).toContain('"view", "$Package@$Tag", "version"');
+    expect(ps1).toContain("already installed; skipping npm install");
+    expect(ps1).toContain("if (-not $SkipInstall)");
+  });
 });

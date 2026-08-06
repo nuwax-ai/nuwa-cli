@@ -72,8 +72,27 @@ ok "Node.js $(node -v)"
 
 command -v npm >/dev/null 2>&1 || fail "未检测到 npm。请用 Node.js 官方安装器: https://nodejs.org/"
 
-# --- Install ---
+# --- Resolve target version & skip if already current ---
+# 与 `nuwa-cli update` / S3 安装器同口径：CLI 版本已等于目标则不重跑 npm install
+#（exact pin 下同版本 ⇒ 核心依赖也不会变）。
 REGISTRY="${NUWACLI_REGISTRY:-}"
+VIEW_ARGS=(view "${PACKAGE}@${TAG}" version)
+[ -n "$REGISTRY" ] && VIEW_ARGS+=(--registry "$REGISTRY")
+TARGET_VERSION="$(npm "${VIEW_ARGS[@]}" 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
+[ -n "$TARGET_VERSION" ] || fail "无法解析 ${PACKAGE}@${TAG} 的远端版本。检查网络或 NUWACLI_REGISTRY。"
+ok "目标版本: ${PACKAGE}@${TAG} → ${TARGET_VERSION}"
+
+SKIP_INSTALL=0
+if command -v nuwa-cli >/dev/null 2>&1; then
+  INSTALLED_VERSION="$(nuwa-cli --version 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
+  if [ -n "$INSTALLED_VERSION" ] && [ "$INSTALLED_VERSION" = "$TARGET_VERSION" ]; then
+    ok "nuwa-cli $TARGET_VERSION 已安装，跳过 npm install。"
+    SKIP_INSTALL=1
+  fi
+fi
+
+# --- Install (skipped when already at target) ---
+if [ "$SKIP_INSTALL" = "0" ]; then
 INSTALL_ARGS=(install -g "${PACKAGE}@${TAG}" --progress=true)
 [ -n "$REGISTRY" ] && INSTALL_ARGS+=(--registry "$REGISTRY")
 step 2 3 "安装 ${PACKAGE}@${TAG}${REGISTRY:+ via $REGISTRY} ..."
@@ -83,6 +102,7 @@ if ! run_npm_with_progress 35 "${INSTALL_ARGS[@]}"; then
   fail "npm 安装失败。$( [ "$(id -u)" -ne 0 ] && echo "权限不足可加 sudo,或 npm config set prefix ~/.npm-global; " )国内网络可设镜像重试: NUWACLI_REGISTRY=https://registry.npmmirror.com"
 fi
 ok "依赖安装完成，耗时 $((SECONDS - INSTALL_STARTED)) 秒"
+fi
 
 # --- Resolve npm global bin directory ---
 step 3 3 "配置 PATH 并验证 nuwa-cli ..."
@@ -145,7 +165,16 @@ fi
 
 # --- Verify ---
 if command -v nuwa-cli >/dev/null 2>&1; then
-  ok "nuwa-cli 已就绪: $(nuwa-cli --version 2>/dev/null || echo installed)"
+  VER="$(nuwa-cli --version 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
+  # 实际安装过时，要求结果版本 == 目标（防 npm 假成功留下旧版）。
+  if [ "$SKIP_INSTALL" = "0" ]; then
+    if [ -z "$VER" ]; then
+      fail "安装校验失败：nuwa-cli 存在但 --version 无输出。请重跑安装脚本，或手动：npm i -g ${PACKAGE}@${TAG}"
+    elif [ "$VER" != "$TARGET_VERSION" ]; then
+      fail "安装校验失败：期望 nuwa-cli $TARGET_VERSION，实际 $VER。请重跑安装脚本，或手动：npm i -g ${PACKAGE}@${TAG}"
+    fi
+  fi
+  ok "nuwa-cli 已就绪: ${VER:-installed}"
   printf '\n%s安装成功!运行 nuwa-cli -h 查看帮助。%s\n\n' "$GREEN" "$NC"
 else
   warn "nuwa-cli 已安装,但当前 shell 未识别。请重开终端后运行: nuwa-cli -h"

@@ -1,6 +1,6 @@
 {
   "name": "@nuwax-ai/nuwa-cli",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "packageManager": "npm@10.9.2",
   "workspaces": [
     "packages/lanproxy"
@@ -30,6 +30,8 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "prepublishOnly": "node scripts/assert-beta-release.mjs && npm run build",
+    "sync:core-deps": "node scripts/sync-core-deps.mjs",
+    "sync:core-deps:check": "node scripts/sync-core-deps.mjs --check",
     "release:beta": "node scripts/release-beta.mjs",
     "release:beta:dry-run": "node scripts/release-beta.mjs --dry-run",
     "release:lanproxy": "node scripts/release-lanproxy.mjs"
@@ -40,13 +42,13 @@
     "@clack/prompts": "^1.7.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@nuwax-ai/agent-kit": "^0.3.1",
-    "@nuwax-ai/lanproxy": "^1.0.0",
-    "@nuwax-ai/mcp-proxy-ts": "^1.5.4",
-    "@nuwax-ai/nuwax-codex-acp-ts": "^1.2.4",
-    "claude-code-acp-ts": "^0.57.0",
+    "@nuwax-ai/lanproxy": "1.0.0",
+    "@nuwax-ai/mcp-proxy-ts": "1.5.4",
+    "@nuwax-ai/nuwax-codex-acp-ts": "1.2.8",
+    "claude-code-acp-ts": "0.65.0",
     "commander": "^15.0.0",
     "node-machine-id": "^1.1.12",
-    "nuwax-file-server": "^1.3.4",
+    "nuwax-file-server": "1.3.4",
     "picocolors": "^1.1.1",
     "which": "^5.0.0",
     "write-file-atomic": "^5.0.1",

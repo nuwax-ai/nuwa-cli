@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-06
+
+### Added
+
+- Core runtime dependency sync: exact-pin the five packages (`@nuwax-ai/lanproxy`, `@nuwax-ai/mcp-proxy-ts`, `nuwax-file-server`, `claude-code-acp-ts`, `@nuwax-ai/nuwax-codex-acp-ts`) and manage them with `npm run sync:core-deps` / `sync:core-deps:check`. `release:beta` now gates on `--check`.
+- Official npm installers (`install.sh` / `install.ps1`) skip `npm install` when the installed CLI version already matches the resolved tag (same policy as `nuwa-cli update` and the S3 installers).
+
+### Changed
+
+- Bumped pinned core adapters to current latest: `claude-code-acp-ts@0.65.0`, `@nuwax-ai/nuwax-codex-acp-ts@1.2.8`.
+
 ## [0.2.0] - 2026-08-05
 
 First stable release. Includes everything from the `0.1.0-beta.*` line, notably:

@@ -90,8 +90,32 @@ Ok "Node.js $(node -v)"
 $npm = Get-Command npm -ErrorAction SilentlyContinue
 if (-not $npm) { Fail "npm not found. Use the official Node.js installer: https://nodejs.org/" }
 
-# --- Install ---
+# --- Resolve target version & skip if already current ---
+# Same policy as `nuwa-cli update` / S3 installers: skip npm install when the
+# installed CLI version already matches the resolved tag (exact pins => deps unchanged).
 $registry = $env:NUWACLI_REGISTRY
+$viewArgs = @("view", "$Package@$Tag", "version")
+if ($registry) { $viewArgs += @("--registry", $registry) }
+$targetVersion = try { (& npm @viewArgs 2>$null | Select-Object -First 1).ToString().Trim() } catch { "" }
+if (-not $targetVersion) {
+    Fail "Cannot resolve $Package@$Tag version. Check network or NUWACLI_REGISTRY."
+}
+Ok "Target version: $Package@$Tag -> $targetVersion"
+
+$SkipInstall = $false
+$existing = Get-Command nuwa-cli -ErrorAction SilentlyContinue
+if ($existing) {
+    try {
+        $installedVersion = (nuwa-cli --version 2>$null).ToString().Trim()
+        if ($installedVersion -and $installedVersion -eq $targetVersion) {
+            Ok "nuwa-cli $targetVersion already installed; skipping npm install."
+            $SkipInstall = $true
+        }
+    } catch {}
+}
+
+# --- Install (skipped when already at target) ---
+if (-not $SkipInstall) {
 $installArgs = @("install", "-g", "$Package@$Tag", "--progress=true")
 if ($registry) { $installArgs += @("--registry", $registry) }
 $via = if ($registry) { " via $registry" } else { "" }
@@ -103,6 +127,7 @@ try {
     Fail "npm install failed: $($_.Exception.Message). Check the npm error above. For China mirrors retry with: `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'; then re-run the installer"
 }
 Ok "Dependencies installed in $([math]::Round($installElapsed.TotalSeconds, 1))s"
+}
 
 # --- Resolve npm global directory ---
 Step 3 3 "Configuring PATH and verifying nuwa-cli ..."
@@ -144,8 +169,16 @@ if ($allEntries -contains $prefixNorm) {
 # --- Verify ---
 $nuwa = Get-Command nuwa-cli -ErrorAction SilentlyContinue
 if ($nuwa) {
-    $ver = try { (nuwa-cli --version 2>$null) } catch { "installed" }
-    Ok "nuwa-cli ready: $ver"
+    $ver = try { (nuwa-cli --version 2>$null).ToString().Trim() } catch { "" }
+    # When an install was attempted, require the result to match the target.
+    if (-not $SkipInstall) {
+        if (-not $ver) {
+            Fail "Install verification failed: nuwa-cli is present but --version returned nothing. Re-run the installer, or: npm i -g $Package@$Tag"
+        } elseif ($ver -ne $targetVersion) {
+            Fail "Install verification failed: expected nuwa-cli $targetVersion but found $ver. Re-run the installer, or: npm i -g $Package@$Tag"
+        }
+    }
+    Ok "nuwa-cli ready: $(if ($ver) { $ver } else { 'installed' })"
     Write-Host ""
     Write-Host "Install succeeded. Run nuwa-cli -h for help." -ForegroundColor Green
 } else {
