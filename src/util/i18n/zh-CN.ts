@@ -175,17 +175,18 @@ export const zhCN: { [K in keyof typeof en]: string } = {
     "输出一个适合跨 Agent 接手工作的结构化交接包 JSON",
   "cli.cmd.context.handoff.opt.limit": "最多读取最近 N 条消息参与交接包",
   // —— update / console ——
-  "cli.cmd.update.desc": "升级 nuwa-cli CLI（当前默认跟随 beta 通道）",
+  "cli.cmd.update.desc":
+    "升级 nuwa-cli CLI（正式版默认跟随 latest，预发布版默认跟随 beta）",
   "cli.cmd.update.opt.check": "只查询目标版本，不执行安装",
   "cli.cmd.update.opt.dryRun": "打印升级命令但不执行",
   "cli.cmd.update.opt.registry": "指定 npm registry",
   "cli.cmd.update.help":
-    "\n示例：\n  nuwa-cli update\n  nuwa-cli update 0.1.0-beta.2\n  nuwa-cli update latest\n  nuwa-cli update --check\n\n说明：\n  - update 使用 npm 升级全局 CLI 包，不修改 ~/.nuwa-cli 登录数据。\n  - 当前预发布阶段默认跟随 beta；可显式指定版本或 latest tag。\n  - npx 临时运行时，建议直接使用 npx -y @nuwax-ai/nuwa-cli@beta ...。",
+    "\n示例：\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n\n说明：\n  - update 使用 npm 升级全局 CLI 包，不修改 ~/.nuwa-cli 登录数据。\n  - 默认通道随当前安装版本：正式版 → latest，预发布版 → beta；也可显式指定版本或 dist-tag。\n  - npx 临时运行时，建议使用 npx -y @nuwax-ai/nuwa-cli@latest ...（预发布用 @beta）。",
   "cli.cmd.console.desc":
     "启动本地 Web Console：查看/续接/新建会话并直接聊天（仅前台单例）",
   // —— update ——
   "update.emptyTarget":
-    "升级版本不能为空。示例：nuwa-cli update beta 或 nuwa-cli update 0.1.0-beta.2",
+    "升级版本不能为空。示例：nuwa-cli update latest 或 nuwa-cli update 0.2.2",
   "update.noNpm": "未找到 npm。请先安装 Node.js/npm 后重试。",
   "update.queryFailed": "查询 npm 版本失败。",
   "update.currentVersion": "当前版本：{version}",

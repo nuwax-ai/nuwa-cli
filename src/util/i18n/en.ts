@@ -217,18 +217,18 @@ export const en = {
     "Read at most the last N messages for the handoff bundle",
   // —— update / console ——
   "cli.cmd.update.desc":
-    "Upgrade the nuwa-cli CLI (currently follows the beta channel by default)",
+    "Upgrade the nuwa-cli CLI (stable builds follow latest by default; pre-releases follow beta)",
   "cli.cmd.update.opt.check": "Only query the target version; do not install",
   "cli.cmd.update.opt.dryRun":
     "Print the upgrade command without running it",
   "cli.cmd.update.opt.registry": "Specify the npm registry",
   "cli.cmd.update.help":
-    "\nExamples:\n  nuwa-cli update\n  nuwa-cli update 0.1.0-beta.2\n  nuwa-cli update latest\n  nuwa-cli update --check\n\nNotes:\n  - update uses npm to upgrade the global CLI package; it does not modify ~/.nuwa-cli login data.\n  - During the pre-release phase it follows beta by default; you can pass an explicit version or the latest tag.\n  - When running via npx, prefer npx -y @nuwax-ai/nuwa-cli@beta ... directly.",
+    "\nExamples:\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n\nNotes:\n  - update uses npm to upgrade the global CLI package; it does not modify ~/.nuwa-cli login data.\n  - Default channel follows the installed build: stable → latest, pre-release → beta. Pass an explicit version or dist-tag to override.\n  - When running via npx, prefer npx -y @nuwax-ai/nuwa-cli@latest ... (or @beta for pre-releases).",
   "cli.cmd.console.desc":
     "Start the local Web Console: view/resume/create sessions and chat directly (foreground single-instance only)",
   // —— update ——
   "update.emptyTarget":
-    "Upgrade target cannot be empty. Example: nuwa-cli update beta or nuwa-cli update 0.1.0-beta.2",
+    "Upgrade target cannot be empty. Example: nuwa-cli update latest or nuwa-cli update 0.2.2",
   "update.noNpm": "npm not found. Please install Node.js/npm first and retry.",
   "update.queryFailed": "Failed to query the npm version.",
   "update.currentVersion": "Current version: {version}",
