@@ -173,7 +173,7 @@ describe("rewriteMcpServersForEngine defaults", () => {
     expect(started["ask-question"]?.persistent).toBe(true);
   });
 
-  it("codex engine 跳过 proxy 桥接，下发原始 stdio 入口", async () => {
+  it("codex：ephemeral 原始 stdio，persistent 经 proxy 接 Bridge（并启动 Bridge）", async () => {
     const { rewriteMcpServersForEngine } = await import(
       "../src/core/mcp/proxyRewrite.js"
     );
@@ -193,8 +193,7 @@ describe("rewriteMcpServersForEngine defaults", () => {
     expect(names).toEqual(
       expect.arrayContaining(["chrome-devtools", "ask-question"]),
     );
-    // 原始 stdio 入口，非 proxy（process.execPath + --config-file）。
-    // npx 在 Windows 上已被改写为 node + npx-cli.js（resolveStdioNoWindow）。
+    // ephemeral：原始 stdio（非 --config-file）
     const ask = out.find(
       (s: { name: string }) => s.name === "ask-question",
     ) as { command: string; args: string[] };
@@ -203,14 +202,28 @@ describe("rewriteMcpServersForEngine defaults", () => {
         .command,
     );
     expect(ask?.args).not.toContain("--config-file");
+    // persistent：经 proxy 包装（接 Bridge URL）
     const cd = out.find(
       (s: { name: string }) => s.name === "chrome-devtools",
     ) as { command: string; args: string[] };
-    expect(cd?.command).toBe(
-      resolveStdioNoWindow("npx", ["-y", "chrome-devtools-mcp@latest"]).command,
-    );
-    // codex 不启动 PersistentMcpBridge（claude 才用）
-    expect(mocks.bridgeStart).not.toHaveBeenCalled();
+    expect(cd?.command).toBe(process.execPath);
+    expect(cd?.args[0]).toMatch(/mcp-proxy-ts.*dist[/\\]index\.js$/);
+    expect(cd?.args).toContain("--config-file");
+    // Hub 级：codex 路径也会 ensure Bridge
+    expect(mocks.bridgeStart).toHaveBeenCalled();
+  });
+
+  it("warmupPersistentMcpBridge 以 DEFAULT persistent 启动 Bridge", async () => {
+    const { warmupPersistentMcpBridge, isPersistentMcpBridgeRunning } =
+      await import("../src/core/mcp/proxyRewrite.js");
+    await warmupPersistentMcpBridge();
+    expect(mocks.bridgeStart).toHaveBeenCalled();
+    const started = mocks.bridgeStart.mock.calls[0]![0] as Record<
+      string,
+      { persistent?: boolean }
+    >;
+    expect(started["chrome-devtools"]?.persistent).toBe(true);
+    expect(isPersistentMcpBridgeRunning()).toBe(true);
   });
 });
 

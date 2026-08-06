@@ -1,9 +1,13 @@
 /**
  * nuwa-cli ↔ @nuwax-ai/mcp-proxy-ts Host Adapter 封装。
  *
- * - 默认合并 Electron 同款 DEFAULT（chrome-devtools persistent）
- * - 把 ACP mcpServers 改写成「每 server 一个 proxy stdio 入口」
- * - 管理 PersistentMcpBridge（persistent 标记的 stdio server）
+ * 对齐 nuwaclaw：
+ * - PersistentMcpBridge（chrome-devtools 等 persistent）= Hub/serve 级单例
+ *   「启动后一直在，直到主动 stop」
+ * - serve 启动时 warmup；session 结束不杀 Bridge
+ * - claude/codex：ephemeral 仍下发原始 stdio；persistent 经 proxy 接 Bridge URL
+ *   （避免与 Bridge 各起一份 chrome-devtools）
+ * - 其它引擎：整表改写成 proxy stdio（含 Bridge URL）
  */
 
 import type { McpServer } from "@agentclientprotocol/sdk";
@@ -30,7 +34,7 @@ const mcpBridgeLogger: McpProxyLogger = {
   error: (...args) => debugLog("mcp-bridge", args.map(String).join(" ")),
 };
 
-/** Hub 级 PersistentMcpBridge 单例（管理在 @nuwax-ai/agent-kit）；无 persistent server 时不启动。 */
+/** Hub 级 PersistentMcpBridge 单例（管理在 @nuwax-ai/agent-kit）。 */
 const persistentBridge = createPersistentBridge({
   create: (logger) => new PersistentMcpBridge(logger),
   logger: mcpBridgeLogger,
@@ -71,6 +75,28 @@ function persistentNamesFromEnv(): Set<string> {
   );
 }
 
+/** 对 stdio 条目做 Windows npx→node 解析。 */
+function resolveStdioEntry(entry: HostStdioServerEntry): HostStdioServerEntry {
+  const resolved = resolveStdioNoWindow(entry.command, entry.args ?? []);
+  return { ...entry, command: resolved.command, args: resolved.args };
+}
+
+/**
+ * serve 启动时用于 warmup 的默认 persistent 集合（仅 DEFAULT，含 npx 解析）。
+ * 动态 ACP / NUWACLI_MCP_PERSISTENT 追加在 rewrite 时再并入。
+ */
+export function buildDefaultPersistentServers(): Record<
+  string,
+  HostStdioServerEntry
+> {
+  const out: Record<string, HostStdioServerEntry> = {};
+  for (const [name, entry] of Object.entries(DEFAULT_MCP_PROXY_SERVERS)) {
+    if (!entry.persistent) continue;
+    out[name] = { ...resolveStdioEntry(entry), persistent: true };
+  }
+  return out;
+}
+
 /**
  * Host map → ACP 数组形态（无 proxy 改写时的回退）。
  */
@@ -105,6 +131,42 @@ function hostMapToAcpServers(
   return out;
 }
 
+function proxyCommandsToAcpServers(
+  rewritten: Record<
+    string,
+    { command: string; args: string[]; env?: Record<string, string> }
+  >,
+): McpServer[] {
+  return Object.entries(rewritten).map(([name, entry]) => ({
+    name,
+    command: entry.command,
+    args: entry.args,
+    env: entry.env
+      ? Object.entries(entry.env).map(([n, v]) => ({ name: n, value: v }))
+      : [],
+  }));
+}
+
+/** 从已 merge 的 map 抽出 persistent stdio 子集。 */
+function extractPersistentServers(
+  merged: Record<string, HostMcpServerEntry>,
+): Record<string, HostStdioServerEntry> {
+  const persistentNames = persistentNamesFromEnv();
+  const persistent: Record<string, HostStdioServerEntry> = {};
+  for (const [name, item] of Object.entries(merged)) {
+    if (isHostRemoteEntry(item)) continue;
+    if (persistentNames.has(name) || item.persistent) {
+      persistent[name] = {
+        command: item.command,
+        args: item.args,
+        env: item.env,
+        persistent: true,
+      };
+    }
+  }
+  return persistent;
+}
+
 /**
  * 确保 PersistentMcpBridge 已托管指定的 persistent stdio servers。
  * 单例管理在 @nuwax-ai/agent-kit（createPersistentBridge）。
@@ -113,6 +175,30 @@ export async function ensurePersistentMcpBridge(
   servers: Record<string, HostStdioServerEntry>,
 ): Promise<PersistentMcpBridge | null> {
   return persistentBridge.ensureStarted(servers);
+}
+
+/**
+ * serve / Gateway 启动时预热 Bridge（对齐 nuwaclaw warmup）。
+ * 失败只打日志，不阻断 serve；后续 rewrite 仍会再 ensure。
+ */
+export async function warmupPersistentMcpBridge(): Promise<void> {
+  const servers = buildDefaultPersistentServers();
+  if (Object.keys(servers).length === 0) return;
+  try {
+    await ensurePersistentMcpBridge(servers);
+    debugLog("mcp-proxy", "PersistentMcpBridge warmed", {
+      servers: Object.keys(servers),
+    });
+  } catch (err) {
+    debugLog("mcp-proxy", "PersistentMcpBridge warmup failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/** status 用：Bridge 是否已启动（与「有无临时 mcp-proxy-ts 进程」无关）。 */
+export function isPersistentMcpBridgeRunning(): boolean {
+  return persistentBridge.isRunning();
 }
 
 /** serve / hub 关闭时停止 bridge，避免子进程残留。 */
@@ -127,6 +213,7 @@ export async function stopPersistentMcpBridge(): Promise<void> {
  * - 始终以 DEFAULT（chrome-devtools persistent）为底，再叠加 ACP 动态 MCP
  * - 空列表仍注入默认服务（仅 chrome-devtools）
  * - NUWACLI_MCP_PERSISTENT 可追加其它长驻名
+ * - Bridge 按 Hub 生命周期常驻；claude/codex 的 persistent 走 proxy→Bridge URL
  */
 export async function rewriteMcpServersForEngine(
   servers: McpServer[] | undefined,
@@ -157,8 +244,7 @@ export async function rewriteMcpServersForEngine(
   // npx warmup + npm update already do the same). Remote entries pass through.
   for (const [name, entry] of Object.entries(merged)) {
     if (isHostRemoteEntry(entry)) continue;
-    const resolved = resolveStdioNoWindow(entry.command, entry.args ?? []);
-    merged[name] = { ...entry, command: resolved.command, args: resolved.args };
+    merged[name] = resolveStdioEntry(entry);
   }
   const passthroughResolved = (passthrough as AcpMcpServer[]).map((server) => {
     if (!("command" in server)) return server;
@@ -170,16 +256,53 @@ export async function rewriteMcpServersForEngine(
     return passthroughResolved as McpServer[];
   }
 
-  // claude-code-acp-ts 与 nuwax-codex-acp 均原生支持 ACP stdio MCP（各自把
-  // mcpServers 转成内部 MCP 配置：claude-code-acp-ts acp-agent.js、codex
-  // codex_agent.rs build_session_config）。mcp-proxy-ts proxy 桥接会把 server
-  // 改写成 proxy 入口形态，engine 注册不上原始 server name（codex "unknown MCP
-  // server"）或工具不加载（claude）。直接下发原始 stdio 入口（DEFAULT + ACP）。
-  if (engine === "codex" || engine === "claude") {
-    return [...hostMapToAcpServers(merged), ...(passthroughResolved as McpServer[])];
-  }
+  const persistent = extractPersistentServers(merged);
+  // 无论引擎：先确保 Bridge 起来（Hub 级常驻；与 session 无关）。
+  const runningBridge = await ensurePersistentMcpBridge(persistent);
 
   const proxyScriptPath = resolveProxyEntry();
+
+  // claude / codex：ephemeral 原生 stdio；persistent 经 proxy 接 Bridge，避免双开。
+  if (engine === "codex" || engine === "claude") {
+    const ephemeral: Record<string, HostMcpServerEntry> = {};
+    const persistentOnly: Record<string, HostMcpServerEntry> = {};
+    for (const [name, entry] of Object.entries(merged)) {
+      if (persistent[name]) persistentOnly[name] = entry;
+      else ephemeral[name] = entry;
+    }
+
+    const out: McpServer[] = [...hostMapToAcpServers(ephemeral)];
+
+    if (Object.keys(persistentOnly).length > 0) {
+      if (proxyScriptPath && runningBridge) {
+        const rewritten = rewriteServersToProxyCommands(persistentOnly, {
+          proxyScriptPath,
+          nodeBinPath: process.execPath,
+          configDir: mcpProxyConfigDir(),
+          logDir: mcpProxyLogDir(),
+          projectId,
+          bridge: runningBridge,
+        });
+        if (rewritten) out.push(...proxyCommandsToAcpServers(rewritten));
+        else out.push(...hostMapToAcpServers(persistentOnly));
+      } else {
+        // 无 proxy 脚本或 Bridge 未起：退回原始 stdio（可能与 warmup 失败并存）
+        out.push(...hostMapToAcpServers(persistentOnly));
+      }
+    }
+
+    debugLog(
+      "mcp-proxy",
+      `${engine}: ephemeral stdio + persistent via bridge/proxy`,
+      {
+        ephemeral: Object.keys(ephemeral),
+        persistent: Object.keys(persistentOnly),
+        bridgeRunning: persistentBridge.isRunning(),
+      },
+    );
+    return [...out, ...(passthroughResolved as McpServer[])];
+  }
+
   if (!proxyScriptPath) {
     debugLog(
       "mcp-proxy",
@@ -187,22 +310,6 @@ export async function rewriteMcpServersForEngine(
     );
     return [...hostMapToAcpServers(merged), ...(passthroughResolved as McpServer[])];
   }
-
-  const persistentNames = persistentNamesFromEnv();
-  const persistent: Record<string, HostStdioServerEntry> = {};
-  for (const [name, item] of Object.entries(merged)) {
-    if (isHostRemoteEntry(item)) continue;
-    if (persistentNames.has(name) || item.persistent) {
-      persistent[name] = {
-        command: item.command,
-        args: item.args,
-        env: item.env,
-        persistent: true,
-      };
-    }
-  }
-
-  const runningBridge = await ensurePersistentMcpBridge(persistent);
 
   const rewritten = rewriteServersToProxyCommands(merged, {
     proxyScriptPath,
@@ -217,15 +324,7 @@ export async function rewriteMcpServersForEngine(
     return [...hostMapToAcpServers(merged), ...(passthroughResolved as McpServer[])];
   }
 
-  const out: McpServer[] = Object.entries(rewritten).map(([name, entry]) => ({
-    name,
-    command: entry.command,
-    args: entry.args,
-    // ACP McpServerStdio.env 必填（不可为 undefined）
-    env: entry.env
-      ? Object.entries(entry.env).map(([n, v]) => ({ name: n, value: v }))
-      : [],
-  }));
+  const out = proxyCommandsToAcpServers(rewritten);
 
   debugLog(
     "mcp-proxy",

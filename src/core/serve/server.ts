@@ -6,6 +6,10 @@ import * as path from "node:path";
 import type { EngineKind } from "../env/inheritEnv.js";
 import type { PermissionMode } from "../permissions/policy.js";
 import { SessionHub } from "./sessionHub.js";
+import {
+  isPersistentMcpBridgeRunning,
+  warmupPersistentMcpBridge,
+} from "../mcp/proxyRewrite.js";
 import { writeServeLock, clearServeLock } from "./serveLock.js";
 import {
   readJsonBody,
@@ -200,6 +204,9 @@ export function startServeHttp(options: ServeOptions): {
 } {
   const secret = crypto.randomBytes(24).toString("hex");
   const hub = new SessionHub(options.permissionMode, options.overlay);
+  // 对齐 nuwaclaw：serve 启动即预热 PersistentMcpBridge（chrome-devtools 等），
+  // 跨 session 常驻，仅 hub.stopAll / 主动 stop 时关闭。失败不阻断 HTTP。
+  void warmupPersistentMcpBridge();
   const acceptedSecrets = new Set(
     [secret, ...(options.acceptedSecrets ?? [])].filter(Boolean),
   );
@@ -245,6 +252,8 @@ export function startServeHttp(options: ServeOptions): {
       sendJson(res, 200, {
         status: "ok",
         engine: options.engine,
+        // 跨进程 status 经 /health 读取 Bridge 是否已在本 Gateway 进程内启动
+        mcpBridge: isPersistentMcpBridgeRunning(),
         timestamp: new Date().toISOString(),
       });
       return;

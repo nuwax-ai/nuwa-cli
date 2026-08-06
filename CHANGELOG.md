@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-08-06
+
+### Changed
+
+- Align PersistentMcpBridge with nuwaclaw: warmup on Gateway/`serve` (and Console) start; keep running until active stop. `claude`/`codex` ephemeral MCP stay raw stdio; persistent defaults go through proxy→Bridge. `status` `mcp-proxy` reads `/health.mcpBridge` (running / not running only).
+
 ## [0.2.3] - 2026-08-06
 
 ### Fixed

@@ -190,7 +190,7 @@ Codex ACP 平台运行时不可用。请重新安装 nuwa-cli。
 2. Gateway 启动参数 `--api-key`、`--base-url`、`--model`；
 3. 用户电脑已有环境变量和 `~/.claude` / `~/.codex` 配置。
 
-没有下发的字段不会写入空值，也不会覆盖用户本地配置。MCP 处理由 `rewriteMcpServersForEngine` 统一负责：先以内置默认服务（`chrome-devtools`，persistent）为底，叠加 ACP 下发的 `mcpServers`（同名以动态为准），并把所有 stdio 的 `npx` 改写为 `node + npx-cli.js`（避免 Windows 控制台闪屏）。codex / claude 两个引擎的 adapter（`@nuwax-ai/nuwax-codex-acp-ts` / `claude-code-acp-ts`）原生支持 ACP stdio MCP，直接下发合并后的原始 stdio 入口（stdio MCP 的环境变量随各 MCP 进程下发）；只有其它或未知引擎才经 `@nuwax-ai/mcp-proxy-ts` 改写成 proxy 入口，并起 `PersistentMcpBridge` 长驻托管 persistent server（默认 `chrome-devtools`，可用 `NUWACLI_MCP_PERSISTENT` 追加）。
+没有下发的字段不会写入空值，也不会覆盖用户本地配置。MCP 处理由 `rewriteMcpServersForEngine` 统一负责：先以内置默认服务（`chrome-devtools`，persistent）为底，叠加 ACP 下发的 `mcpServers`（同名以动态为准），并把所有 stdio 的 `npx` 改写为 `node + npx-cli.js`（避免 Windows 控制台闪屏）。**PersistentMcpBridge 在 Gateway/`serve` 启动时 warmup，跨 session 常驻，仅 `stop --all` / serve 退出时关闭**（对齐 nuwaclaw）。`claude` / `codex`：ephemeral MCP 下发原始 stdio；persistent（如 `chrome-devtools`）经 proxy 接 Bridge URL，避免与 Bridge 双开。其它/未知引擎整表经 `@nuwax-ai/mcp-proxy-ts` 改写成 proxy 入口。可用 `NUWACLI_MCP_PERSISTENT` 追加长驻名。`status` 的 `mcp-proxy` 行读取 Gateway `/health.mcpBridge`，只表示 Bridge 是否已启动。
 
 引擎映射：`claude-code` / `claude-code-acp-ts` → Claude；`codex` / `codex-cli` / `codex-acp` / `nuwax-codex-acp` → Codex。没有下发 command、command 未命中，或下发当前 CLI 不支持的引擎时，统一使用 Codex。已有会话固定使用创建时的引擎，后续 prompt 不会中途切换。
 

@@ -6,6 +6,7 @@ import * as path from "node:path";
 import type { RequestPermissionResponse } from "@agentclientprotocol/sdk";
 import APP_HTML from "./appHtml.html";
 import { SessionHub } from "../serve/sessionHub.js";
+import { warmupPersistentMcpBridge } from "../mcp/proxyRewrite.js";
 import {
   readJsonBody,
   sendJson,
@@ -58,6 +59,8 @@ export function startUiHttp(options: UiServerOptions): {
 } {
   const token = crypto.randomBytes(24).toString("hex");
   const hub = new SessionHub(options.permissionMode, options.overlay);
+  // Console 同样预热 Bridge，生命周期随 UI hub。
+  void warmupPersistentMcpBridge();
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);

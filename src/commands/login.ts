@@ -19,7 +19,6 @@ import { printGatewayStatusLine } from "../core/serve/statusView.js";
 import {
   findServeProcessIds,
   stopServeProcesses,
-  discoverMcpProxyProcesses,
 } from "../core/processes/serveSingleton.js";
 import {
   listRegisteredProcesses,
@@ -295,7 +294,7 @@ async function printServeStatus(): Promise<void> {
   const status = await getServeStatus();
   printGatewayStatusLine(status);
 
-  // 子服务状态：file-server / lanproxy（来自进程注册表）+ mcp-proxy（按需 spawn，扫描发现）
+  // 子服务：file-server / lanproxy（注册表）+ mcp-proxy（Gateway /health 上报的 Bridge）
   const sep = t("common.labelSep");
   const registered = listRegisteredProcesses();
   printChildServiceLine(
@@ -306,12 +305,14 @@ async function printServeStatus(): Promise<void> {
     "lanproxy",
     registered.filter((r) => r.kind === "lanproxy"),
   );
-  const mcpProxyPids = discoverMcpProxyProcesses();
-  const onDemand = t("status.onDemand");
+  // Bridge 随 Gateway 进程；Gateway 未运行则视为未启动。
+  const mcpRunning =
+    (status.state === "running" || status.state === "unhealthy") &&
+    status.mcpBridge === true;
   console.log(
-    mcpProxyPids.length > 0
-      ? `mcp-proxy${sep}${pc.green(t("status.running"))}  PID ${mcpProxyPids.join(", ")}${onDemand}`
-      : `mcp-proxy${sep}${pc.dim(t("status.noInstance"))}${onDemand}`,
+    mcpRunning
+      ? `mcp-proxy${sep}${pc.green(t("status.running"))}`
+      : `mcp-proxy${sep}${pc.dim(t("status.notRunning"))}`,
   );
 
   // Console：仅运行时展示，未运行则不显示该行。

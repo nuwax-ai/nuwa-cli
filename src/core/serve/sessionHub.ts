@@ -700,9 +700,9 @@ export class SessionHub {
     );
     this.sessions.set(session.sessionId, session);
     this.spawnRunner(session, async (ctx) => {
-      // ACP MCP：codex / claude 的 adapter 原生支持 stdio MCP，
-      // rewriteMcpServersForEngine 直接下发原始入口（已合并 DEFAULT、npx→node）；
-      // 只有其它/未知引擎才走 mcp-proxy-ts 改写 + PersistentMcpBridge。
+      // ACP MCP：Hub 级 PersistentMcpBridge 已在 serve 启动时 warmup。
+      // rewriteMcpServersForEngine：claude/codex 的 ephemeral 下发原始 stdio，
+      // persistent（chrome-devtools）经 proxy 接 Bridge；其它引擎整表 proxy 改写。
       const mcpServers = await rewriteMcpServersForEngine(
         session.mcpServers,
         session.projectId ?? session.sessionId,
