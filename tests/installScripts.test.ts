@@ -69,4 +69,17 @@ describe("install script progress", () => {
     expect(ps1).toContain("already installed; skipping npm install");
     expect(ps1).toContain("if (-not $SkipInstall)");
   });
+
+  it("releases Windows vendor exe locks before npm install and null-safes log Trim", () => {
+    for (const name of ["install.ps1", "install-from-s3.ps1"] as const) {
+      const ps1 = readScript(name);
+      expect(ps1).toContain("nuwax-codex.exe");
+      expect(ps1).toContain("nuwax-lanproxy.exe");
+      expect(ps1).toContain('if ($null -eq $stdout) { $stdout = "" }');
+      expect(ps1).toContain('if ($null -eq $stderr) { $stderr = "" }');
+    }
+    expect(readScript("install-from-s3.sh")).toContain(
+      "taskkill //F //IM nuwax-codex.exe",
+    );
+  });
 });

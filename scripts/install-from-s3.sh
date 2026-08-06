@@ -136,9 +136,11 @@ if [ "$WAS_INSTALLED" = "1" ] && command -v nuwa-cli >/dev/null 2>&1; then
   info "升级前停止正在运行的 nuwa-cli 服务..."
   nuwa-cli stop --all >/dev/null 2>&1 || true
 fi
-# Windows Git Bash：再兜底杀 lanproxy，避免 npm EPERM 锁二进制。
+# Windows Git Bash：再兜底杀可能锁住 npm 覆盖的 vendor 二进制。
 if [ "$(uname -s 2>/dev/null)" != "Darwin" ] && command -v taskkill >/dev/null 2>&1; then
+  taskkill //F //IM nuwax-codex.exe >/dev/null 2>&1 || true
   taskkill //F //IM nuwax-lanproxy.exe >/dev/null 2>&1 || true
+  sleep 1
 fi
 
 # --- npm install -g <tarball> (deps resolved via npm registry) ---

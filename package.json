@@ -1,6 +1,6 @@
 {
   "name": "@nuwax-ai/nuwa-cli",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "packageManager": "npm@10.9.2",
   "workspaces": [
     "packages/lanproxy"
@@ -11,10 +11,12 @@
     "nuwa-cli": "dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "scripts/preuninstall-release-locks.mjs"
   ],
   "scripts": {
     "prepare": "npm run build",
+    "preuninstall": "node scripts/preuninstall-release-locks.mjs",
     "build": "tsc --noEmit && node scripts/build.mjs",
     "build:tsc": "tsc",
     "dev:build": "node scripts/build.mjs",

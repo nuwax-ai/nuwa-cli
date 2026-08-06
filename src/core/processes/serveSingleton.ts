@@ -245,12 +245,33 @@ export interface StopServeProcessOptions {
 }
 
 /**
+ * Windows：升级/覆盖全局包前释放可能锁住 vendor .exe 的进程。
+ *
+ * npm 在 Windows 上会从现有安装树 copyfile 到 staging；若 `nuwax-codex.exe` /
+ * `nuwax-lanproxy.exe` 仍被 Gateway 会话引擎占用，会 EBUSY 失败。
+ * 注册表停进程后仍可能漏（孤儿/未 unregister），按镜像名兜底 taskkill。
+ *
+ * Unix 覆盖正在执行的二进制通常不受影响，无需处理。
+ */
+export function releaseWindowsUpgradeLocks(): void {
+  if (process.platform !== "win32" || process.env.VITEST) return;
+  // 顺序：先引擎二进制，再隧道；失败忽略（进程本就不存在时 taskkill 非 0）。
+  for (const image of ["nuwax-codex.exe", "nuwax-lanproxy.exe"]) {
+    spawnSync("taskkill", ["/F", "/IM", image], {
+      encoding: "utf8",
+      timeout: 5000,
+      windowsHide: true,
+    });
+  }
+}
+
+/**
  * 停止注册表中的 tunnel 子服务（lanproxy / file-server）。
  *
  * file-server 以 detached 启动，Windows `taskkill /T` 杀 serve 时不会带走它；
  * 强制 restart / start --force 若只杀 gateway，会留下占端口的孤儿进程，下一轮
  * 只起起 gateway、lanproxy 却起不来或父进程误判「未检测到」。
- * 与 `update.ts` 升级前清理对齐；Windows 再按镜像名兜底杀 nuwax-lanproxy。
+ * 与 `update.ts` 升级前清理对齐；Windows 再按镜像名兜底杀 vendor exe。
  *
  * @returns 已尝试停止的注册表 PID 列表
  */
@@ -267,13 +288,7 @@ export async function stopTunnelChildProcesses(): Promise<number[]> {
     await stopProcessIds(pids);
   }
   // Windows：注册表可能已过期（PID 复用/未 unregister），按可执行文件名再清一次。
-  if (process.platform === "win32" && !process.env.VITEST) {
-    spawnSync("taskkill", ["/F", "/IM", "nuwax-lanproxy.exe"], {
-      encoding: "utf8",
-      timeout: 5000,
-      windowsHide: true,
-    });
-  }
+  releaseWindowsUpgradeLocks();
   return pids;
 }
 

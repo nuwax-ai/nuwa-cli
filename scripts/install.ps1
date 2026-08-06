@@ -53,8 +53,12 @@ function Invoke-NpmWithProgress($NpmArgs, $StartPercent) {
         $watch.Stop()
         Write-Progress -Activity "Installing nuwa-cli" -Completed
 
-        $stdout = if (Test-Path $stdoutLog) { Get-Content $stdoutLog -Raw } else { "" }
-        $stderr = if (Test-Path $stderrLog) { Get-Content $stderrLog -Raw } else { "" }
+        $stdout = if (Test-Path $stdoutLog) { Get-Content $stdoutLog -Raw -ErrorAction SilentlyContinue } else { $null }
+        $stderr = if (Test-Path $stderrLog) { Get-Content $stderrLog -Raw -ErrorAction SilentlyContinue } else { $null }
+        # PS 5.1: Get-Content -Raw on an empty file returns $null, not "". Calling
+        # .Trim() on $null throws and masks real npm output.
+        if ($null -eq $stdout) { $stdout = "" }
+        if ($null -eq $stderr) { $stderr = "" }
         # ExitCode can be empty/$null when the child PowerShell exits via
         # `exit $LASTEXITCODE` and Windows npm.cmd doesn't propagate a code
         # (npm itself already printed "added N packages" successfully). Treat
@@ -116,6 +120,11 @@ if ($existing) {
 
 # --- Install (skipped when already at target) ---
 if (-not $SkipInstall) {
+# Release vendor .exe locks before npm overlays the global package (Windows EBUSY).
+foreach ($image in @("nuwax-codex.exe", "nuwax-lanproxy.exe")) {
+    & taskkill /F /IM $image 2>$null | Out-Null
+}
+Start-Sleep -Seconds 1
 $installArgs = @("install", "-g", "$Package@$Tag", "--progress=true")
 if ($registry) { $installArgs += @("--registry", $registry) }
 $via = if ($registry) { " via $registry" } else { "" }

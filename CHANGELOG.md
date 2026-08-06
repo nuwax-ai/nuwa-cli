@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-08-06
+
+### Fixed
+
+- Windows upgrades: stop `nuwax-codex.exe` (and lanproxy) before overlaying the global package to avoid npm `EBUSY` / locked `copyfile` on vendor binaries. Applied in `nuwa-cli update`, S3/npm installers, and a best-effort `preuninstall` hook.
+- Windows installers: null-safe handling of empty npm log files in PowerShell 5.1 so a blank stdout no longer surfaces as「不能对 Null 值表达式调用方法」and masks the real npm error.
+
 ## [0.2.2] - 2026-08-06
 
 ### Added

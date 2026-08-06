@@ -157,8 +157,9 @@ async function stopRuntimeProcessesForUpdate(): Promise<void> {
   );
   const consolePids = findUiProcessIds().filter((pid) => pid !== process.pid);
 
-  // stopServeProcesses 已内含 stopTunnelChildProcesses；无 gateway 时仍显式清一次
-  // orphan file-server / lanproxy，避免升级时 Windows 锁住 nuwax-lanproxy.exe。
+  // stopServeProcesses 已内含 stopTunnelChildProcesses（含 Windows 上对
+  // nuwax-codex.exe / nuwax-lanproxy.exe 的 taskkill 兜底）；无 gateway 时仍
+  // 显式清一次 orphan，避免升级时 EBUSY 锁住 vendor 二进制。
   if (gatewayPids.length > 0) await stopServeProcesses(gatewayPids);
   else await stopTunnelChildProcesses();
   if (consolePids.length > 0) await stopProcessIds(consolePids);
