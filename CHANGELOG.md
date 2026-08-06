@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-08-06
+
+### Fixed
+
+- Windows upgrades: after stop/taskkill, **verify** `nuwax-codex.exe` / `nuwax-lanproxy.exe` are gone (retry) and fail with an actionable message instead of opaque npm `EBUSY`. Applied in `nuwa-cli update`, `install.ps1`, and S3 installers.
+- Docs / CLI help / README: prefer `nuwa-cli update` over bare `npm i -g` while services are running on Windows.
+
 ## [0.2.4] - 2026-08-06
 
 ### Changed

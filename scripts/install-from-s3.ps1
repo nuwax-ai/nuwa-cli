@@ -200,11 +200,26 @@ if ($WasInstalled) {
     } catch {}
     $ErrorActionPreference = $prevEapStop
 }
-# Release vendor .exe locks (EBUSY on npm copyfile). Ignore missing processes.
-foreach ($image in @("nuwax-codex.exe", "nuwax-lanproxy.exe")) {
-    & taskkill /F /IM $image 2>$null | Out-Null
+# Release + verify vendor .exe locks (fail fast instead of opaque npm EBUSY).
+$vendorImages = @("nuwax-codex.exe", "nuwax-lanproxy.exe")
+$stuck = @()
+for ($attempt = 1; $attempt -le 3; $attempt++) {
+    foreach ($image in $vendorImages) {
+        & taskkill /F /IM $image 2>$null | Out-Null
+    }
+    Start-Sleep -Seconds 1
+    $stuck = @()
+    foreach ($image in $vendorImages) {
+        $procName = $image -replace '\.exe$', ''
+        if (Get-Process -Name $procName -ErrorAction SilentlyContinue) {
+            $stuck += $image
+        }
+    }
+    if ($stuck.Count -eq 0) { break }
 }
-Start-Sleep -Seconds 1
+if ($stuck.Count -gt 0) {
+    Fail "Cannot upgrade while $($stuck -join ', ') is still running (Windows locks vendor binaries for npm copyfile). Run: nuwa-cli stop --all ; taskkill /F /IM nuwax-lanproxy.exe ; taskkill /F /IM nuwax-codex.exe ; then retry. Prefer: nuwa-cli update"
+}
 
 # --- npm install -g <tarball> (deps resolved via npm registry) ---
 $registry = if ($env:NUWACLI_REGISTRY) {
@@ -220,7 +235,7 @@ Write-Host "      Large platform packages are downloaded on first install. npm w
 try {
     $installElapsed = Invoke-NpmWithProgress $installArgs 55
 } catch {
-    Fail "npm install failed: $($_.Exception.Message). Check the npm error above. To retry against the official registry: `$env:NUWACLI_REGISTRY='https://registry.npmjs.org'; then re-run the installer"
+    Fail "npm install failed: $($_.Exception.Message). If you saw EBUSY / resource busy or locked, stop services first (nuwa-cli stop --all) or use nuwa-cli update. To retry against the official registry: `$env:NUWACLI_REGISTRY='https://registry.npmjs.org'; then re-run the installer"
 }
 Ok "Dependencies installed in $([math]::Round($installElapsed.TotalSeconds, 1))s"
 

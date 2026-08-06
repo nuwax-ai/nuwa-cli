@@ -245,24 +245,90 @@ export interface StopServeProcessOptions {
 }
 
 /**
- * Windows：升级/覆盖全局包前释放可能锁住 vendor .exe 的进程。
+ * Windows 上会锁住 npm 全局包 copyfile 的 vendor 镜像名。
+ * 顺序：先会话引擎，再 lanproxy（与历史上 EBUSY 报错路径一致）。
+ */
+export const WINDOWS_UPGRADE_LOCK_IMAGES = [
+  "nuwax-codex.exe",
+  "nuwax-lanproxy.exe",
+] as const;
+
+export type WindowsUpgradeLockImage =
+  (typeof WINDOWS_UPGRADE_LOCK_IMAGES)[number];
+
+/**
+ * 用 tasklist 探测指定镜像是否仍在跑。
+ * 无进程时 stdout 通常含 `INFO: No tasks are running...`（本地化变体也可能），
+ * 仅当输出里出现镜像名才视为仍占用。
+ */
+export function listRunningWindowsUpgradeLockImages(
+  images: readonly string[] = WINDOWS_UPGRADE_LOCK_IMAGES,
+): string[] {
+  if (process.platform !== "win32" || process.env.VITEST) return [];
+  const running: string[] = [];
+  for (const image of images) {
+    const result = spawnSync(
+      "tasklist",
+      ["/FI", `IMAGENAME eq ${image}`, "/NH"],
+      {
+        encoding: "utf8",
+        timeout: 5000,
+        windowsHide: true,
+      },
+    );
+    const out = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.toLowerCase();
+    if (out.includes(image.toLowerCase())) running.push(image);
+  }
+  return running;
+}
+
+/**
+ * Windows：升级/覆盖全局包前释放可能锁住 vendor .exe 的进程（单次 taskkill 轮）。
  *
  * npm 在 Windows 上会从现有安装树 copyfile 到 staging；若 `nuwax-codex.exe` /
  * `nuwax-lanproxy.exe` 仍被 Gateway 会话引擎占用，会 EBUSY 失败。
  * 注册表停进程后仍可能漏（孤儿/未 unregister），按镜像名兜底 taskkill。
  *
  * Unix 覆盖正在执行的二进制通常不受影响，无需处理。
+ * 需要「杀干净再装」时请用 `ensureWindowsUpgradeLocksReleased`（带重试与校验）。
  */
 export function releaseWindowsUpgradeLocks(): void {
   if (process.platform !== "win32" || process.env.VITEST) return;
-  // 顺序：先引擎二进制，再隧道；失败忽略（进程本就不存在时 taskkill 非 0）。
-  for (const image of ["nuwax-codex.exe", "nuwax-lanproxy.exe"]) {
+  // 失败忽略（进程本就不存在时 taskkill 非 0）。
+  for (const image of WINDOWS_UPGRADE_LOCK_IMAGES) {
     spawnSync("taskkill", ["/F", "/IM", image], {
       encoding: "utf8",
       timeout: 5000,
       windowsHide: true,
     });
   }
+}
+
+/**
+ * 升级前强制释放 Windows vendor 锁：反复 taskkill + 短暂等待 + tasklist 校验。
+ * 仍占用则抛错，避免 npm 半道 EBUSY 留下难读日志。
+ *
+ * @returns 最终仍在跑的镜像名（空数组 = 已释放）；非 win32 / 测试环境恒为 []
+ */
+export async function ensureWindowsUpgradeLocksReleased(options?: {
+  /** taskkill+校验轮数，默认 3 */
+  retries?: number;
+  /** 每轮杀进程后等待文件句柄释放的毫秒数，默认 800 */
+  retryDelayMs?: number;
+}): Promise<string[]> {
+  if (process.platform !== "win32" || process.env.VITEST) return [];
+  const retries = Math.max(1, options?.retries ?? 3);
+  const retryDelayMs = Math.max(0, options?.retryDelayMs ?? 800);
+  let stillRunning: string[] = [];
+  for (let attempt = 0; attempt < retries; attempt++) {
+    releaseWindowsUpgradeLocks();
+    if (retryDelayMs > 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+    stillRunning = listRunningWindowsUpgradeLockImages();
+    if (stillRunning.length === 0) return [];
+  }
+  return stillRunning;
 }
 
 /**

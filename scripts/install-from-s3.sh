@@ -136,11 +136,24 @@ if [ "$WAS_INSTALLED" = "1" ] && command -v nuwa-cli >/dev/null 2>&1; then
   info "升级前停止正在运行的 nuwa-cli 服务..."
   nuwa-cli stop --all >/dev/null 2>&1 || true
 fi
-# Windows Git Bash：再兜底杀可能锁住 npm 覆盖的 vendor 二进制。
+# Windows Git Bash：再兜底杀可能锁住 npm 覆盖的 vendor 二进制，并校验是否仍占用。
 if [ "$(uname -s 2>/dev/null)" != "Darwin" ] && command -v taskkill >/dev/null 2>&1; then
-  taskkill //F //IM nuwax-codex.exe >/dev/null 2>&1 || true
-  taskkill //F //IM nuwax-lanproxy.exe >/dev/null 2>&1 || true
-  sleep 1
+  stuck=""
+  for _attempt in 1 2 3; do
+    taskkill //F //IM nuwax-codex.exe >/dev/null 2>&1 || true
+    taskkill //F //IM nuwax-lanproxy.exe >/dev/null 2>&1 || true
+    sleep 1
+    stuck=""
+    for image in nuwax-codex.exe nuwax-lanproxy.exe; do
+      if tasklist //FI "IMAGENAME eq ${image}" //NH 2>/dev/null | grep -qi "$image"; then
+        stuck="${stuck}${stuck:+ }${image}"
+      fi
+    done
+    [ -z "$stuck" ] && break
+  done
+  if [ -n "$stuck" ]; then
+    fail "无法升级：仍在运行 $stuck（Windows 会锁住 vendor 二进制导致 npm EBUSY）。请先: nuwa-cli stop --all；必要时 taskkill //F //IM nuwax-lanproxy.exe 与 nuwax-codex.exe；然后重试。优先使用: nuwa-cli update"
+  fi
 fi
 
 # --- npm install -g <tarball> (deps resolved via npm registry) ---

@@ -75,11 +75,15 @@ describe("install script progress", () => {
       const ps1 = readScript(name);
       expect(ps1).toContain("nuwax-codex.exe");
       expect(ps1).toContain("nuwax-lanproxy.exe");
+      expect(ps1).toContain("nuwa-cli stop --all");
+      expect(ps1).toContain("Get-Process -Name $procName");
+      expect(ps1).toContain("Prefer: nuwa-cli update");
       expect(ps1).toContain('if ($null -eq $stdout) { $stdout = "" }');
       expect(ps1).toContain('if ($null -eq $stderr) { $stderr = "" }');
     }
-    expect(readScript("install-from-s3.sh")).toContain(
-      "taskkill //F //IM nuwax-codex.exe",
-    );
+    const s3sh = readScript("install-from-s3.sh");
+    expect(s3sh).toContain("taskkill //F //IM nuwax-codex.exe");
+    expect(s3sh).toContain("nuwa-cli update");
+    expect(s3sh).toContain('IMAGENAME eq ${image}');
   });
 });

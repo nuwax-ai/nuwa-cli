@@ -223,7 +223,7 @@ export const en = {
     "Print the upgrade command without running it",
   "cli.cmd.update.opt.registry": "Specify the npm registry",
   "cli.cmd.update.help":
-    "\nExamples:\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n\nNotes:\n  - update uses npm to upgrade the global CLI package; it does not modify ~/.nuwa-cli login data.\n  - Default channel follows the installed build: stable → latest, pre-release → beta. Pass an explicit version or dist-tag to override.\n  - When running via npx, prefer npx -y @nuwax-ai/nuwa-cli@latest ... (or @beta for pre-releases).",
+    "\nExamples:\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n\nNotes:\n  - update uses npm to upgrade the global CLI package; it does not modify ~/.nuwa-cli login data.\n  - Default channel follows the installed build: stable → latest, pre-release → beta. Pass an explicit version or dist-tag to override.\n  - Windows: bare `npm i -g` while services are running often hits EBUSY on locked nuwax-lanproxy.exe / nuwax-codex.exe. Use this command (it stops services and releases locks); do not overlay with npm while Gateway is up.\n  - When running via npx, prefer npx -y @nuwax-ai/nuwa-cli@latest ... (or @beta for pre-releases).",
   "cli.cmd.console.desc":
     "Start the local Web Console: view/resume/create sessions and chat directly (foreground single-instance only)",
   // —— update ——
@@ -255,7 +255,11 @@ export const en = {
     "serve auto-restart may be incomplete (restart exit code {code}). Run `nuwa-cli gateway` manually.",
   "update.restartSkipped": "serve auto-restart skipped: {msg}",
   "update.olderTarget":
-    "Target {target} is older than the current {current}; skipped to avoid a downgrade. To switch anyway, run `npm i -g @nuwax-ai/nuwa-cli@{target}`.",
+    "Target {target} is older than the current {current}; skipped to avoid a downgrade. To switch anyway, run `nuwa-cli stop --all` first, then `npm i -g @nuwax-ai/nuwa-cli@{target}` (on Windows, bare npm while services run often hits EBUSY; prefer `nuwa-cli update <version>`).",
+  "update.windowsLocksHeld":
+    "Could not release upgrade file locks; still running: {images}. Run `nuwa-cli stop --all`, then if needed `taskkill /F /IM nuwax-lanproxy.exe` and `taskkill /F /IM nuwax-codex.exe`, and retry `nuwa-cli update`. Do not run bare `npm i -g` while services are up.",
+  "update.windowsInstallFailedHint":
+    "Hint (Windows): if npm reported EBUSY / resource busy or locked (often nuwax-lanproxy.exe / nuwax-codex.exe), stop services with `nuwa-cli stop --all`, end those processes, then upgrade again. Prefer `nuwa-cli update`; do not overlay with bare `npm i -g` while Gateway is running.",
   // —— config ——
   "config.domain": "Domain: {value}",
   "config.username": "Username: {value}",

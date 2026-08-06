@@ -115,7 +115,9 @@ curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/insta
 
 ### 升级场景的 serve 处理
 
-升级场景(安装前 `nuwa-cli` 已存在):安装成功后,若已登录(`~/.nuwa-cli/credentials.json` 的 `configKey` 存在),安装器会静默后台 restart `nuwa-cli serve --daemon`,使升级后的 serve 自动用上新版本;未登录或首次安装都跳过 restart,仅完成安装与 PATH 配置。`nuwa-cli update` 走 npm 升级路径时行为一致(已登录静默 restart,未登录打印提示并跳过)。
+升级场景(安装前 `nuwa-cli` 已存在):安装器会先 `nuwa-cli stop --all`，并在 Windows 上 taskkill / 校验 `nuwax-codex.exe`、`nuwax-lanproxy.exe` 已退出（仍占用则直接失败并提示改用 `nuwa-cli update`），再跑 npm，避免 EBUSY。安装成功后,若已登录(`~/.nuwa-cli/credentials.json` 的 `configKey` 存在),安装器会静默后台 restart `nuwa-cli serve --daemon`,使升级后的 serve 自动用上新版本;未登录或首次安装都跳过 restart,仅完成安装与 PATH 配置。`nuwa-cli update` 走 npm 升级路径时行为一致(已登录静默 restart,未登录打印提示并跳过)。
+
+**Windows 注意：** 服务运行中请勿裸跑 `npm i -g @nuwax-ai/nuwa-cli@…`；请用 `nuwa-cli update` 或本安装脚本。
 
 ## channel / latest 指针
 

@@ -27,6 +27,10 @@ nuwa-cli doctor
 
 > npm too slow? `NUWACLI_REGISTRY=https://registry.npmmirror.com` (bash) / `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'` (PowerShell).
 
+### Upgrade
+
+Prefer **`nuwa-cli update`** (stops Gateway/tunnels, releases Windows vendor `.exe` locks, then runs npm). On Windows, **do not** run bare `npm i -g @nuwax-ai/nuwa-cli@…` while services are running — npm will `EBUSY` on locked `nuwax-lanproxy.exe` / `nuwax-codex.exe`. If you must use npm manually: `nuwa-cli stop --all` first, then install.
+
 ## Uninstall
 
 **One-line uninstaller** (stops services, removes the system service if installed, npm-uninstalls the global package):
@@ -87,7 +91,7 @@ nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>  # cloud tun
 | `nuwa-cli account` | Manage multiple accounts |
 | `nuwa-cli config` | Get/set domain, lanproxy path, etc. |
 | `nuwa-cli service` | OS-level autostart (LaunchAgent / systemd / Scheduled Task) |
-| `nuwa-cli update` | Upgrade the npm package |
+| `nuwa-cli update` | Upgrade the npm package (preferred; stops services first on Windows) |
 | `nuwa-cli lang` | Show or set the UI language (`en` / `zh-CN` / `auto`) |
 
 ### Process management
@@ -258,6 +262,10 @@ nuwa-cli doctor
 
 > npm 太慢？`NUWACLI_REGISTRY=https://registry.npmmirror.com`（bash）/ `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'`（PowerShell）。
 
+### 升级
+
+请优先使用 **`nuwa-cli update`**（会先停 Gateway/隧道、释放 Windows 上 vendor `.exe` 锁，再跑 npm）。Windows 上**不要**在服务仍运行时裸跑 `npm i -g @nuwax-ai/nuwa-cli@…`——npm 会对被锁的 `nuwax-lanproxy.exe` / `nuwax-codex.exe` 报 `EBUSY`。若必须手动 npm：先 `nuwa-cli stop --all`，再安装。
+
 ### 卸载
 
 **一键卸载**（停止服务、移除系统服务（若已安装）、npm 卸载全局包）：
@@ -319,7 +327,7 @@ nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>  # 云端隧
 | `nuwa-cli account` | 管理多个账号 |
 | `nuwa-cli config` | 获取/设置 domain、lanproxy 路径等 |
 | `nuwa-cli service` | 系统级开机自启（LaunchAgent / systemd / 计划任务） |
-| `nuwa-cli update` | 升级 npm 包 |
+| `nuwa-cli update` | 升级 npm 包（推荐；Windows 上会先停服务再装） |
 | `nuwa-cli lang` | 查看或设置界面语言（`en` / `zh-CN` / `auto`） |
 
 #### 进程管理

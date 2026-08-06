@@ -120,11 +120,37 @@ if ($existing) {
 
 # --- Install (skipped when already at target) ---
 if (-not $SkipInstall) {
-# Release vendor .exe locks before npm overlays the global package (Windows EBUSY).
-foreach ($image in @("nuwax-codex.exe", "nuwax-lanproxy.exe")) {
-    & taskkill /F /IM $image 2>$null | Out-Null
+# Align with `nuwa-cli update`: stop runtime before overlaying the global package.
+# Bare npm copyfile EBUSY when nuwax-lanproxy.exe / nuwax-codex.exe stay locked.
+if ($existing) {
+    Write-Host "-> Stopping running nuwa-cli services before upgrade..." -ForegroundColor Cyan
+    $prevEapStop = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & nuwa-cli stop --all 2>&1 | Out-Null
+    } catch {}
+    $ErrorActionPreference = $prevEapStop
 }
-Start-Sleep -Seconds 1
+# Release + verify vendor .exe locks (fail fast instead of opaque npm EBUSY).
+$vendorImages = @("nuwax-codex.exe", "nuwax-lanproxy.exe")
+$stuck = @()
+for ($attempt = 1; $attempt -le 3; $attempt++) {
+    foreach ($image in $vendorImages) {
+        & taskkill /F /IM $image 2>$null | Out-Null
+    }
+    Start-Sleep -Seconds 1
+    $stuck = @()
+    foreach ($image in $vendorImages) {
+        $procName = $image -replace '\.exe$', ''
+        if (Get-Process -Name $procName -ErrorAction SilentlyContinue) {
+            $stuck += $image
+        }
+    }
+    if ($stuck.Count -eq 0) { break }
+}
+if ($stuck.Count -gt 0) {
+    Fail "Cannot upgrade while $($stuck -join ', ') is still running (Windows locks vendor binaries for npm copyfile). Run: nuwa-cli stop --all ; taskkill /F /IM nuwax-lanproxy.exe ; taskkill /F /IM nuwax-codex.exe ; then retry. Prefer: nuwa-cli update"
+}
 $installArgs = @("install", "-g", "$Package@$Tag", "--progress=true")
 if ($registry) { $installArgs += @("--registry", $registry) }
 $via = if ($registry) { " via $registry" } else { "" }
@@ -133,7 +159,8 @@ Write-Host "      Downloading and unpacking engine dependencies. The first insta
 try {
     $installElapsed = Invoke-NpmWithProgress $installArgs 35
 } catch {
-    Fail "npm install failed: $($_.Exception.Message). Check the npm error above. For China mirrors retry with: `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'; then re-run the installer"
+    $msg = $_.Exception.Message
+    Fail "npm install failed: $msg. If you saw EBUSY / resource busy or locked, stop services first (nuwa-cli stop --all) or use nuwa-cli update. For China mirrors retry with: `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'; then re-run the installer"
 }
 Ok "Dependencies installed in $([math]::Round($installElapsed.TotalSeconds, 1))s"
 }

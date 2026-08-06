@@ -8,6 +8,7 @@ import {
 import { findOnPath, isBatchShim } from "../util/which.js";
 import { stopProcessIds } from "../core/processes/processRegistry.js";
 import {
+  ensureWindowsUpgradeLocksReleased,
   findServeProcessIds,
   stopServeProcesses,
   stopTunnelChildProcesses,
@@ -163,6 +164,15 @@ async function stopRuntimeProcessesForUpdate(): Promise<void> {
   if (gatewayPids.length > 0) await stopServeProcesses(gatewayPids);
   else await stopTunnelChildProcesses();
   if (consolePids.length > 0) await stopProcessIds(consolePids);
+
+  // 注册表停机后仍可能有孤儿 exe 占锁：再强制 taskkill + tasklist 校验。
+  // 杀不掉则直接失败，避免 npm 在 copyfile 阶段抛出难读的 EBUSY。
+  const stillLocked = await ensureWindowsUpgradeLocksReleased();
+  if (stillLocked.length > 0) {
+    throw new Error(
+      t("update.windowsLocksHeld", { images: stillLocked.join(", ") }),
+    );
+  }
 }
 
 /** 解析 semver(核心 + 预发布);非 semver 返回 null。 */
@@ -375,6 +385,11 @@ export async function updateCommand(
         : await runInstallWithProgress(command, installArgs, env);
     if (result.error) throw result.error;
     if (result.status !== 0) {
+      // Windows 上常见根因仍是 vendor .exe 被占用；stdio inherit 时用户已见 npm
+      // EBUSY，这里补一条可操作建议（优先 update / 先 stop，勿裸 npm i -g）。
+      if (process.platform === "win32") {
+        console.error(t("update.windowsInstallFailedHint"));
+      }
       process.exitCode = result.status ?? 1;
       return;
     }

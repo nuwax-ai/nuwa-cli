@@ -181,7 +181,7 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "cli.cmd.update.opt.dryRun": "打印升级命令但不执行",
   "cli.cmd.update.opt.registry": "指定 npm registry",
   "cli.cmd.update.help":
-    "\n示例：\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n\n说明：\n  - update 使用 npm 升级全局 CLI 包，不修改 ~/.nuwa-cli 登录数据。\n  - 默认通道随当前安装版本：正式版 → latest，预发布版 → beta；也可显式指定版本或 dist-tag。\n  - npx 临时运行时，建议使用 npx -y @nuwax-ai/nuwa-cli@latest ...（预发布用 @beta）。",
+    "\n示例：\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n\n说明：\n  - update 使用 npm 升级全局 CLI 包，不修改 ~/.nuwa-cli 登录数据。\n  - 默认通道随当前安装版本：正式版 → latest，预发布版 → beta；也可显式指定版本或 dist-tag。\n  - Windows：服务运行中裸跑 `npm i -g` 常因 nuwax-lanproxy.exe / nuwax-codex.exe 被锁而 EBUSY；请用本命令（会先 stop 并释放锁），不要直接 npm 覆盖。\n  - npx 临时运行时，建议使用 npx -y @nuwax-ai/nuwa-cli@latest ...（预发布用 @beta）。",
   "cli.cmd.console.desc":
     "启动本地 Web Console：查看/续接/新建会话并直接聊天（仅前台单例）",
   // —— update ——
@@ -212,7 +212,11 @@ export const zhCN: { [K in keyof typeof en]: string } = {
     "serve 自动重启可能未完成（restart 退出码 {code}）。可手动运行 `nuwa-cli gateway`。",
   "update.restartSkipped": "serve 自动重启跳过：{msg}",
   "update.olderTarget":
-    "目标版本 {target} 比当前 {current} 旧，已跳过以免降级。确需切换请手动 \`npm i -g @nuwax-ai/nuwa-cli@{target}\`。",
+    "目标版本 {target} 比当前 {current} 旧，已跳过以免降级。确需切换请先 `nuwa-cli stop --all`，再手动 \`npm i -g @nuwax-ai/nuwa-cli@{target}\`（Windows 上服务在跑时裸 npm 易 EBUSY；优先仍用 \`nuwa-cli update <version>\`）。",
+  "update.windowsLocksHeld":
+    "无法释放升级文件锁，仍在运行：{images}。请先执行 `nuwa-cli stop --all`，必要时再 `taskkill /F /IM nuwax-lanproxy.exe` 与 `taskkill /F /IM nuwax-codex.exe`，然后重试 `nuwa-cli update`。不要在服务运行时直接 `npm i -g`。",
+  "update.windowsInstallFailedHint":
+    "提示（Windows）：若 npm 报 EBUSY / resource busy or locked（常见于 nuwax-lanproxy.exe / nuwax-codex.exe），请先 `nuwa-cli stop --all` 并结束上述进程后再升级；覆盖安装请用 `nuwa-cli update`，不要在 Gateway 运行时裸跑 `npm i -g`。",
   // —— config ——
   "config.domain": "域名：{value}",
   "config.username": "用户：{value}",

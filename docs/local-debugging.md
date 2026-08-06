@@ -176,7 +176,9 @@ nuwa-cli update --dry-run
 nuwa-cli update --check
 ```
 
-`update` 不读写 `~/.nuwa-cli/credentials.json`，不会影响 savedKey、账号列表或正在运行的服务。真正执行 `nuwa-cli update` 后，需要重新打开 shell 或确认 `which nuwa-cli` 指向刚升级的全局包路径。
+`update` 不读写 `~/.nuwa-cli/credentials.json`，不会影响 savedKey 或账号列表。真正执行 `nuwa-cli update` 时会**先停止** Gateway / Console / lanproxy 等运行时（Windows 上还会 taskkill `nuwax-codex.exe` / `nuwax-lanproxy.exe` 并校验已释放），装完后再按登录态重启——避免裸 `npm i -g` 在服务运行时对 vendor `.exe` 报 EBUSY。升级后请重新打开 shell 或确认 `which nuwa-cli` 指向新全局包路径。
+
+Windows 覆盖安装请用 `nuwa-cli update` 或官方安装脚本；不要在 Gateway 仍运行时直接 `npm i -g`。
 
 ### 发布 Beta
 
