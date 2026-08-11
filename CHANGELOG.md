@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `serve --tunnel` file-server / lanproxy 完整启动重试：`bringUpFileServer` / `bringUpLanproxy` 经 `@nuwax-ai/agent-kit@0.3.3` 的 `withStartRetry`（默认 3 次），与 nuwaclaw Electron `ServiceManager` 对齐。详见 [`docs/serve-health-check.md`](docs/serve-health-check.md)。
+- `@nuwax-ai/agent-kit` 纳入 `sync:core-deps` exact-pin 清单（与 lanproxy / mcp-proxy / file-server / ACP 适配器一并检查）。
+
+### Changed
+
+- file-server 单次健康超时默认改为 kit 的 **20s**（原硬编码 10s），覆盖 Windows 冷启。
+- file-server 最终不健康时**跳过** lanproxy，避免「隧道通、文件口挂」。
+- `stopFileServer` / 同 port 重试前 `unregisterProcess`，避免 registry PID 堆积。
+
+### Fixed
+
+- `bringUpLanproxy` 成功返回后、赋值前的 SIGINT 竞态：先挂上 `lanproxyHandle`，若已 shutdown 则立刻 `stop()`，防止孤儿进程。
+- stabilize 窗口内 abort 计为 aborted，不再误判为 stabilize 失败并整轮重试。
+
 ## [0.2.5] - 2026-08-06
 
 ### Fixed

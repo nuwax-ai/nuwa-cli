@@ -137,8 +137,10 @@ flowchart TD
   L --> M["写入 ~/.nuwa-cli/credentials.json"]
   M --> N["启动 serve --tunnel"]
   N --> O["自动选择 agentPort/fileServerPort"]
-  O --> P["注册最终 sandboxConfigValue 并启动 file-server/lanproxy"]
+  O --> P["注册最终 sandboxConfigValue 并 bringUp file-server/lanproxy"]
 ```
+
+`serve --tunnel` 对 file-server / lanproxy 做真实健康探测，并经 `@nuwax-ai/agent-kit` `withStartRetry` 完整重试；file-server 最终不健康则跳过 lanproxy。细节见 [`serve-health-check.md`](serve-health-check.md)。
 
 ## 引擎检测
 
@@ -289,4 +291,5 @@ nuwa-cli serve --tunnel --engine <selected-engine>
 - `--daemon`：后台启动；结构化运行日志看 `~/.nuwa-cli/logs/latest.log`（指向 `main.YYYY-MM-DD.log`），原始 stdout/stderr 仍追加到 `serve.log`。
 - `service install --now`：安装当前用户级自启动并立即启动；macOS/Linux/Windows 分别使用 LaunchAgent、systemd user service、计划任务。
 - 端口被占用：agent/file-server 自动后移，注册上报最终端口。
+- `--tunnel` 健康：file-server `/health` 通过后才拉 lanproxy；FS 重试耗尽则跳过隧道并黄字警告（本地 HTTP API 仍可用）。详见 [`serve-health-check.md`](serve-health-check.md)。
 - `--help`：`login` / `gateway` / `account switch` / `service install` 帮助里说明默认账号、多账号 JSON、密码环境变量、服务重启要求和自启动机制。

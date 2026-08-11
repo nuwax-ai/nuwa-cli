@@ -13,6 +13,8 @@ import {
 import {
   confirmProcessHealthy,
   waitForLanproxyTunnel as kitWaitForLanproxyTunnel,
+  withStartRetry,
+  type StartRetryLogger,
 } from "@nuwax-ai/agent-kit";
 
 export interface LanproxyStartOptions {
@@ -146,4 +148,136 @@ export async function waitForLanproxyTunnel(
       signal,
     })
   ).healthy;
+}
+
+export interface BringUpLanproxyOptions {
+  start: LanproxyStartOptions;
+  domain: string;
+  configKey: string;
+  stabilizeMs?: number;
+  tunnelTimeoutMs?: number;
+  tunnelIntervalMs?: number;
+  signal?: AbortSignal;
+  logger?: StartRetryLogger;
+  maxAttempts?: number;
+  backoffMs?: readonly number[];
+}
+
+export interface BringUpLanproxyResult {
+  healthy: boolean;
+  handle: LanproxyHandle | null;
+}
+
+/**
+ * 完整拉起 lanproxy：spawn → ready → 进程稳定 → 云端隧道回探。
+ * 任一层失败则 stop，再经 withStartRetry 完整重试（与 Electron ServiceManager 对齐）。
+ */
+export async function bringUpLanproxy(
+  options: BringUpLanproxyOptions,
+): Promise<BringUpLanproxyResult> {
+  const {
+    start: startOpts,
+    domain,
+    configKey,
+    stabilizeMs = 1000,
+    tunnelTimeoutMs = 15_000,
+    tunnelIntervalMs = 500,
+    signal,
+    logger,
+    maxAttempts,
+    backoffMs,
+  } = options;
+
+  let lastHandle: LanproxyHandle | null = null;
+
+  const result = await withStartRetry(
+    async () => {
+      if (signal?.aborted) {
+        return { success: false, error: "Lanproxy start aborted" };
+      }
+
+      // 清理上一轮残留，避免多进程抢同一 clientKey
+      if (lastHandle) {
+        try {
+          lastHandle.stop();
+        } catch {
+          // best-effort
+        }
+        lastHandle = null;
+      }
+
+      const handle = startLanproxy(startOpts);
+      lastHandle = handle;
+
+      try {
+        await handle.ready;
+      } catch (err) {
+        try {
+          handle.stop();
+        } catch {
+          // best-effort
+        }
+        lastHandle = null;
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+
+      if (signal?.aborted) {
+        handle.stop();
+        lastHandle = null;
+        return { success: false, error: "Lanproxy start aborted" };
+      }
+
+      const alive = await confirmLanproxyHealthy(
+        handle.pid,
+        stabilizeMs,
+        signal,
+      );
+      if (signal?.aborted) {
+        handle.stop();
+        lastHandle = null;
+        return { success: false, error: "Lanproxy start aborted" };
+      }
+      if (!alive) {
+        handle.stop();
+        lastHandle = null;
+        return {
+          success: false,
+          error: "Lanproxy process failed stabilize check",
+        };
+      }
+
+      const tunnelOk = await waitForLanproxyTunnel(
+        domain,
+        configKey,
+        tunnelTimeoutMs,
+        tunnelIntervalMs,
+        signal,
+      );
+      if (signal?.aborted) {
+        handle.stop();
+        lastHandle = null;
+        return { success: false, error: "Lanproxy start aborted" };
+      }
+      if (!tunnelOk) {
+        // abort 导致的 unhealthy：已在上面处理；此处为真失败，stop 后交给 withStartRetry
+        handle.stop();
+        lastHandle = null;
+        return {
+          success: false,
+          error: "Lanproxy tunnel health check failed",
+        };
+      }
+
+      return { success: true };
+    },
+    { label: "Lanproxy", signal, logger, maxAttempts, backoffMs },
+  );
+
+  if (!result.success) {
+    return { healthy: false, handle: null };
+  }
+  return { healthy: true, handle: lastHandle };
 }

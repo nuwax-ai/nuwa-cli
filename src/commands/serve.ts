@@ -10,16 +10,14 @@ import {
 } from "../core/permissions/policy.js";
 import { startServeHttp } from "../core/serve/server.js";
 import {
-  startFileServer,
+  bringUpFileServer,
   stopFileServer,
-  waitForFileServerHealth,
 } from "../core/serve/fileServer.js";
 import {
-  startLanproxy,
-  confirmLanproxyHealthy,
-  waitForLanproxyTunnel,
+  bringUpLanproxy,
   type LanproxyHandle,
 } from "../core/serve/lanproxyProcess.js";
+import type { StartRetryLogger } from "@nuwax-ai/agent-kit";
 import {
   readCredentials,
   rememberAccountCredentials,
@@ -284,7 +282,7 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
   let fileServerStarted = false;
   let activeFileServerPort: number | undefined;
   let lanproxyHandle: LanproxyHandle | undefined;
-  // 必须在 tunnel 健康检查（最长约 26s）之前挂上信号处理器：
+  // 必须在 tunnel 拉起（含 withStartRetry，最坏可达分钟级）之前挂上信号处理器：
   // file-server 是 detached 子进程，若等 idle 循环再注册，Ctrl+C 会走默认退出
   // 且跳过 stopFileServer，留下占端口的游离进程。
   let shuttingDown = false;
@@ -292,7 +290,8 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
   const idle = new Promise<void>((resolve) => {
     resolveIdle = resolve;
   });
-  // shutdown 时 abort，打断健康检查轮询，避免 Ctrl+C 后仍卡满 10s/15s。
+  // shutdown 时 abort，打断健康轮询与 retry backoff（单次 FS 默认 20s、隧道 15s；
+  // 完整重试默认最多 3 次），避免 Ctrl+C 后仍卡满整轮预算。
   const shutdownAbort = new AbortController();
   const shutdownSignal = shutdownAbort.signal;
   const credentials = options.tunnel ? readCredentials() : {};
@@ -535,20 +534,32 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
           bringUpTunnel: {
             if (shuttingDown) break bringUpTunnel;
 
+            // 与 Electron ServiceManager 对齐：完整启动失败则 stop + withStartRetry
+            const startRetryLogger: StartRetryLogger = {
+              info: (...args: unknown[]) =>
+                debugLog("serve.startRetry", "info", {
+                  msg: args.map(String).join(" "),
+                }),
+              warn: (...args: unknown[]) =>
+                debugLog("serve.startRetry", "warn", {
+                  msg: args.map(String).join(" "),
+                }),
+            };
+
             const fileServerHealthy = await withSpinner(
               t("serve.spinner.fileServer"),
-              async () => {
-                startFileServer(fileServerPort, cwd);
-                // 立刻标记：健康检查等待中若收到 SIGINT，shutdown 才能 stopFileServer。
-                fileServerStarted = true;
-                activeFileServerPort = fileServerPort;
-                return waitForFileServerHealth(
-                  fileServerPort,
-                  10_000,
-                  200,
-                  shutdownSignal,
-                );
-              },
+              async () =>
+                bringUpFileServer({
+                  port: fileServerPort,
+                  baseWorkspaceDir: cwd,
+                  signal: shutdownSignal,
+                  logger: startRetryLogger,
+                  // 立刻标记：健康检查等待中若收到 SIGINT，shutdown 才能 stopFileServer。
+                  onStarted: () => {
+                    fileServerStarted = true;
+                    activeFileServerPort = fileServerPort;
+                  },
+                }),
               { signal: shutdownSignal },
             );
             if (shuttingDown) break bringUpTunnel;
@@ -563,43 +574,50 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
                 pc.green(t("serve.fileServer.started", { port: fileServerPort })),
               );
             } else {
+              // 重试耗尽仍不健康：黄字警告，不 fatal（本地 HTTP API 仍可用）
               console.error(
                 pc.yellow(
                   t("serve.fileServer.unhealthy", { port: fileServerPort }),
                 ),
               );
+              // FS 挂着再拉隧道只会得到「隧道通、文件口挂」；跳过 lanproxy
+              debugLog("serve.lanproxy", "skipped", {
+                reason: "file_server_unhealthy",
+              });
+              break bringUpTunnel;
             }
 
-            const lanproxyHealthy = await withSpinner(
+            const lanproxyResult = await withSpinner(
               t("serve.spinner.lanproxy"),
-              async () => {
-                lanproxyHandle = startLanproxy({
-                  pathOverride:
-                    options.lanproxyPath ?? credentials.lanproxyPath ?? undefined,
-                  serverHost: lanproxyHost,
-                  serverPort: lanproxyPort,
-                  clientKey: reg.configKey,
-                  ssl,
-                });
-                await lanproxyHandle.ready;
-                const lanproxyAlive = await confirmLanproxyHealthy(
-                  lanproxyHandle.pid,
-                  1000,
-                  shutdownSignal,
-                );
-                return lanproxyAlive
-                  ? waitForLanproxyTunnel(
-                      domain,
-                      reg.configKey,
-                      15_000,
-                      500,
-                      shutdownSignal,
-                    )
-                  : false;
-              },
+              async () =>
+                bringUpLanproxy({
+                  start: {
+                    pathOverride:
+                      options.lanproxyPath ??
+                      credentials.lanproxyPath ??
+                      undefined,
+                    serverHost: lanproxyHost,
+                    serverPort: lanproxyPort,
+                    clientKey: reg.configKey,
+                    ssl,
+                  },
+                  domain,
+                  configKey: reg.configKey,
+                  signal: shutdownSignal,
+                  logger: startRetryLogger,
+                }),
               { signal: shutdownSignal },
             );
-            if (shuttingDown) break bringUpTunnel;
+            // 必须在 shuttingDown 判断之前赋值：否则成功返回后、赋值前的 SIGINT
+            // 会让 shutdown 看不到 handle，break 时也不 stop → 孤儿 lanproxy。
+            lanproxyHandle = lanproxyResult.handle ?? undefined;
+            if (shuttingDown) {
+              lanproxyHandle?.stop();
+              lanproxyHandle = undefined;
+              break bringUpTunnel;
+            }
+
+            const lanproxyHealthy = lanproxyResult.healthy;
 
             debugLog("serve.lanproxy", "started", {
               pid: lanproxyHandle?.pid,

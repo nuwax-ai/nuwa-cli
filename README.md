@@ -114,7 +114,7 @@ nuwa-cli ps                    # list running processes
 - **ACP protocol.** Both engines driven over [Agent Client Protocol](https://agentclientprotocol.com), not CLI text scraping.
 - **Model protocol routing.** When a session supplies `model_provider`, nuwa-cli auto-selects the engine: `api_protocol: openai` → codex, `api_protocol: anthropic` → claude. See [`docs/serve-lifecycle.md`](docs/serve-lifecycle.md).
 - **Cloud tunnel.** `--tunnel` registers with Nuwax backend, starts file-server + lanproxy, and exposes the local agent to the cloud. See [`docs/gateway.md`](docs/gateway.md).
-- **Health checks.** file-server HTTP `/health` polling + lanproxy cloud tunnel probe after startup. See [`docs/serve-health-check.md`](docs/serve-health-check.md).
+- **Health checks.** file-server HTTP `/health` polling (default 20s) + lanproxy cloud tunnel probe, with full start retry via `@nuwax-ai/agent-kit` `withStartRetry`. If file-server stays unhealthy, lanproxy is skipped. See [`docs/serve-health-check.md`](docs/serve-health-check.md).
 - **Cross-platform.** Windows / macOS / Linux, arm64 / x64. All spawns use `windowsHide`. `.cmd` shims auto-detected.
 - **S3 distribution.** One-line installer from Nuwax S3 mirror; no GitHub or npm login needed. See [`docs/distribution-s3.md`](docs/distribution-s3.md).
 - **Engine stderr logging.** All engine stderr streamed to `~/.nuwa-cli/logs/` for diagnostics.
@@ -352,7 +352,7 @@ nuwa-cli ps                    # 查看运行中的进程
 - **走 ACP 协议。** 两个引擎都通过 [Agent Client Protocol](https://agentclientprotocol.com) 驱动，不是 CLI 文本抓取。
 - **模型协议路由。** 会话下发 `model_provider` 时，按协议自动选引擎：`api_protocol: openai` → codex，`api_protocol: anthropic` → claude。详见 [`docs/serve-lifecycle.md`](docs/serve-lifecycle.md)。
 - **云端隧道。** `--tunnel` 注册到 Nuwax 后端，启动 file-server + lanproxy，把本机 Agent 暴露给云端。详见 [`docs/gateway.md`](docs/gateway.md)。
-- **健康检查。** 启动后对 file-server HTTP `/health` 轮询 + lanproxy 云端隧道探测。详见 [`docs/serve-health-check.md`](docs/serve-health-check.md)。
+- **健康检查。** 启动后对 file-server HTTP `/health` 轮询（默认 20s）+ lanproxy 云端隧道探测，经 `@nuwax-ai/agent-kit` `withStartRetry` 完整重试；file-server 最终不健康则跳过 lanproxy。详见 [`docs/serve-health-check.md`](docs/serve-health-check.md)。
 - **跨平台。** Windows / macOS / Linux，arm64 / x64。所有子进程 spawn 使用 `windowsHide`；`.cmd` 脚本自动检测。
 - **S3 分发。** 从 Nuwax S3 镜像一键安装，无需 GitHub 或 npm 登录。详见 [`docs/distribution-s3.md`](docs/distribution-s3.md)。
 - **引擎日志。** 引擎 stderr 实时写入 `~/.nuwa-cli/logs/`，便于诊断。

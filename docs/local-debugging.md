@@ -189,7 +189,7 @@ npm version prerelease --preid beta
 npm run release:beta
 ```
 
-`prepublishOnly` 会校验版本格式和 `publishConfig.tag`，避免误发到 `latest`。`release:beta` 在测试/构建前还会跑 `sync:core-deps:check`，确保核心运行时依赖仍是与 registry `latest` 对齐的 exact pin。发布后可检查：
+`prepublishOnly` 会校验版本格式和 `publishConfig.tag`，避免误发到 `latest`。`release:beta` 在测试/构建前还会跑 `sync:core-deps:check`，确保核心运行时依赖（含 `@nuwax-ai/agent-kit`）仍是与 registry `latest` 对齐的 exact pin。发布后可检查：
 
 ```bash
 npm view @nuwax-ai/nuwa-cli dist-tags
@@ -198,8 +198,9 @@ npx -y @nuwax-ai/nuwa-cli@beta --version
 
 ### 同步核心依赖（exact pin）
 
-以下 5 个包是 CLI 的运行时核心依赖；`package.json` 里必须写精确版本（不用 `^`/`~`）。CLI 某次发布锁定的一组 pin 即兼容单元，用户只升 `nuwa-cli`，不单独升这些子包：
+以下 6 个包是 CLI 的运行时核心依赖；`package.json` 里必须写精确版本（不用 `^`/`~`）。CLI 某次发布锁定的一组 pin 即兼容单元，用户只升 `nuwa-cli`，不单独升这些子包：
 
+- `@nuwax-ai/agent-kit`
 - `@nuwax-ai/lanproxy`
 - `@nuwax-ai/mcp-proxy-ts`
 - `nuwax-file-server`

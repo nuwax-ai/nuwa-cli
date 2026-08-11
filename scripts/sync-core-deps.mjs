@@ -2,7 +2,7 @@
  * 同步 nuwa-cli 的「核心运行时依赖」到 registry 目标通道。
  *
  * 约定（CLI 发布即兼容单元）：
- * - 这 5 个包在 package.json 里必须用精确版本（exact pin），不能用 ^/~。
+ * - 这些包在 package.json 里必须用精确版本（exact pin），不能用 ^/~。
  * - 核心包各自独立 semver；关系靠「某版 nuwa-cli 锁定的一组 pin」表达。
  * - 用户只升 nuwa-cli，不单独升这些子依赖。
  *
@@ -17,8 +17,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 
-/** 核心运行时依赖清单（不含 agent-kit 等共享库）。 */
+/** 核心运行时依赖清单（含共享库 agent-kit；全部 exact pin）。 */
 const CORE_DEPS = [
+  "@nuwax-ai/agent-kit",
   "@nuwax-ai/lanproxy",
   "@nuwax-ai/mcp-proxy-ts",
   "nuwax-file-server",

@@ -276,3 +276,200 @@ describe("waitForLanproxyTunnel", () => {
     fetchMock.mockRestore();
   });
 });
+
+describe("bringUpLanproxy", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    vi.resetModules();
+    mocks.spawn.mockReset();
+    mocks.kill.mockReset();
+    mocks.register.mockReset();
+    mocks.unregister.mockReset();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nuwa-cli-lanproxy-bringup-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("retries when tunnel health fails then succeeds", async () => {
+    const bin = path.join(tmpDir, "nuwax-lanproxy-test");
+    fs.writeFileSync(bin, "");
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      // 第一次完整启动全程隧道不健康；第二次 spawn 后才 online
+      if (mocks.spawn.mock.calls.length < 2) {
+        return {
+          ok: true,
+          json: async () => ({ code: "9999", success: false }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          code: "0000",
+          success: true,
+          data: { online: true },
+        }),
+      } as Response;
+    });
+
+    // confirmLanproxyHealthy 用真实 isPidAlive(本进程 pid) 会通过；给假 pid 用当前进程
+    const makeProc = () =>
+      Object.assign(new EventEmitter(), {
+        pid: process.pid,
+        killed: false,
+        kill: mocks.kill,
+      });
+
+    mocks.spawn.mockImplementation(() => {
+      const proc = makeProc();
+      queueMicrotask(() => proc.emit("spawn"));
+      return proc;
+    });
+
+    const { bringUpLanproxy } =
+      await import("../src/core/serve/lanproxyProcess.js");
+
+    const result = await bringUpLanproxy({
+      start: {
+        pathOverride: bin,
+        serverHost: "agent.example.com",
+        serverPort: 443,
+        clientKey: "key",
+      },
+      domain: "https://example.com",
+      configKey: "key",
+      stabilizeMs: 0,
+      tunnelTimeoutMs: 40,
+      tunnelIntervalMs: 10,
+      maxAttempts: 3,
+      backoffMs: [0, 0],
+    });
+
+    expect(result.healthy).toBe(true);
+    expect(result.handle?.pid).toBe(process.pid);
+    expect(mocks.spawn.mock.calls.length).toBeGreaterThanOrEqual(2);
+    fetchMock.mockRestore();
+  });
+
+  it("on abort during tunnel wait: stops process and does not retry spawn", async () => {
+    const bin = path.join(tmpDir, "nuwax-lanproxy-abort");
+    fs.writeFileSync(bin, "");
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          const signal = init?.signal;
+          if (signal?.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
+          }
+          signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+
+    mocks.spawn.mockImplementation(() => {
+      const proc = Object.assign(new EventEmitter(), {
+        pid: process.pid,
+        killed: false,
+        kill: mocks.kill,
+      });
+      queueMicrotask(() => proc.emit("spawn"));
+      return proc;
+    });
+
+    const { bringUpLanproxy } =
+      await import("../src/core/serve/lanproxyProcess.js");
+    const ac = new AbortController();
+
+    const pending = bringUpLanproxy({
+      start: {
+        pathOverride: bin,
+        serverHost: "agent.example.com",
+        serverPort: 443,
+        clientKey: "key",
+      },
+      domain: "https://example.com",
+      configKey: "key",
+      stabilizeMs: 0,
+      tunnelTimeoutMs: 30_000,
+      tunnelIntervalMs: 200,
+      maxAttempts: 3,
+      backoffMs: [0, 0],
+      signal: ac.signal,
+    });
+
+    await waitFor(() => mocks.spawn.mock.calls.length >= 1);
+    // 等到隧道轮询已挂上 fetch，再 abort
+    await waitFor(() => fetchMock.mock.calls.length >= 1);
+    ac.abort();
+    const result = await pending;
+
+    expect(result.healthy).toBe(false);
+    expect(result.handle).toBeNull();
+    expect(mocks.kill).toHaveBeenCalled();
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+  });
+
+  it("treats abort during stabilize as aborted, not stabilize failure", async () => {
+    const bin = path.join(tmpDir, "nuwax-lanproxy-stabilize-abort");
+    fs.writeFileSync(bin, "");
+
+    mocks.spawn.mockImplementation(() => {
+      const proc = Object.assign(new EventEmitter(), {
+        pid: process.pid,
+        killed: false,
+        kill: mocks.kill,
+      });
+      queueMicrotask(() => proc.emit("spawn"));
+      return proc;
+    });
+
+    const { bringUpLanproxy } =
+      await import("../src/core/serve/lanproxyProcess.js");
+    const ac = new AbortController();
+
+    const pending = bringUpLanproxy({
+      start: {
+        pathOverride: bin,
+        serverHost: "agent.example.com",
+        serverPort: 443,
+        clientKey: "key",
+      },
+      domain: "https://example.com",
+      configKey: "key",
+      // 稳定窗口内 abort，confirmProcessHealthy 会返回 false
+      stabilizeMs: 5_000,
+      tunnelTimeoutMs: 100,
+      maxAttempts: 3,
+      backoffMs: [0, 0],
+      signal: ac.signal,
+    });
+
+    await waitFor(() => mocks.spawn.mock.calls.length >= 1);
+    // ready 后进入 stabilize 等待
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    ac.abort();
+    const result = await pending;
+
+    expect(result.healthy).toBe(false);
+    expect(mocks.kill).toHaveBeenCalled();
+    // 不得因「stabilize 失败」再完整重试 spawn
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+  });
+});
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let i = 0; i < 50; i += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("timed out waiting for condition");
+}
