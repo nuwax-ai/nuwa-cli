@@ -5,6 +5,20 @@
 - **提交**：`ce54dad` · `a8b8ea3` · `9af8fa4` · `5580b82` · `f8a8383`（+ 报告 `916a890`）
 - **测试**：493 passed / 63 files（含新增 9 用例）
 - **改动范围**：仅 nuwa-cli 仓库；agent-kit / mcp-proxy-ts / 云端配置均未改动
+- **验收状态（2026-08-19 17:36）**：S0–S5 **全部通过** ✅
+
+### 验收结果实录（dev:serve 实测）
+
+| 场景 | 结果 | 关键证据 |
+|---|---|---|
+| S0 部署 | ✅ | `PersistentMcpBridge warmed {chrome-devtools}`，多次重启无报错 |
+| S1 新会话 | ✅ | `hasSystemPrompt:true`；wire 报文 `session/new` 带 `_meta.systemPrompt`；`thread/start developerInstructions` 为云端系统提示原文；**agent 回复 `【NUWAX-SP】收到`**（前缀行为断言通过） |
+| S2 auto-resume | ✅ | `auto-resume from local history` + `thread/resume developerInstructions:"你是小帅…"`（`a8b8ea3` 补漏路径生效） |
+| S3 MCP 折叠/改写 | ✅ | `rewriting rust mcp-proxy convert -> TS entry`；`chrome_tools` 从 ENOENT 变为 30s 连接超时（`127.0.0.1:18099` 无服务，预期行为）；chrome-devtools（桥）/ ask_question / nuwax_openui 均 ready |
+| S4 bridge 防抖 | ✅ | 多会话（claude↔codex 切换、同引擎新会话）全部 `reusing running bridge (no restart)`，零 `Already running, stopping first` |
+| S5 回归 | ✅ | 493/493 全绿；build 干净；探针代码全部移除后重构建验证 |
+
+> 验收插曲（记录备查）：S1 曾被误判失败 —— `grep thread/start | tail -1` 在多 codex 进程共享追加的 `app-server.log` 里取到了不属于目标会话的行。经 ACP wire 双向抓包（tee 代理）证明 nuwa-cli 发出的 `session/new` 完整携带 `_meta`，按时间戳精确匹配目标会话后确认 `developerInstructions` 有值。**教训：多进程共享日志文件做断言必须按 threadId/时间戳对齐，不能 `tail -1`。**
 
 | 问题 | 状态 |
 |---|---|
