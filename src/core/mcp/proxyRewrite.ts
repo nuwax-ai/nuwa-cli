@@ -168,13 +168,56 @@ function extractPersistentServers(
 }
 
 /**
+ * 防抖快照：上次成功 start 的 persistent 配置与 bridge 实例。
+ *
+ * PersistentMcpBridge.start（mcp-proxy-ts）是 stop-first 语义——已运行时先杀
+ * 再起；而 agent-kit ensureStarted 无条件转发 start。宿主侧每个新 ACP 会话都
+ * 会调 rewriteMcpServersForEngine → 这里，若不做比对，任意引擎/会话切换都会
+ * 重启 chrome-devtools-mcp（杀浏览器实例、打断并行 agent 进行中的工具调用）。
+ * 对齐 nuwaclaw mcp.ts 的 configsEqual 守卫与 agent-kit proxyBridge 契约的
+ * host-diff 兜底条款：persistent 配置（稳定序列化）未变且 bridge 仍在跑时
+ * 直接复用，仅真正变更才走 stop/start。
+ */
+let lastPersistentConfig: string | null = null;
+let lastPersistentBridge: PersistentMcpBridge | null = null;
+
+/** 稳定序列化（key 排序 + 逐项展开）：key 顺序不同但语义相同的配置视为未变。 */
+function stablePersistentConfigKey(
+  servers: Record<string, HostStdioServerEntry>,
+): string {
+  const names = Object.keys(servers).sort();
+  return JSON.stringify(names.map((name) => [name, servers[name]]));
+}
+
+/**
  * 确保 PersistentMcpBridge 已托管指定的 persistent stdio servers。
- * 单例管理在 @nuwax-ai/agent-kit（createPersistentBridge）。
+ * 单例管理在 @nuwax-ai/agent-kit（createPersistentBridge）；防抖见上。
  */
 export async function ensurePersistentMcpBridge(
   servers: Record<string, HostStdioServerEntry>,
 ): Promise<PersistentMcpBridge | null> {
-  return persistentBridge.ensureStarted(servers);
+  if (Object.keys(servers).length === 0) {
+    // 空列表对齐 ensureStarted 语义（stop + null），并清除防抖快照。
+    lastPersistentConfig = null;
+    lastPersistentBridge = null;
+    return persistentBridge.ensureStarted(servers);
+  }
+  const configKey = stablePersistentConfigKey(servers);
+  if (
+    lastPersistentConfig === configKey &&
+    lastPersistentBridge &&
+    persistentBridge.isRunning()
+  ) {
+    debugLog(
+      "mcp-proxy",
+      "persistent bridge config unchanged, reusing running bridge (no restart)",
+    );
+    return lastPersistentBridge;
+  }
+  const bridge = await persistentBridge.ensureStarted(servers);
+  lastPersistentConfig = configKey;
+  lastPersistentBridge = bridge;
+  return bridge;
 }
 
 /**
@@ -203,6 +246,8 @@ export function isPersistentMcpBridgeRunning(): boolean {
 
 /** serve / hub 关闭时停止 bridge，避免子进程残留。 */
 export async function stopPersistentMcpBridge(): Promise<void> {
+  lastPersistentConfig = null;
+  lastPersistentBridge = null;
   await persistentBridge.stop();
 }
 

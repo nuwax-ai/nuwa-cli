@@ -7,6 +7,13 @@ export interface DownstreamSessionConfig {
   modelOverlay?: ModelOverlay;
   engineEnv?: NodeJS.ProcessEnv;
   mcpServers: McpServer[];
+  /**
+   * System prompt delivered with /computer/chat (top-level `system_prompt`).
+   * Forwarded to ACP session/new as `_meta.systemPrompt = { append }` — the
+   * extension channel both claude-code-acp-ts and nuwax-codex-acp-ts parse
+   * (mirrors nuwaclaw acpNewSessionParams). Whitespace-only values drop out.
+   */
+  systemPrompt?: string;
 }
 
 const CLAUDE_ENGINE_COMMANDS = new Set([
@@ -322,10 +329,15 @@ export function parseDownstreamSessionConfig(
           agentServer?.engineType,
       );
 
+  // 云端 /computer/chat 顶层 system_prompt（nuwaclaw router 同源字段）。空白视同未下发。
+  const systemPrompt =
+    firstText([body], "system_prompt", "systemPrompt")?.trim() || undefined;
+
   return {
     engine,
     modelOverlay: hasModelOverlay ? modelOverlay : undefined,
     engineEnv,
     mcpServers: sanitizeMcpServerNames(mcpValue.map(normalizeMcpServer)),
+    systemPrompt,
   };
 }

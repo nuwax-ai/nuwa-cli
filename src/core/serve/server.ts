@@ -347,6 +347,13 @@ export function startServeHttp(options: ServeOptions): {
                 Object.keys(downstream.engineEnv).length > 0,
             ),
             mcpServerCount: downstream?.mcpServers.length ?? 0,
+            hasSystemPrompt: Boolean(downstream?.systemPrompt),
+            // name + command/args（不含 env）——ENOENT/命令拼错类问题一眼定位。
+            mcpServers: downstream?.mcpServers.map((server) =>
+              "command" in server
+                ? `${server.name}: ${server.command} ${(server.args ?? []).join(" ")}`
+                : `${server.name}: ${server.type ?? "http"} ${"url" in server ? server.url : ""}`,
+            ),
           });
           // 内存命中 → reconfigure；否则按 cwd 自动续接最近本地会话（对齐
           // `chat --resume`，读磁盘 transcript，重启后仍可续接）；都不命中才新建。

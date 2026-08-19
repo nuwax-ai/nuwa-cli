@@ -225,6 +225,41 @@ describe("rewriteMcpServersForEngine defaults", () => {
     expect(started["chrome-devtools"]?.persistent).toBe(true);
     expect(isPersistentMcpBridgeRunning()).toBe(true);
   });
+
+  it("persistent 配置未变时复用运行中的 bridge，不重启（跨引擎/会话防抖）", async () => {
+    const { rewriteMcpServersForEngine } = await import(
+      "../src/core/mcp/proxyRewrite.js"
+    );
+    await rewriteMcpServersForEngine([], "proj", "codex");
+    await rewriteMcpServersForEngine([], "proj", "claude"); // 另一引擎的新会话
+    await rewriteMcpServersForEngine(
+      [
+        {
+          name: "ask-question",
+          command: "npx",
+          args: ["-y", "nuwax-ask-question-mcp@latest"],
+        },
+      ],
+      "proj",
+      "claude",
+    ); // 动态 ephemeral 增删不触碰 persistent 集合
+    expect(mocks.bridgeStart).toHaveBeenCalledTimes(1); // 从未重启
+
+    // persistent 集合真正变化（env 追加长驻名）→ 才走 stop/start
+    process.env.NUWACLI_MCP_PERSISTENT = "extra-svc";
+    await rewriteMcpServersForEngine(
+      [
+        {
+          name: "extra-svc",
+          command: "npx",
+          args: ["-y", "extra-svc@latest"],
+        },
+      ],
+      "proj",
+      "codex",
+    );
+    expect(mocks.bridgeStart).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("DEFAULT_MCP_PROXY_SERVERS", () => {

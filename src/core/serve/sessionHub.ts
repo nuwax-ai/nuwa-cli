@@ -79,6 +79,8 @@ export interface SessionRuntimeOptions {
   engineEnv?: NodeJS.ProcessEnv;
   /** Forwarded unchanged in ACP session/new or session/load. */
   mcpServers?: McpServer[];
+  /** Appended to the engine's system prompt via ACP session/new _meta. */
+  systemPrompt?: string;
 }
 
 type Readiness = { ok: true } | { ok: false; error: string };
@@ -109,6 +111,7 @@ interface ManagedSession {
   modelOverlay?: ModelOverlay;
   engineEnv?: NodeJS.ProcessEnv;
   mcpServers: McpServer[];
+  systemPrompt?: string;
   /** Increments whenever the ACP runner is replaced in-place. */
   generation: number;
 }
@@ -285,6 +288,7 @@ export class SessionHub {
       modelOverlay: runtime?.modelOverlay,
       engineEnv: runtime?.engineEnv,
       mcpServers: runtime?.mcpServers ?? [],
+      systemPrompt: runtime?.systemPrompt,
       generation: 0,
     };
   }
@@ -312,6 +316,7 @@ export class SessionHub {
         JSON.stringify(runtime.engineEnv ?? null) &&
       JSON.stringify(session.mcpServers) ===
         JSON.stringify(runtime.mcpServers ?? []) &&
+      (session.systemPrompt ?? "") === (runtime.systemPrompt ?? "") &&
       session.initialModeId === runtime.mode &&
       session.yolo === runtime.yolo
     );
@@ -711,7 +716,17 @@ export class SessionHub {
       // Read modes/configOptions off the raw ActiveSession before wrapping —
       // SessionHandle only exposes sessionId/modes/prompt.
       const built = await ctx
-        .buildSession({ cwd, mcpServers })
+        .buildSession({
+          cwd,
+          mcpServers,
+          ...(session.systemPrompt
+            ? {
+                // nuwaclaw 同款扩展通道：claude-code-acp-ts / nuwax-codex-acp-ts
+                // 都解析 _meta.systemPrompt（string 或 { append }），追加到引擎系统提示。
+                _meta: { systemPrompt: { append: session.systemPrompt } },
+              }
+            : {}),
+        })
         .start();
       session.acpSessionId = built.sessionId;
       session.modes = built.modes;
@@ -802,6 +817,7 @@ export class SessionHub {
     session.modelOverlay = runtime.modelOverlay;
     session.engineEnv = runtime.engineEnv;
     session.mcpServers = runtime.mcpServers ?? [];
+    session.systemPrompt = runtime.systemPrompt;
     this.resetReadiness(session);
 
     await Promise.race([
@@ -815,7 +831,15 @@ export class SessionHub {
         engineId,
       );
       const built = await ctx
-        .buildSession({ cwd: session.cwd, mcpServers })
+        .buildSession({
+          cwd: session.cwd,
+          mcpServers,
+          ...(session.systemPrompt
+            ? {
+                _meta: { systemPrompt: { append: session.systemPrompt } },
+              }
+            : {}),
+        })
         .start();
       session.acpSessionId = built.sessionId;
       session.modes = built.modes;

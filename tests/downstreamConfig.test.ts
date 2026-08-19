@@ -11,6 +11,23 @@ describe("parseDownstreamSessionConfig", () => {
     });
   });
 
+  it("extracts top-level system_prompt for _meta.systemPrompt forwarding", () => {
+    const result = parseDownstreamSessionConfig({
+      prompt: "hi",
+      system_prompt: "  你是 nuwax 测试助手。 ",
+    });
+    expect(result.systemPrompt).toBe("你是 nuwax 测试助手。");
+  });
+
+  it("accepts camelCase systemPrompt and drops whitespace-only values", () => {
+    expect(
+      parseDownstreamSessionConfig({ systemPrompt: "ok" }).systemPrompt,
+    ).toBe("ok");
+    expect(
+      parseDownstreamSessionConfig({ system_prompt: "   \n\t" }).systemPrompt,
+    ).toBeUndefined();
+  });
+
   it("accepts nested ACP model, environment, and MCP configuration", () => {
     const result = parseDownstreamSessionConfig({
       acp_config: {
