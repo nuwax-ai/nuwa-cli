@@ -240,6 +240,54 @@ function contextServersAsArray(value: unknown): unknown[] | undefined {
 }
 
 /**
+ * 对齐 nuwaclaw extractRealMcpServers：解包 `mcp-proxy convert --config '{...}'`
+ * 桥接条目（nuwaclaw 生态的聚合形态，命令为 Rust mcp-proxy、真实配置内嵌
+ * --config JSON）。command 为 mcp-proxy 且带合法 --config 时，以 inner name
+ * 展开 JSON.mcpServers 里的真实条目 —— stdio 恢复 command/args/env，url 条目
+ * 由 normalizeMcpServer 按 remote（http/sse）接管，绝不再 spawn Rust 二进制。
+ * （nuwaclaw 侧另有 uvx → uv tool run 的应用内路径重写，属宿主环境层，
+ * nuwa-cli 机器 uvx 在 PATH，不做改写。）
+ *
+ * 不带 --config 的（URL 直连形态 `mcp-proxy convert <url> --protocol ...`）
+ * 原样保留 —— 由 proxyRewrite 的 rewriteRustMcpProxyConvert 改走 TS 版执行。
+ * --config JSON 解析失败 / 无 mcpServers 也原样保留，让引擎侧报错可见。
+ */
+function unwrapMcpProxyBridgeEntries(servers: unknown[]): unknown[] {
+  const out: unknown[] = [];
+  for (const item of servers) {
+    const entry = record(item);
+    const command =
+      entry && typeof entry.command === "string" ? entry.command : "";
+    const base = command.split(/[\\/]/).at(-1) ?? command;
+    if (base !== "mcp-proxy") {
+      out.push(item);
+      continue;
+    }
+    const args = Array.isArray(entry?.args) ? (entry.args as unknown[]) : [];
+    const idx = args.indexOf("--config");
+    if (idx < 0 || idx + 1 >= args.length || typeof args[idx + 1] !== "string") {
+      out.push(item); // URL 直连形态 → proxyRewrite 层 TS 改写
+      continue;
+    }
+    let inner: Record<string, unknown> | undefined;
+    try {
+      inner = record(JSON.parse(args[idx + 1] as string)?.mcpServers);
+    } catch {
+      inner = undefined;
+    }
+    if (!inner) {
+      out.push(item); // 非法 config 原样保留（错误在引擎侧可见）
+      continue;
+    }
+    for (const [innerName, innerRaw] of Object.entries(inner)) {
+      const innerEntry = record(innerRaw);
+      if (innerEntry) out.push({ name: innerName, ...innerEntry });
+    }
+  }
+  return out;
+}
+
+/**
  * Parses per-session configuration delivered with /computer/chat.
  * Precedence is enforced later by SessionHub:
  * downstream session config > Gateway flags > the user's local environment.
@@ -337,7 +385,9 @@ export function parseDownstreamSessionConfig(
     engine,
     modelOverlay: hasModelOverlay ? modelOverlay : undefined,
     engineEnv,
-    mcpServers: sanitizeMcpServerNames(mcpValue.map(normalizeMcpServer)),
+    mcpServers: sanitizeMcpServerNames(
+      unwrapMcpProxyBridgeEntries(mcpValue).map(normalizeMcpServer),
+    ),
     systemPrompt,
   };
 }

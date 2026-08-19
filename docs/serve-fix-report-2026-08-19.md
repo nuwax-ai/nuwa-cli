@@ -2,8 +2,8 @@
 
 - **分支**：`feat/serve-system-prompt-bridge-stability`
 - **日期**：2026-08-19
-- **提交**：`ce54dad` · `a8b8ea3` · `9af8fa4`
-- **测试**：489 passed / 63 files（含新增 5 用例）
+- **提交**：`ce54dad` · `a8b8ea3` · `9af8fa4` · `5580b82`（+ 解包对齐 + 报告）
+- **测试**：493 passed / 63 files（含新增 9 用例）
 - **改动范围**：仅 nuwa-cli 仓库；agent-kit / mcp-proxy-ts / 云端配置均未改动
 
 | 问题 | 状态 |
@@ -11,6 +11,8 @@
 | system_prompt 丢失 — 云端系统提示未下发到 agent | ✅ 已修复 |
 | chrome_tools ENOENT — codex 会话 MCP 启动失败 | ✅ 已修复 |
 | PersistentMcpBridge 每会话重启 — 跨 agent 并行互踩 | ✅ 已修复 |
+| chrome_tools 改 Rust convert 形态后再次 ENOENT | ✅ 已修复（TS 版改写） |
+| codex 运行速度排查 | 📊 结论：瓶颈在模型 API（77%），链路侧健康 |
 
 ---
 
@@ -23,6 +25,7 @@
 | system_prompt 丢失 | `parseDownstreamSessionConfig` 白名单无该字段，静默丢弃；三条会话路径均未组装 `_meta.systemPrompt` | 解析顶层 `system_prompt`，new / load / reconfigure 全路径经 `_meta.systemPrompt = { append }` 注入 | `ce54dad` `a8b8ea3` |
 | chrome_tools ENOENT | 云端下发的 `chrome-tools` 与内置 `chrome-devtools` 跨名不等价，按 ephemeral 下发且 command 本机不可用 | 跨名等价兜底折叠：npx 裸包名相同即命中内置 persistent 条目 | `9af8fa4` |
 | bridge 每会话重启 | `PersistentMcpBridge.start` 为 stop-first，宿主每会话无条件调用，无配置比对守卫 | 宿主层稳定序列化快照比对，配置未变直接复用运行中 bridge | `ce54dad` |
+| chrome_tools（Rust convert 形态）ENOENT | 云端配置改为 `mcp-proxy convert <url> --protocol stream`（nuwaclaw 机器的 Rust 工具），本机无 `mcp-proxy` 二进制 | 改写为 `node + @nuwax-ai/mcp-proxy-ts 入口` 执行同样 convert（CLI 参数兼容，原样透传） | `5580b82` |
 
 ---
 
@@ -75,6 +78,24 @@ body.system_prompt
 - 折叠丢弃云端等价条目的 env / allowTools 定制 —— 与 nuwaclaw「本地为准」一致，命中时打日志可观测。
 - 实现位置：`proxyRewrite.ts` 的 `foldEquivalentToDefaults()`，在 merge 阶段、npx 解析改写之前执行。
 
+### §2.1 后续演进：chrome_tools 改为 Rust convert 形态（`5580b82` + 解包对齐）
+
+验收期间云端配置再次变化：`chrome_tools` 从 npx stdio 形态改为 Rust 工具形态 —— `mcp-proxy convert http://127.0.0.1:18099 --protocol stream`（nuwaclaw 生态的命令形态）。该形态**不走** §2 的折叠（非 npx、目标也不是内置条目），且本机无 `mcp-proxy` 二进制，codex spawn 再次 ENOENT。
+
+**与 nuwaclaw 的逻辑核对结论**：nuwaclaw 对 `mcp-proxy` 条目调 `extractRealMcpServers` **解包**—— 但只认 `--config '{json}'` 聚合形态；URL 直连形态在 nuwaclaw 返回 null 被**静默丢弃**（即 nuwaclaw 从未真正运行过该 server）。nuwa-cli 拉齐解包语义并补齐 URL 形态：
+
+1. **`--config` 聚合形态 → 解包**（`downstreamConfig.ts` 的 `unwrapMcpProxyBridgeEntries`，对齐 nuwaclaw `extractRealMcpServers`）：以 inner name 展开 JSON.mcpServers 里的真实条目，stdio 恢复 command/args/env，url 条目按 remote（http/sse）接管，绝不再 spawn Rust 二进制。nuwaclaw 侧另有 uvx→`uv tool run` 的应用内路径重写，属宿主环境层（uvx 在 nuwa-cli 机器 PATH 上），不改写。
+2. **URL 直连形态 → TS convert 改写**（`proxyRewrite.ts` 的 `rewriteRustMcpProxyConvert`）：
+
+```
+node <@nuwax-ai/mcp-proxy-ts dist/index.js> convert <url> --protocol stream
+```
+
+   TS 版 convert 模式 CLI 参数兼容（位置参数 URL + `--protocol sse|stream`），参数原样透传；找不到 TS 入口时保持原样（宿主环境可能自装 Rust 版）。
+3. `--config` JSON 非法 / 缺 mcpServers → 条目原样保留，引擎侧报错可见（不做静默丢弃）。
+
+> **环境前提**：改写只解决「命令不存在」；`chrome_tools` 最终可用还取决于目标 `http://127.0.0.1:18099` 有服务在听（本机 nuwa-browser 类浏览器 MCP）。无服务时 startupStatus 会从 ENOENT 变为连接类失败 —— 属预期，起服务即可。
+
 ---
 
 ## §3 PersistentMcpBridge 防抖
@@ -95,6 +116,40 @@ ensurePersistentMcpBridge(servers):
 
 - persistent 集合实际恒为 `{ chrome-devtools }`，修复后重启只在真变更（如 `NUWACLI_MCP_PERSISTENT` 追加长驻名）时发生。
 - **agent-kit 不改**：宿主层 diff 已达同等效果；`createPersistentBridge` 目前唯一消费者是 nuwa-cli，nuwaclaw 走自己的 sync 层守卫 —— 现在改它是零受益的跨仓库发版链。将来出现第二个直接消费的宿主时再考虑下沉。
+
+---
+
+## §3.5 codex 运行速度排查结论
+
+排查动机：主观感受 codex 会话慢。对 15:05–15:08 两个真实 turn（22.7s / 36.1s）逐事件分解：
+
+**链路侧（快，全部健康）**：
+
+| 环节 | 耗时 |
+|---|---|
+| 请求 → 会话建立（received→accepted，含 MCP rewrite + buildSession + model overlay） | 455ms |
+| bridge 复用（§3 防抖生效，`reusing running bridge`） | 0ms |
+| chrome-devtools（桥）ready | 95ms |
+| ask_question ready | 384ms |
+| nuwax_openui（npx 冷启动，仅会话开头一次） | 2.4s |
+
+**模型侧（Turn B = 22.7s 的分解）**：
+
+| 阶段 | 耗时 | 占比 |
+|---|---|---|
+| userMessage → 首个推理输出（**首 token**） | ~7.8s | 34% |
+| 工具结果回传 → 下轮推理启动（事件空洞） | ~2.6s | 12% |
+| 最后一段输出完成 | ~7.2s | 32% |
+| MCP 工具实际执行 | ~1.2s | 5% |
+| reasoning 流式输出 | ~2.8s | 12% |
+
+**模型等待合计 ≈ 77%**；Turn A（36.1s）同构（工具间空洞 +8.0s / +4.1s）。全程 0 次 stream error / 429 / 5xx / quota —— 网关稳定，纯延迟问题（glm-5 + 长上下文：系统提示 + user-memory + 29 个工具定义）。
+
+**提速方向（按收益排序）**：
+
+1. **模型侧（收益最大）**：调低 glm-5 reasoning effort（可经 `session_set_config_option`，与 model overlay 同通道）；轻任务换低延迟模型；网关侧排查区域/并发配置。
+2. **nuwax_openui 冷启动 2.4s**：npx 缓存已预热，2.4s 是解压启动而非下载 —— 加 `NUWACLI_MCP_PERSISTENT=nuwax_openui` 纳入常驻桥可每次会话消掉（待办，未实施）。
+3. 链路侧（会话建立 455ms、bridge 0ms）已无优化必要。
 
 ---
 
@@ -127,19 +182,19 @@ ensurePersistentMcpBridge(servers):
 - **断言**：主日志出现 `auto-resume from local history`，且系统提示仍然生效（回复带特征前缀）。
 - **PASS IF**：auto-resume 会话行为同样受系统提示约束 —— 证明 `session/load` 的 `_meta` 注入生效。
 
-### S3 MCP 折叠 — codex 不再 ENOENT
+### S3 MCP 折叠 / convert 改写 — codex 不再 ENOENT
 
 - **操作**：发起一个 codex 引擎会话（Console 云端配置**保持原样，不删** chrome-tools），问「有哪些可用的工具」。
-- **断言**：
-  - 主日志出现折叠命中行（scope `mcp-proxy`）。
-  - `codex/app-server.log` 中无 `chrome_tools ... failed ... os error 2`，MCP 启动状态里 `chrome_tools` 不再出现。
-- **PASS IF**（日志命中行原文）：
+- **断言**（按云端 chrome_tools 当前形态二选一）：
+  - **npx stdio 形态**：主日志出现折叠命中行，`codex/app-server.log` 无 `chrome_tools` 条目。
+  - **Rust convert 形态**（当前）：主日志 `runtime config resolved` 的 mcpServers 摘要显示 `chrome_tools: <node 路径> <mcp-proxy-ts>/dist/index.js convert ...`（已完成 TS 改写）；`app-server.log` 中 chrome_tools 不再报 `os error 2`。
+- **PASS IF**（npx 形态折叠行原文）：
 
   ```
   mcp-proxy: downstream server "chrome_tools" is equivalent to default "chrome-devtools" (persistent), folding into default
   ```
 
-  且 codex 可用工具仍包含 Chrome DevTools 全套（来自桥接实例）。
+  （Rust convert 形态）ENOENT 消失；若 `127.0.0.1:18099` 无服务，chrome_tools 报**连接类**失败属预期 —— 起本地浏览器 MCP 服务后即 ready。codex 可用工具仍包含 Chrome DevTools 全套（桥接实例）。
 
 ### S4 bridge 防抖 — 跨引擎切换不重启
 
@@ -158,7 +213,7 @@ ensurePersistentMcpBridge(servers):
 - **操作**：
   1. 发起 claude 引擎会话，确认浏览器工具（29 tools）与 MCP 全部 ready。
   2. 仓库内执行 `npm run build` 与 `npm run test:run`。
-- **PASS IF**：claude 会话 `chrome-devtools` 经桥接 ready、工具可调用；build 无类型错误；测试 489 全绿。
+- **PASS IF**：claude 会话 `chrome-devtools` 经桥接 ready、工具可调用；build 无类型错误；测试 493 全绿（含新增 9 用例：system_prompt 解析 ×2、折叠 ×2、convert 改写 ×1、--config 解包 ×3、防抖 ×1）。
 
 ### 验收日志关键词速查
 

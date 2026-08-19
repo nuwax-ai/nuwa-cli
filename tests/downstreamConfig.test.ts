@@ -19,6 +19,60 @@ describe("parseDownstreamSessionConfig", () => {
     expect(result.systemPrompt).toBe("你是 nuwax 测试助手。");
   });
 
+  it("unwraps mcp-proxy convert --config bridge entries (nuwaclaw extractRealMcpServers parity)", () => {
+    const config = JSON.stringify({
+      mcpServers: {
+        "fetch-svc": { command: "uvx", args: ["mcp-server-fetch"] },
+        "remote-x": { url: "https://mcp.example.com/mcp", transport: "stream" },
+      },
+    });
+    const result = parseDownstreamSessionConfig({
+      prompt: "hi",
+      mcpServers: [
+        { name: "bridge", command: "mcp-proxy", args: ["convert", "--config", config] },
+      ],
+    });
+    // inner 条目以自身名字展开（连字符经 sanitize → 下划线），Rust 命令消失
+    expect(result.mcpServers.map((s) => s.name).sort()).toEqual([
+      "fetch_svc",
+      "remote_x",
+    ]);
+    const fetchSvc = result.mcpServers.find((s) => s.name === "fetch_svc");
+    expect(fetchSvc).toMatchObject({ command: "uvx", args: ["mcp-server-fetch"] });
+    const remoteX = result.mcpServers.find((s) => s.name === "remote_x");
+    expect(remoteX).toMatchObject({
+      type: "http",
+      url: "https://mcp.example.com/mcp",
+    });
+  });
+
+  it("keeps mcp-proxy entries without --config as-is (URL form → proxyRewrite TS rewrite)", () => {
+    const result = parseDownstreamSessionConfig({
+      mcpServers: [
+        {
+          name: "chrome-tools",
+          command: "mcp-proxy",
+          args: ["convert", "http://127.0.0.1:18099", "--protocol", "stream"],
+        },
+      ],
+    });
+    expect(result.mcpServers).toHaveLength(1);
+    expect(result.mcpServers[0]).toMatchObject({
+      name: "chrome_tools",
+      command: "mcp-proxy",
+    });
+  });
+
+  it("keeps mcp-proxy entries with malformed --config as-is (engine-side error visible)", () => {
+    const result = parseDownstreamSessionConfig({
+      mcpServers: [
+        { name: "bridge", command: "mcp-proxy", args: ["convert", "--config", "{not json"] },
+      ],
+    });
+    expect(result.mcpServers).toHaveLength(1);
+    expect(result.mcpServers[0]).toMatchObject({ command: "mcp-proxy" });
+  });
+
   it("accepts camelCase systemPrompt and drops whitespace-only values", () => {
     expect(
       parseDownstreamSessionConfig({ systemPrompt: "ok" }).systemPrompt,
