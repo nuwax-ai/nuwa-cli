@@ -281,6 +281,42 @@ describe("rewriteMcpServersForEngine defaults", () => {
     expect(merged["chrome-devtools"]?.args).toContain("--headless");
   });
 
+  it("Rust 形态 mcp-proxy convert 改写为本机 TS 版入口执行", async () => {
+    const { rewriteMcpServersForEngine } = await import(
+      "../src/core/mcp/proxyRewrite.js"
+    );
+    const out = await rewriteMcpServersForEngine(
+      [
+        {
+          name: "chrome-tools",
+          command: "mcp-proxy",
+          args: [
+            "convert",
+            "http://127.0.0.1:18099",
+            "--protocol",
+            "stream",
+          ],
+        },
+      ],
+      "proj",
+      "codex",
+    );
+    // sanitizeMcpServerNames 在 serve 入口（downstreamConfig）执行，此处保持原名
+    const ct = out.find((s: { name: string }) => s.name === "chrome-tools") as {
+      command: string;
+      args: string[];
+    };
+    // 改写为 node + TS 入口，convert 子命令与参数原样透传（CLI 参数兼容）
+    expect(ct?.command).toBe(process.execPath);
+    expect(ct?.args[0]).toBe("/fake/mcp-proxy-ts/dist/index.js");
+    expect(ct?.args.slice(1)).toEqual([
+      "convert",
+      "http://127.0.0.1:18099",
+      "--protocol",
+      "stream",
+    ]);
+  });
+
   it("persistent 配置未变时复用运行中的 bridge，不重启（跨引擎/会话防抖）", async () => {
     const { rewriteMcpServersForEngine } = await import(
       "../src/core/mcp/proxyRewrite.js"

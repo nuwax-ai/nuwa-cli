@@ -82,6 +82,37 @@ function resolveStdioEntry(entry: HostStdioServerEntry): HostStdioServerEntry {
 }
 
 /**
+ * 将云端下发的 Rust 形态 `mcp-proxy convert <url> [--protocol sse|stream]`
+ * 改写为本机 TS 版入口（node + @nuwax-ai/mcp-proxy-ts dist/index.js）执行
+ * 同样的 remote→stdio 转换。nuwaclaw 机器装有 Rust mcp-proxy，nuwa-cli
+ * 机器只有 npm 内的 TS 版；不改写则引擎 spawn `mcp-proxy` 直接 ENOENT。
+ * TS 版 CLI 参数兼容（位置参数 URL + --protocol sse|stream，原样透传）。
+ */
+function rewriteRustMcpProxyConvert(
+  entry: HostStdioServerEntry,
+): HostStdioServerEntry {
+  const base = entry.command.split(/[\\/]/).at(-1) ?? entry.command;
+  if (base !== "mcp-proxy" || entry.args?.[0] !== "convert") return entry;
+  const proxyScriptPath = resolveProxyEntry();
+  if (!proxyScriptPath) {
+    // 找不到 TS 入口：保持原样（宿主环境可能自行安装了 Rust 版）
+    debugLog(
+      "mcp-proxy",
+      "mcp-proxy convert entry kept as-is: TS proxy entry not found",
+    );
+    return entry;
+  }
+  debugLog("mcp-proxy", "rewriting rust mcp-proxy convert -> TS entry", {
+    args: entry.args,
+  });
+  return {
+    ...entry,
+    command: process.execPath,
+    args: [proxyScriptPath, ...(entry.args ?? [])],
+  };
+}
+
+/**
  * stdio 条目的等价键（在 npx 解析改写前调用，command 仍为原始形态）：
  * - npx 形态取裸包名 —— 忽略 -y/-p 等 flag 与 @version/@latest 后缀，
  *   `npx -y chrome-devtools-mcp@latest` 与 `npx chrome-devtools-mcp` 同键；
@@ -346,7 +377,7 @@ export async function rewriteMcpServersForEngine(
   // npx warmup + npm update already do the same). Remote entries pass through.
   for (const [name, entry] of Object.entries(merged)) {
     if (isHostRemoteEntry(entry)) continue;
-    merged[name] = resolveStdioEntry(entry);
+    merged[name] = resolveStdioEntry(rewriteRustMcpProxyConvert(entry));
   }
   const passthroughResolved = (passthrough as AcpMcpServer[]).map((server) => {
     if (!("command" in server)) return server;
