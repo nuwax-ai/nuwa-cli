@@ -2,7 +2,7 @@
 
 - **分支**：`feat/serve-system-prompt-bridge-stability`
 - **日期**：2026-08-19
-- **提交**：`ce54dad` · `a8b8ea3` · `9af8fa4` · `5580b82`（+ 解包对齐 + 报告）
+- **提交**：`ce54dad` · `a8b8ea3` · `9af8fa4` · `5580b82` · `f8a8383`（+ 报告 `916a890`）
 - **测试**：493 passed / 63 files（含新增 9 用例）
 - **改动范围**：仅 nuwa-cli 仓库；agent-kit / mcp-proxy-ts / 云端配置均未改动
 
@@ -11,7 +11,7 @@
 | system_prompt 丢失 — 云端系统提示未下发到 agent | ✅ 已修复 |
 | chrome_tools ENOENT — codex 会话 MCP 启动失败 | ✅ 已修复 |
 | PersistentMcpBridge 每会话重启 — 跨 agent 并行互踩 | ✅ 已修复 |
-| chrome_tools 改 Rust convert 形态后再次 ENOENT | ✅ 已修复（TS 版改写） |
+| chrome_tools 改 Rust convert 形态后再次 ENOENT | ✅ 已修复（--config 解包 + URL 形态 TS convert 改写，`5580b82` `f8a8383`） |
 | codex 运行速度排查 | 📊 结论：瓶颈在模型 API（77%），链路侧健康 |
 
 ---
@@ -182,12 +182,13 @@ ensurePersistentMcpBridge(servers):
 - **断言**：主日志出现 `auto-resume from local history`，且系统提示仍然生效（回复带特征前缀）。
 - **PASS IF**：auto-resume 会话行为同样受系统提示约束 —— 证明 `session/load` 的 `_meta` 注入生效。
 
-### S3 MCP 折叠 / convert 改写 — codex 不再 ENOENT
+### S3 MCP 折叠 / 解包 / convert 改写 — codex 不再 ENOENT
 
 - **操作**：发起一个 codex 引擎会话（Console 云端配置**保持原样，不删** chrome-tools），问「有哪些可用的工具」。
-- **断言**（按云端 chrome_tools 当前形态二选一）：
+- **断言**（按云端 chrome_tools 当前形态三选一）：
   - **npx stdio 形态**：主日志出现折叠命中行，`codex/app-server.log` 无 `chrome_tools` 条目。
-  - **Rust convert 形态**（当前）：主日志 `runtime config resolved` 的 mcpServers 摘要显示 `chrome_tools: <node 路径> <mcp-proxy-ts>/dist/index.js convert ...`（已完成 TS 改写）；`app-server.log` 中 chrome_tools 不再报 `os error 2`。
+  - **Rust convert URL 直连形态**（当前）：主日志 `runtime config resolved` 的 mcpServers 摘要显示 `chrome_tools: <node 路径> <mcp-proxy-ts>/dist/index.js convert ...`（已完成 TS 改写）；`app-server.log` 中 chrome_tools 不再报 `os error 2`。
+  - **Rust convert --config 聚合形态**：mcpServers 摘要中不再出现 `mcp-proxy` 命令 —— inner 条目以自身名字展开（连字符规范化为下划线），stdio 条目显示原始 command/args、url 条目显示 `http <url>`。
 - **PASS IF**（npx 形态折叠行原文）：
 
   ```
