@@ -765,6 +765,11 @@ export class SessionHub {
         sessionId: summary.sessionId,
         cwd: summary.cwd,
         mcpServers,
+        // session/load 同样吃 _meta.systemPrompt：codex-acp loadSession 与
+        // claude-acp getOrCreateSession 均解析（auto-resume 场景不丢系统提示）。
+        ...(session.systemPrompt
+          ? { _meta: { systemPrompt: { append: session.systemPrompt } } }
+          : {}),
       })) as {
         modes?: SessionModeState | null;
         configOptions?: SessionConfigOption[] | null;
