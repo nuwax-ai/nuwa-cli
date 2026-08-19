@@ -82,6 +82,62 @@ function resolveStdioEntry(entry: HostStdioServerEntry): HostStdioServerEntry {
 }
 
 /**
+ * stdio 条目的等价键（在 npx 解析改写前调用，command 仍为原始形态）：
+ * - npx 形态取裸包名 —— 忽略 -y/-p 等 flag 与 @version/@latest 后缀，
+ *   `npx -y chrome-devtools-mcp@latest` 与 `npx chrome-devtools-mcp` 同键；
+ * - 其余命令取 `command + args` 原文（保守：参数顺序不同即不等价）。
+ */
+function stdioEquivalentKey(entry: HostStdioServerEntry): string {
+  if (entry.command === "npx") {
+    const spec =
+      (entry.args ?? []).find((arg) => !arg.startsWith("-")) ?? "";
+    // 去尾 @version；scoped 包（@scope/pkg）无尾版本时不受影响
+    const pkg = spec.replace(/@[^/@]+$/, "");
+    return pkg ? `npx:${pkg}` : "";
+  }
+  return `raw:${entry.command} ${(entry.args ?? []).join(" ").trim()}`;
+}
+
+/**
+ * 兜底匹配（对齐 nuwaclaw mergeMcpServerConfigs「同 key 以本地为准」的去重
+ * 语义，扩展到跨名等价）：云端下发的 stdio server 若与某 DEFAULT persistent
+ * 条目等价 —— npx 裸包名相同，或 command+args 完全一致 —— 视为同一服务，
+ * 云端条目丢弃、由 DEFAULT 条目（persistent 桥托管）兜底。避免同一
+ * chrome-devtools-mcp 既进 bridge 又按 ephemeral 双开，或云端 command 在
+ * 本机不可用（ENOENT）拖垮会话；定制（env/allowTools 等）以本地为准。
+ */
+function foldEquivalentToDefaults(
+  map: Record<string, HostMcpServerEntry>,
+): Record<string, HostMcpServerEntry> {
+  const defaultKeys = new Map<string, string>();
+  for (const [name, def] of Object.entries(DEFAULT_MCP_PROXY_SERVERS)) {
+    if (isHostRemoteEntry(def) || !def.persistent) continue;
+    const key = stdioEquivalentKey(def);
+    if (key) defaultKeys.set(key, name);
+  }
+  if (defaultKeys.size === 0) return map;
+
+  const out: Record<string, HostMcpServerEntry> = {};
+  for (const [name, entry] of Object.entries(map)) {
+    if (!isHostRemoteEntry(entry)) {
+      const key = stdioEquivalentKey(entry);
+      const hit = key ? defaultKeys.get(key) : undefined;
+      if (hit && hit !== name) {
+        // 跨名等价才折叠；同名条目走「动态覆盖 DEFAULT、保留 persistent」
+        // 的既有语义（云端定制 command/args 不丢）。
+        debugLog(
+          "mcp-proxy",
+          `downstream server "${name}" is equivalent to default "${hit}" (persistent), folding into default`,
+        );
+        continue;
+      }
+    }
+    out[name] = entry;
+  }
+  return out;
+}
+
+/**
  * serve 启动时用于 warmup 的默认 persistent 集合（仅 DEFAULT，含 npx 解析）。
  * 动态 ACP / NUWACLI_MCP_PERSISTENT 追加在 rewrite 时再并入。
  */
@@ -268,10 +324,11 @@ export async function rewriteMcpServersForEngine(
   const acpServers = (servers ?? []) as AcpMcpServer[];
   const { map, passthrough } = acpServersToHostMap(acpServers);
 
-  // mergeMcpServerConfigs(DEFAULT, dynamic)：DEFAULT 为底，同名以动态为准
+  // mergeMcpServerConfigs(DEFAULT, dynamic)：DEFAULT 为底，同名以动态为准；
+  // 跨名等价（如 chrome-tools ≡ chrome-devtools）先折叠回 DEFAULT 兜底。
   const merged: Record<string, HostMcpServerEntry> = {
     ...DEFAULT_MCP_PROXY_SERVERS,
-    ...map,
+    ...foldEquivalentToDefaults(map),
   };
 
   // 默认服务的 persistent 必须保留（对齐 Electron「chrome-devtools 始终保留、必须运行」）：

@@ -226,6 +226,61 @@ describe("rewriteMcpServersForEngine defaults", () => {
     expect(isPersistentMcpBridgeRunning()).toBe(true);
   });
 
+  it("跨名等价的下发 server 折叠回 DEFAULT persistent（chrome-tools ≡ chrome-devtools）", async () => {
+    const { rewriteMcpServersForEngine } = await import(
+      "../src/core/mcp/proxyRewrite.js"
+    );
+    const out = await rewriteMcpServersForEngine(
+      [
+        {
+          // 云端原名 chrome-tools（sanitize 后 chrome_tools）；版本号不同也应命中
+          name: "chrome-tools",
+          command: "npx",
+          args: ["chrome-devtools-mcp@0.14.0"],
+        },
+        {
+          name: "ask-question",
+          command: "npx",
+          args: ["-y", "nuwax-ask-question-mcp@latest"],
+        },
+      ],
+      "proj",
+      "codex",
+    );
+    // chrome-tools 被 DEFAULT 兜底：不作为 ephemeral 下发（避免双开/ENOENT）
+    const names = out.map((s: { name: string }) => s.name).sort();
+    expect(names).toEqual(["ask-question", "chrome-devtools"]);
+    // bridge 仍只托管 DEFAULT 的 chrome-devtools（persistent 集合未变）
+    const started = mocks.bridgeStart.mock.calls[0]![0] as Record<
+      string,
+      unknown
+    >;
+    expect(Object.keys(started)).toEqual(["chrome-devtools"]);
+  });
+
+  it("同名 chrome-devtools 下发走覆盖语义（定制 args 保留，不折叠）", async () => {
+    const { rewriteMcpServersForEngine } = await import(
+      "../src/core/mcp/proxyRewrite.js"
+    );
+    await rewriteMcpServersForEngine(
+      [
+        {
+          name: "chrome-devtools",
+          command: "npx",
+          args: ["-y", "chrome-devtools-mcp@latest", "--headless"],
+        },
+      ],
+      "proj",
+      "claude",
+    );
+    const merged = mocks.rewriteServersToProxyCommands.mock.calls[0]![0] as Record<
+      string,
+      { args?: string[] }
+    >;
+    // 云端定制 args 覆盖 DEFAULT，且 persistent 保留（走 bridge）
+    expect(merged["chrome-devtools"]?.args).toContain("--headless");
+  });
+
   it("persistent 配置未变时复用运行中的 bridge，不重启（跨引擎/会话防抖）", async () => {
     const { rewriteMcpServersForEngine } = await import(
       "../src/core/mcp/proxyRewrite.js"
