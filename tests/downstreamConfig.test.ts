@@ -63,6 +63,28 @@ describe("parseDownstreamSessionConfig", () => {
     });
   });
 
+  it("unwraps mcp-proxy.exe convert --config (Windows basename)", () => {
+    const config = JSON.stringify({
+      mcpServers: {
+        fetch: { command: "uvx", args: ["mcp-server-fetch"] },
+      },
+    });
+    const result = parseDownstreamSessionConfig({
+      mcpServers: [
+        {
+          name: "bridge",
+          command: "C:\\tools\\mcp-proxy.exe",
+          args: ["convert", "--config", config],
+        },
+      ],
+    });
+    expect(result.mcpServers.map((s) => s.name)).toEqual(["fetch"]);
+    expect(result.mcpServers[0]).toMatchObject({
+      command: "uvx",
+      args: ["mcp-server-fetch"],
+    });
+  });
+
   it("keeps mcp-proxy entries with malformed --config as-is (engine-side error visible)", () => {
     const result = parseDownstreamSessionConfig({
       mcpServers: [

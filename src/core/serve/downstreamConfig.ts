@@ -1,6 +1,8 @@
 import type { McpServer } from "@agentclientprotocol/sdk";
 import type { ModelOverlay, ModelProtocol } from "../env/inheritEnv.js";
 import type { EngineKind } from "../env/inheritEnv.js";
+import { isMcpProxyCommand } from "../mcp/mcpProxyCommand.js";
+import { normalizeMcpServerName } from "../mcp/normalizeServerName.js";
 
 export interface DownstreamSessionConfig {
   engine: EngineKind;
@@ -180,11 +182,7 @@ function sanitizeMcpServerNames(servers: McpServer[]): McpServer[] {
     // surfaces as "unknown MCP server 'nuwax_openui'". Normalize hyphens (and
     // any other non-[a-z0-9_] char) to underscore so the name is consistent
     // everywhere downstream.
-    let base = server.name
-      .replace(/[^a-zA-Z0-9_]/g, "_")
-      .replace(/_+/g, "_")
-      .replace(/^_|_$/g, "");
-    if (!base) base = "mcp_server";
+    const base = normalizeMcpServerName(server.name);
     let name = base;
     let suffix = 2;
     while (used.has(name)) name = `${base}_${suffix++}`;
@@ -258,8 +256,8 @@ function unwrapMcpProxyBridgeEntries(servers: unknown[]): unknown[] {
     const entry = record(item);
     const command =
       entry && typeof entry.command === "string" ? entry.command : "";
-    const base = command.split(/[\\/]/).at(-1) ?? command;
-    if (base !== "mcp-proxy") {
+    // 含 Windows mcp-proxy.exe / 路径前缀，与 proxyRewrite 改写判定对齐。
+    if (!isMcpProxyCommand(command)) {
       out.push(item);
       continue;
     }

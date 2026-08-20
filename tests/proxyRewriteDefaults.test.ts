@@ -61,7 +61,8 @@ vi.mock("@nuwax-ai/mcp-proxy-ts/host", async () => {
 
 describe("rewriteMcpServersForEngine defaults", () => {
   beforeEach(() => {
-    mocks.bridgeStart.mockClear();
+    mocks.bridgeStart.mockReset();
+    mocks.bridgeStart.mockResolvedValue(undefined);
     mocks.bridgeStop.mockClear();
     mocks.resolveProxyEntry.mockReturnValue(
       "/fake/mcp-proxy-ts/dist/index.js",
@@ -281,6 +282,66 @@ describe("rewriteMcpServersForEngine defaults", () => {
     expect(merged["chrome-devtools"]?.args).toContain("--headless");
   });
 
+  it("sanitize 后 chrome_devtools 同名变体 remap 覆盖 DEFAULT（生产路径）", async () => {
+    const { parseDownstreamSessionConfig } = await import(
+      "../src/core/serve/downstreamConfig.js"
+    );
+    const { rewriteMcpServersForEngine } = await import(
+      "../src/core/mcp/proxyRewrite.js"
+    );
+    // serve 真实链路：sanitize 把 chrome-devtools → chrome_devtools
+    const parsed = parseDownstreamSessionConfig({
+      mcpServers: [
+        {
+          name: "chrome-devtools",
+          command: "npx",
+          args: ["-y", "chrome-devtools-mcp@latest", "--headless"],
+        },
+      ],
+    });
+    expect(parsed.mcpServers[0]?.name).toBe("chrome_devtools");
+    await rewriteMcpServersForEngine(parsed.mcpServers, "proj", "codex");
+    const merged = mocks.rewriteServersToProxyCommands.mock.calls[0]![0] as Record<
+      string,
+      { args?: string[] }
+    >;
+    // remap 回 DEFAULT key，定制 args 覆盖，不双开
+    expect(Object.keys(merged)).toEqual(["chrome-devtools"]);
+    expect(merged["chrome-devtools"]?.args).toContain("--headless");
+  });
+
+  it("sanitize 后 chrome_tools 仍跨名折叠回 DEFAULT", async () => {
+    const { parseDownstreamSessionConfig } = await import(
+      "../src/core/serve/downstreamConfig.js"
+    );
+    const { rewriteMcpServersForEngine } = await import(
+      "../src/core/mcp/proxyRewrite.js"
+    );
+    const parsed = parseDownstreamSessionConfig({
+      mcpServers: [
+        {
+          name: "chrome-tools",
+          command: "npx",
+          args: ["-y", "chrome-devtools-mcp@0.14.0"],
+        },
+      ],
+    });
+    expect(parsed.mcpServers[0]?.name).toBe("chrome_tools");
+    const out = await rewriteMcpServersForEngine(
+      parsed.mcpServers,
+      "proj",
+      "codex",
+    );
+    expect(out.map((s: { name: string }) => s.name)).toEqual([
+      "chrome-devtools",
+    ]);
+    const started = mocks.bridgeStart.mock.calls[0]![0] as Record<
+      string,
+      unknown
+    >;
+    expect(Object.keys(started)).toEqual(["chrome-devtools"]);
+  });
+
   it("Rust 形态 mcp-proxy convert 改写为本机 TS 版入口执行", async () => {
     const { rewriteMcpServersForEngine } = await import(
       "../src/core/mcp/proxyRewrite.js"
@@ -307,6 +368,40 @@ describe("rewriteMcpServersForEngine defaults", () => {
       args: string[];
     };
     // 改写为 node + TS 入口，convert 子命令与参数原样透传（CLI 参数兼容）
+    expect(ct?.command).toBe(process.execPath);
+    expect(ct?.args[0]).toBe("/fake/mcp-proxy-ts/dist/index.js");
+    expect(ct?.args.slice(1)).toEqual([
+      "convert",
+      "http://127.0.0.1:18099",
+      "--protocol",
+      "stream",
+    ]);
+  });
+
+  it("Windows mcp-proxy.exe convert 同样改写为 TS 入口", async () => {
+    const { rewriteMcpServersForEngine } = await import(
+      "../src/core/mcp/proxyRewrite.js"
+    );
+    const out = await rewriteMcpServersForEngine(
+      [
+        {
+          name: "chrome-tools",
+          command: "C:\\bin\\mcp-proxy.exe",
+          args: [
+            "convert",
+            "http://127.0.0.1:18099",
+            "--protocol",
+            "stream",
+          ],
+        },
+      ],
+      "proj",
+      "codex",
+    );
+    const ct = out.find((s: { name: string }) => s.name === "chrome-tools") as {
+      command: string;
+      args: string[];
+    };
     expect(ct?.command).toBe(process.execPath);
     expect(ct?.args[0]).toBe("/fake/mcp-proxy-ts/dist/index.js");
     expect(ct?.args.slice(1)).toEqual([
@@ -350,6 +445,21 @@ describe("rewriteMcpServersForEngine defaults", () => {
       "codex",
     );
     expect(mocks.bridgeStart).toHaveBeenCalledTimes(2);
+  });
+
+  it("并行 rewrite 时 bridge start 只触发一次（串行化防抖）", async () => {
+    const { rewriteMcpServersForEngine } = await import(
+      "../src/core/mcp/proxyRewrite.js"
+    );
+    // 模拟 start 稍慢，暴露竞态窗口
+    mocks.bridgeStart.mockImplementation(
+      () => new Promise((resolve) => setTimeout(resolve, 30)),
+    );
+    await Promise.all([
+      rewriteMcpServersForEngine([], "proj-a", "codex"),
+      rewriteMcpServersForEngine([], "proj-b", "claude"),
+    ]);
+    expect(mocks.bridgeStart).toHaveBeenCalledTimes(1);
   });
 });
 

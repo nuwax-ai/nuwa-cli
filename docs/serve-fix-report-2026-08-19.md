@@ -88,6 +88,7 @@ body.system_prompt
 | `chrome-devtools`（同名，定制 args） | 同名 | **覆盖**：云端定制保留，persistent 标记不丢（原语义不变） |
 | `nuwax-openui` / `ask-question` 等 | 不等价 | 正常 ephemeral 下发 |
 
+- 同名判定按 sanitize 规范化名：`chrome-devtools` / `chrome_devtools` 视为同名，remap 到 DEFAULT key 后再覆盖（避免 sanitize 后误折叠丢掉定制 args）。
 - 等价键：npx 形态取裸包名（忽略 `-y`/`-p` 与 `@version` 后缀，scoped 包安全）；非 npx 按 command+args 完全一致（保守）。
 - 折叠丢弃云端等价条目的 env / allowTools 定制 —— 与 nuwaclaw「本地为准」一致，命中时打日志可观测。
 - 实现位置：`proxyRewrite.ts` 的 `foldEquivalentToDefaults()`，在 merge 阶段、npx 解析改写之前执行。
@@ -122,6 +123,7 @@ nuwaclaw 不受影响是因为有两层守卫（请求级 `rawMcpServersEqual` f
 
 ```
 ensurePersistentMcpBridge(servers):
+  # Promise 链串行化：并行 rewrite 也不会双 start
   configKey = stablePersistentConfigKey(servers)   # key 排序 + 稳定序列化
   if configKey === lastPersistentConfig && bridge.isRunning():
       return lastPersistentBridge                   # 复用，不重启

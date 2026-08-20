@@ -25,6 +25,8 @@ import { ensureDir, logsDir, tmpDir } from "../../util/paths.js";
 import { resolveStdioNoWindow } from "../../util/npxResolve.js";
 import { debugLog } from "../debugLog.js";
 import { DEFAULT_MCP_PROXY_SERVERS } from "./defaultServers.js";
+import { isMcpProxyCommand } from "./mcpProxyCommand.js";
+import { normalizeMcpServerName } from "./normalizeServerName.js";
 import type { EngineKind } from "../env/inheritEnv.js";
 import { createPersistentBridge, type McpProxyLogger } from "@nuwax-ai/agent-kit";
 
@@ -91,8 +93,10 @@ function resolveStdioEntry(entry: HostStdioServerEntry): HostStdioServerEntry {
 function rewriteRustMcpProxyConvert(
   entry: HostStdioServerEntry,
 ): HostStdioServerEntry {
-  const base = entry.command.split(/[\\/]/).at(-1) ?? entry.command;
-  if (base !== "mcp-proxy" || entry.args?.[0] !== "convert") return entry;
+  // 含 Windows mcp-proxy.exe / 路径前缀。
+  if (!isMcpProxyCommand(entry.command) || entry.args?.[0] !== "convert") {
+    return entry;
+  }
   const proxyScriptPath = resolveProxyEntry();
   if (!proxyScriptPath) {
     // 找不到 TS 入口：保持原样（宿主环境可能自行安装了 Rust 版）
@@ -153,9 +157,20 @@ function foldEquivalentToDefaults(
     if (!isHostRemoteEntry(entry)) {
       const key = stdioEquivalentKey(entry);
       const hit = key ? defaultKeys.get(key) : undefined;
-      if (hit && hit !== name) {
-        // 跨名等价才折叠；同名条目走「动态覆盖 DEFAULT、保留 persistent」
-        // 的既有语义（云端定制 command/args 不丢）。
+      if (hit) {
+        // 同名变体（sanitize 后 chrome-devtools → chrome_devtools）：remap 到
+        // DEFAULT 规范名，让后续 merge 真正覆盖定制 args，避免双条目。
+        if (normalizeMcpServerName(hit) === normalizeMcpServerName(name)) {
+          if (hit !== name) {
+            debugLog(
+              "mcp-proxy",
+              `downstream server "${name}" is same-name variant of default "${hit}", remapping for override`,
+            );
+          }
+          out[hit] = entry;
+          continue;
+        }
+        // 跨名等价（chrome-tools ≡ chrome-devtools）：折叠丢弃，由 DEFAULT 兜底。
         debugLog(
           "mcp-proxy",
           `downstream server "${name}" is equivalent to default "${hit}" (persistent), folding into default`,
@@ -268,6 +283,22 @@ function extractPersistentServers(
 let lastPersistentConfig: string | null = null;
 let lastPersistentBridge: PersistentMcpBridge | null = null;
 
+/**
+ * 串行化 bridge start/stop：并行 rewrite（多 HTTP 会话同时建连）时避免
+ * 双路同时 ensureStarted（stop-first 互踩）。配置未变时后续调用走复用快照。
+ */
+let bridgeOp: Promise<void> = Promise.resolve();
+
+function enqueueBridgeOp<T>(fn: () => Promise<T>): Promise<T> {
+  const run = bridgeOp.then(fn, fn);
+  // 链上只关心串行，吞掉结果以免前序失败阻断后续 stop/start。
+  bridgeOp = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 /** 稳定序列化（key 排序 + 逐项展开）：key 顺序不同但语义相同的配置视为未变。 */
 function stablePersistentConfigKey(
   servers: Record<string, HostStdioServerEntry>,
@@ -283,28 +314,30 @@ function stablePersistentConfigKey(
 export async function ensurePersistentMcpBridge(
   servers: Record<string, HostStdioServerEntry>,
 ): Promise<PersistentMcpBridge | null> {
-  if (Object.keys(servers).length === 0) {
-    // 空列表对齐 ensureStarted 语义（stop + null），并清除防抖快照。
-    lastPersistentConfig = null;
-    lastPersistentBridge = null;
-    return persistentBridge.ensureStarted(servers);
-  }
-  const configKey = stablePersistentConfigKey(servers);
-  if (
-    lastPersistentConfig === configKey &&
-    lastPersistentBridge &&
-    persistentBridge.isRunning()
-  ) {
-    debugLog(
-      "mcp-proxy",
-      "persistent bridge config unchanged, reusing running bridge (no restart)",
-    );
-    return lastPersistentBridge;
-  }
-  const bridge = await persistentBridge.ensureStarted(servers);
-  lastPersistentConfig = configKey;
-  lastPersistentBridge = bridge;
-  return bridge;
+  return enqueueBridgeOp(async () => {
+    if (Object.keys(servers).length === 0) {
+      // 空列表对齐 ensureStarted 语义（stop + null），并清除防抖快照。
+      lastPersistentConfig = null;
+      lastPersistentBridge = null;
+      return persistentBridge.ensureStarted(servers);
+    }
+    const configKey = stablePersistentConfigKey(servers);
+    if (
+      lastPersistentConfig === configKey &&
+      lastPersistentBridge &&
+      persistentBridge.isRunning()
+    ) {
+      debugLog(
+        "mcp-proxy",
+        "persistent bridge config unchanged, reusing running bridge (no restart)",
+      );
+      return lastPersistentBridge;
+    }
+    const bridge = await persistentBridge.ensureStarted(servers);
+    lastPersistentConfig = configKey;
+    lastPersistentBridge = bridge;
+    return bridge;
+  });
 }
 
 /**
@@ -333,9 +366,11 @@ export function isPersistentMcpBridgeRunning(): boolean {
 
 /** serve / hub 关闭时停止 bridge，避免子进程残留。 */
 export async function stopPersistentMcpBridge(): Promise<void> {
-  lastPersistentConfig = null;
-  lastPersistentBridge = null;
-  await persistentBridge.stop();
+  await enqueueBridgeOp(async () => {
+    lastPersistentConfig = null;
+    lastPersistentBridge = null;
+    await persistentBridge.stop();
+  });
 }
 
 /**
