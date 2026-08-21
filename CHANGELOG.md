@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6-beta.3] - 2026-08-21
+
+### Changed
+
+- 发版冒烟：依赖表相对 `0.2.6-beta.2` 无变化，便于验证 `nuwa-cli update` 增量快速路径（应命中「仅替换 CLI 自身文件」）。
+
 ## [0.2.6-beta.2] - 2026-08-21
 
 ### Added
