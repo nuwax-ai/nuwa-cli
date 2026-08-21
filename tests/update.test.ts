@@ -170,6 +170,97 @@ describe("update command", () => {
     expect(compareSemver("1.2.3", "1.2.3")).toBe(0);
   });
 
+  it("depsUnchanged is key-order-insensitive and strict on any difference", async () => {
+    const { depsUnchanged } = await import("../src/commands/update.js");
+    // 键序不同但内容一致 → 增量安全
+    expect(
+      depsUnchanged(
+        { dependencies: { a: "^1.0.0", b: "2.0.0" } },
+        { dependencies: { b: "2.0.0", a: "^1.0.0" } },
+      ),
+    ).toBe(true);
+    // undefined 与空表等价
+    expect(depsUnchanged({}, { dependencies: {} })).toBe(true);
+    expect(depsUnchanged(undefined, undefined)).toBe(true);
+    // 换版本 / 换 range / 新增 / 删除 → 必须回退完整安装
+    expect(
+      depsUnchanged(
+        { dependencies: { a: "^1.0.0" } },
+        { dependencies: { a: "^1.1.0" } },
+      ),
+    ).toBe(false);
+    expect(
+      depsUnchanged(
+        { dependencies: { a: "^1.0.0" } },
+        { dependencies: { a: "^1.0.0", b: "2.0.0" } },
+      ),
+    ).toBe(false);
+    expect(
+      depsUnchanged(
+        { dependencies: { a: "^1.0.0", b: "2.0.0" } },
+        { dependencies: { a: "^1.0.0" } },
+      ),
+    ).toBe(false);
+    // optionalDependencies 同样参与比较（平台二进制就在这里）
+    expect(
+      depsUnchanged(
+        { dependencies: { a: "^1.0.0" }, optionalDependencies: { p: "1.0.0" } },
+        { dependencies: { a: "^1.0.0" }, optionalDependencies: { p: "1.1.0" } },
+      ),
+    ).toBe(false);
+  });
+
+  it("buildPackArgs targets a download destination and optional registry", async () => {
+    const { buildPackArgs } = await import("../src/commands/update.js");
+    expect(buildPackArgs("@nuwax-ai/nuwa-cli@0.2.0", "/tmp/x")).toEqual([
+      "pack",
+      "@nuwax-ai/nuwa-cli@0.2.0",
+      "--pack-destination",
+      "/tmp/x",
+    ]);
+    expect(
+      buildPackArgs("@nuwax-ai/nuwa-cli@0.2.0", "/tmp/x", "https://r.example"),
+    ).toEqual([
+      "pack",
+      "@nuwax-ai/nuwa-cli@0.2.0",
+      "--pack-destination",
+      "/tmp/x",
+      "--registry",
+      "https://r.example",
+    ]);
+  });
+
+  it("still runs the full npm install when the incremental prep cannot engage", async () => {
+    // vitest 的 argv[1] 不指向安装树 → resolveInstallRoot 为 undefined →
+    // 增量准备直接跳过，兜底走完整 npm install（既有行为回归保护）。
+    const { updateCommand } = await import("../src/commands/update.js");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const runner = vi.fn(() => ({ status: 0 }));
+
+    await updateCommand(undefined, {}, runner);
+
+    const installCall = runner.mock.calls.find(
+      (c) => c[1][0] === "install",
+    );
+    expect(installCall).toBeDefined();
+    expect(installCall?.[0]).toBe("npm");
+  });
+
+  it("--force skips the incremental path entirely and runs npm install", async () => {
+    // 异常场景修复入口（doctor 指引即此命令）：--force 不得尝试 npm pack/增量。
+    const { updateCommand } = await import("../src/commands/update.js");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const runner = vi.fn(() => ({ status: 0 }));
+
+    await updateCommand(undefined, { force: true }, runner);
+
+    expect(
+      runner.mock.calls.some((c) => c[1][0] === "pack"),
+    ).toBe(false);
+    const installCall = runner.mock.calls.find((c) => c[1][0] === "install");
+    expect(installCall).toBeDefined();
+  });
+
   it("prints honest step labels instead of a fake percentage bar", async () => {
     const { updateCommand } = await import("../src/commands/update.js");
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});

@@ -9,6 +9,7 @@ export function registerUpdateCommand(program: Command): void {
     .option("--check", t("cli.cmd.update.opt.check"))
     .option("--dry-run", t("cli.cmd.update.opt.dryRun"))
     .option("--registry <url>", t("cli.cmd.update.opt.registry"))
+    .option("--force", t("cli.cmd.update.opt.force"))
     .addHelpText("after", t("cli.cmd.update.help"))
     .action((version, options) => updateCommand(version, options));
 }

@@ -180,6 +180,8 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "cli.cmd.update.opt.check": "只查询目标版本，不执行安装",
   "cli.cmd.update.opt.dryRun": "打印升级命令但不执行",
   "cli.cmd.update.opt.registry": "指定 npm registry",
+  "cli.cmd.update.opt.force":
+    "强制完整重装：跳过增量更新，npm 整树重装（修复安装异常）",
   "cli.cmd.update.help":
     "\n示例：\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n\n说明：\n  - update 使用 npm 升级全局 CLI 包，不修改 ~/.nuwa-cli 登录数据。\n  - 默认通道随当前安装版本：正式版 → latest，预发布版 → beta；也可显式指定版本或 dist-tag。\n  - Windows：服务运行中裸跑 `npm i -g` 常因 nuwax-lanproxy.exe / nuwax-codex.exe 被锁而 EBUSY；请用本命令（会先 stop 并释放锁），不要直接 npm 覆盖。\n  - npx 临时运行时，建议使用 npx -y @nuwax-ai/nuwa-cli@latest ...（预发布用 @beta）。",
   "cli.cmd.console.desc":
@@ -197,6 +199,14 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "update.upgradeTarget": "升级目标：{spec}",
   "update.execute": "执行：{cmd}",
   "update.step1": "步骤 1/4：检查目标版本...",
+  "update.stepPrep": "准备增量更新（下载目标版本包）...",
+  "update.forceFull":
+    "已指定 --force：跳过增量更新，npm 整树完整重装（用于修复安装异常）。",
+  "update.incrementalHit":
+    "依赖版本无变化，采用增量更新：仅替换 CLI 自身文件，不重装 node_modules。",
+  "update.incrementalFallback":
+    "依赖有变化（或增量更新不可用），回退完整 npm 安装。",
+  "update.incrementalDone": "增量更新完成。",
   "update.alreadyLatest": "已是最新版本，无需重新安装。",
   "update.step2": "步骤 2/4：停止运行中的服务以释放升级文件...",
   "update.stopped": "已停止运行中的服务。",
@@ -266,7 +276,8 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "doctor.claude.detailCli": "运行时可用；本机 CLI：{bin}",
   "doctor.claude.detailBuiltin":
     "内置运行时可用（{arg}）；未安装本机 CLI，本地历史/配置可能为空，可使用 ACP 下发配置",
-  "doctor.fix.reinstall": "重新安装 nuwa-cli（不要使用 --omit=optional）",
+  "doctor.fix.reinstall":
+    "运行 `nuwa-cli update --force` 完整重装（不要使用 --omit=optional）",
   "doctor.codex.detailRuntime": "运行时可用（{arg}）",
   "doctor.codex.detailCliVer": "本机 CLI：{bin} ({ver})",
   "doctor.codex.detailCli": "本机 CLI：{bin}",
@@ -296,7 +307,7 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "doctor.login.fixRelogin": "运行 `nuwa-cli login` 重新登录",
   "doctor.computer.detailUnset": "尚未注册，登录后由 Nuwax 分配电脑名",
   "doctor.lanproxy.fixReinstall":
-    "重新安装 nuwa-cli（不要使用 --omit=optional），并确认当前 npm 源已同步平台包",
+    "运行 `nuwa-cli update --force` 完整重装（不要使用 --omit=optional），并确认当前 npm 源已同步平台包",
   "doctor.lanproxy.healthNoResp": "无响应",
   "doctor.lanproxy.healthDown": "不可用",
   "doctor.lanproxy.detailRunningUnhealthy":
@@ -327,7 +338,8 @@ export const zhCN: { [K in keyof typeof en]: string } = {
     "运行 `nuwa-cli doctor --fix` 清理多余 Console（不自动重开前台；需要时再 `nuwa-cli console`）",
   "doctor.mcp.detailOk": "已解析 {path}",
   "doctor.mcp.detailMissing": "未找到 @nuwax-ai/mcp-proxy-ts 入口（dist/index.js）",
-  "doctor.mcp.fix": "确认已安装依赖：npm install @nuwax-ai/mcp-proxy-ts",
+  "doctor.mcp.fix":
+    "运行 `nuwa-cli update --force` 完整重装以恢复依赖（或单独安装：npm install -g @nuwax-ai/mcp-proxy-ts）",
   "doctor.step.node": "正在检测 Node.js 版本...",
   "doctor.step.claude": "正在检测 claude CLI...",
   "doctor.step.codex": "正在检测 codex CLI...",

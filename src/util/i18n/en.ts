@@ -222,6 +222,8 @@ export const en = {
   "cli.cmd.update.opt.dryRun":
     "Print the upgrade command without running it",
   "cli.cmd.update.opt.registry": "Specify the npm registry",
+  "cli.cmd.update.opt.force":
+    "Force a full reinstall: skip the incremental path and let npm rebuild the whole tree (repairs broken installs)",
   "cli.cmd.update.help":
     "\nExamples:\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n\nNotes:\n  - update uses npm to upgrade the global CLI package; it does not modify ~/.nuwa-cli login data.\n  - Default channel follows the installed build: stable → latest, pre-release → beta. Pass an explicit version or dist-tag to override.\n  - Windows: bare `npm i -g` while services are running often hits EBUSY on locked nuwax-lanproxy.exe / nuwax-codex.exe. Use this command (it stops services and releases locks); do not overlay with npm while Gateway is up.\n  - When running via npx, prefer npx -y @nuwax-ai/nuwa-cli@latest ... (or @beta for pre-releases).",
   "cli.cmd.console.desc":
@@ -239,6 +241,14 @@ export const en = {
   "update.upgradeTarget": "Upgrade target: {spec}",
   "update.execute": "Run: {cmd}",
   "update.step1": "Step 1/4: Checking target version...",
+  "update.stepPrep": "Preparing incremental update (downloading target package)...",
+  "update.forceFull":
+    "--force given: skipping the incremental path; npm will rebuild the whole tree (repairs broken installs).",
+  "update.incrementalHit":
+    "Dependencies unchanged — incremental update: replacing only the CLI's own files, keeping node_modules as-is.",
+  "update.incrementalFallback":
+    "Dependencies changed (or incremental update unavailable) — falling back to a full npm install.",
+  "update.incrementalDone": "Incremental update complete.",
   "update.alreadyLatest": "Already the latest version; no reinstall needed.",
   "update.step2": "Step 2/4: Stopping running services to release upgrade files...",
   "update.stopped": "Stopped running services.",
@@ -311,7 +321,8 @@ export const en = {
   "doctor.claude.detailCli": "Runtime available; local CLI: {bin}",
   "doctor.claude.detailBuiltin":
     "Built-in runtime available ({arg}); local CLI not installed, local history/config may be empty — configure via ACP",
-  "doctor.fix.reinstall": "Reinstall nuwa-cli (do not use --omit=optional)",
+  "doctor.fix.reinstall":
+    "Run `nuwa-cli update --force` for a full reinstall (do not use --omit=optional)",
   "doctor.codex.detailRuntime": "Runtime available ({arg})",
   "doctor.codex.detailCliVer": "local CLI: {bin} ({ver})",
   "doctor.codex.detailCli": "local CLI: {bin}",
@@ -346,7 +357,7 @@ export const en = {
   "doctor.computer.detailUnset":
     "Not registered yet; a computer name is assigned by Nuwax after login",
   "doctor.lanproxy.fixReinstall":
-    "Reinstall nuwa-cli (do not use --omit=optional) and ensure the current npm source has synced the platform package",
+    "Run `nuwa-cli update --force` for a full reinstall (do not use --omit=optional) and ensure the current npm source has synced the platform package",
   "doctor.lanproxy.healthNoResp": "not responding",
   "doctor.lanproxy.healthDown": "unavailable",
   "doctor.lanproxy.detailRunningUnhealthy":
@@ -381,7 +392,7 @@ export const en = {
   "doctor.mcp.detailMissing":
     "@nuwax-ai/mcp-proxy-ts entry (dist/index.js) not found",
   "doctor.mcp.fix":
-    "Ensure the dependency is installed: npm install @nuwax-ai/mcp-proxy-ts",
+    "Run `nuwa-cli update --force` for a full reinstall to restore dependencies (or install it alone: npm install -g @nuwax-ai/mcp-proxy-ts)",
   "doctor.step.node": "Checking Node.js version...",
   "doctor.step.claude": "Checking claude CLI...",
   "doctor.step.codex": "Checking codex CLI...",
