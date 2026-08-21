@@ -34,7 +34,7 @@ export function resolveDownstreamEngine(command: unknown): EngineKind {
   const normalized = command.trim().toLowerCase().split(/[\\/]/).at(-1) ?? "";
   if (CLAUDE_ENGINE_COMMANDS.has(normalized)) return "claude";
   if (CODEX_ENGINE_COMMANDS.has(normalized)) return "codex";
-  if (normalized === "swarm" || normalized === "swarm-acp" || normalized === "index.js" && command.includes("swarm")) return "swarm";
+  if (normalized === "swarm" || normalized === "swarm-acp" || (normalized === "index.js" && command.includes("swarm"))) return "swarm";
   return "codex";
 }
 

@@ -93,11 +93,13 @@ export function buildEngineEnv(
   // ~/.codex / ~/.claude (state/auth/config/skills). Independent of overlay —
   // must run before the no-overlay early return so isolation applies even when
   // no credentials are injected.
-  if (engine === "claude" || engine === "codex") ensureIsolatedEngineHomes(engine as "claude" | "codex");
-  if (isEngineIsolationEnabled()) {
-    if (engine === "codex") env.CODEX_HOME = codexHome();
-    else env.CLAUDE_CONFIG_DIR = claudeConfigDir();
-  }
+  if (engine === "claude" || engine === "codex") {
+    ensureIsolatedEngineHomes(engine);
+    if (isEngineIsolationEnabled()) {
+      if (engine === "codex") env.CODEX_HOME = codexHome();
+      else env.CLAUDE_CONFIG_DIR = claudeConfigDir();
+    }
+  } // swarm 不隔离：其子 claude/codex 由 nuwax-swarm 自行管理，须继承用户真实登录
   if (!overlay) return env;
 
   if (engine === "claude") {
