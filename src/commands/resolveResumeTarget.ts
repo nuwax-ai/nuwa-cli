@@ -27,6 +27,7 @@ export async function resolveResumeTarget(
   engine: EngineKind,
 ): Promise<ResumeTarget | null> {
   if (!resumeOption) return null;
+  if (engine !== "claude" && engine !== "codex") return null; // swarm 无本地会话历史
 
   // resume 是用户主动续接：purpose=user-resume，敏感闸门直接放行
   const sessions = await withSensitiveAccess(

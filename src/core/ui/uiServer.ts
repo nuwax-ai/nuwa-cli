@@ -137,7 +137,7 @@ export function startUiHttp(options: UiServerOptions): {
     if (transcriptMatch && method === "GET") {
       const engine = transcriptMatch[1] as EngineKind;
       const file = url.searchParams.get("file") ?? "";
-      if (!file || !isAllowedTranscript(engine, file)) {
+      if (engine === "swarm" || !file || !isAllowedTranscript(engine, file)) {
         sendJson(res, 400, httpError("VALIDATION_ERROR", "invalid transcript file"));
         return;
       }

@@ -74,7 +74,7 @@ export function buildCliChildEnv(
   return { ...stripNoise(process.env), ...extra };
 }
 
-export type EngineKind = "claude" | "codex";
+export type EngineKind = "claude" | "codex" | "swarm";
 
 /**
  * Builds the environment for a spawned engine process.
@@ -93,7 +93,7 @@ export function buildEngineEnv(
   // ~/.codex / ~/.claude (state/auth/config/skills). Independent of overlay —
   // must run before the no-overlay early return so isolation applies even when
   // no credentials are injected.
-  ensureIsolatedEngineHomes(engine);
+  if (engine === "claude" || engine === "codex") ensureIsolatedEngineHomes(engine as "claude" | "codex");
   if (isEngineIsolationEnabled()) {
     if (engine === "codex") env.CODEX_HOME = codexHome();
     else env.CLAUDE_CONFIG_DIR = claudeConfigDir();

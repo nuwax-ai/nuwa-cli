@@ -99,6 +99,7 @@ async function findRecentLocalSession(
   engine: EngineKind,
   cwd: string,
 ): Promise<LocalSessionSummary | undefined> {
+  if (engine !== "claude" && engine !== "codex") return undefined;
   const sessions = await listLocalSessions({ engine, sinceDays: 7, limit: 50 });
   return sessions.find((s) => s.cwd === cwd);
 }

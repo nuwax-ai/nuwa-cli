@@ -176,7 +176,9 @@ export async function chatCommand(options: ChatCommandOptions): Promise<void> {
         }
       : undefined;
   maybeShowIsolationMigrationNotice();
-  warnIfIsolationAuthGap(engine.id as "codex" | "claude", overlay);
+  if (engine.id === "codex" || engine.id === "claude") {
+    warnIfIsolationAuthGap(engine.id, overlay);
+  }
   const env = {
     ...buildEngineEnv(engineId, overlay),
     ...resolved.envOverlay,

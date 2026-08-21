@@ -1,6 +1,7 @@
 import type { EngineSpec } from "./types.js";
 import { claudeEngine } from "./claude.js";
 import { codexEngine } from "./codex.js";
+import { swarmEngine } from "./swarm.js";
 
 /**
  * Registered engines. Adding a future custom engine is just another entry
@@ -9,6 +10,7 @@ import { codexEngine } from "./codex.js";
 const registry: Record<string, EngineSpec> = {
   claude: claudeEngine,
   codex: codexEngine,
+  swarm: swarmEngine,
 };
 
 export function getEngine(id: string): EngineSpec {

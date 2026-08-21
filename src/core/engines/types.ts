@@ -6,7 +6,7 @@ export interface ResolvedEngine {
 }
 
 export interface EngineSpec {
-  id: "claude" | "codex";
+  id: "claude" | "codex" | "swarm";
   /** Resolves the packaged or system engine spawn target. Local account/config files are optional when ACP supplies runtime configuration. */
   resolve(): Promise<ResolvedEngine>;
 }
