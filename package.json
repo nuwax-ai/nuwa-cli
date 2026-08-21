@@ -1,6 +1,6 @@
 {
   "name": "@nuwax-ai/nuwa-cli",
-  "version": "0.2.6-beta.2",
+  "version": "0.2.6-beta.3",
   "packageManager": "npm@10.9.2",
   "workspaces": [
     "packages/lanproxy"
