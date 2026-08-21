@@ -23,7 +23,10 @@ import { listLocalSessions, type LocalSessionSummary } from "../sessions/discove
 import { parseTranscript } from "../sessions/transcript.js";
 import { ensureDir, codexLogDir } from "../../util/paths.js";
 import { debugLog } from "../debugLog.js";
-import { parseDownstreamSessionConfig } from "./downstreamConfig.js";
+import {
+  parseDownstreamSessionConfig,
+  type DownstreamSessionConfig,
+} from "./downstreamConfig.js";
 
 export interface ServeOptions {
   port: number;
@@ -102,6 +105,27 @@ async function findRecentLocalSession(
   if (engine !== "claude" && engine !== "codex") return undefined;
   const sessions = await listLocalSessions({ engine, sinceDays: 7, limit: 50 });
   return sessions.find((s) => s.cwd === cwd);
+}
+
+/**
+ * codex 的 thread 指令在 thread/start 时一次性物化进会话（rollout 首条
+ * `role:"developer"` 消息），resume 时传入的 developerInstructions 不会生效
+ * ——app-server 既不重写 developer 消息，`thread_settings_applied` 里
+ * developer_instructions 也恒为 null。因此当本次请求带 system_prompt 且与
+ * 历史会话创建时的 developerPrompt 不同，继续 auto-resume 会静默沿用旧
+ * 提示词，必须改走 startSession 开新 thread。
+ *
+ * 历史记录读不到 developerPrompt（无提示词创建的会话/旧版 transcript）时
+ * 保持原行为继续 resume；claude 引擎的 session/load 侧由适配器重放
+ * `_meta.systemPrompt`，不受此限制。
+ */
+function codexResumeWouldDropPrompt(
+  downstream: DownstreamSessionConfig,
+  recent: LocalSessionSummary,
+): boolean {
+  if (downstream.engine !== "codex" || !downstream.systemPrompt) return false;
+  if (typeof recent.developerPrompt !== "string") return false;
+  return recent.developerPrompt.trim() !== downstream.systemPrompt.trim();
 }
 
 function workspaceSegment(value: string, fallback: string): string {
@@ -372,18 +396,33 @@ export function startServeHttp(options: ServeOptions): {
               ? undefined
               : await findRecentLocalSession(downstream.engine, cwdResult.cwd);
             if (recent) {
-              debugLog("serve.chat", "auto-resume from local history", {
-                projectKey: cwdResult.projectKey,
-                cwd: cwdResult.cwd,
-                resumedSessionId: recent.sessionId,
-                updatedAt: recent.updatedAt,
-              });
-              return hub.resumeSession(
-                downstream.engine,
-                recent,
-                { userId, projectId: cwdResult.projectKey ?? projectId },
-                downstream,
-              );
+              if (codexResumeWouldDropPrompt(downstream, recent)) {
+                // 提示词已变：resume 会被 codex 静默忽略，换新 thread 承接。
+                debugLog(
+                  "serve.chat",
+                  "system prompt changed since local session; starting fresh codex thread",
+                  {
+                    projectKey: cwdResult.projectKey,
+                    cwd: cwdResult.cwd,
+                    staleSessionId: recent.sessionId,
+                    previousPromptLength: recent.developerPrompt?.length,
+                    currentPromptLength: downstream.systemPrompt?.length,
+                  },
+                );
+              } else {
+                debugLog("serve.chat", "auto-resume from local history", {
+                  projectKey: cwdResult.projectKey,
+                  cwd: cwdResult.cwd,
+                  resumedSessionId: recent.sessionId,
+                  updatedAt: recent.updatedAt,
+                });
+                return hub.resumeSession(
+                  downstream.engine,
+                  recent,
+                  { userId, projectId: cwdResult.projectKey ?? projectId },
+                  downstream,
+                );
+              }
             }
             return hub.startSession(
               downstream.engine,

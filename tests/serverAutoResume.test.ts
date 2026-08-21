@@ -95,6 +95,22 @@ describe("serve /computer/chat auto-resume by projectKey", () => {
     };
   }
 
+  function postChat(prompt: string, extra?: Record<string, unknown>) {
+    return fetch(url("/computer/chat"), {
+      method: "POST",
+      headers: {
+        "X-Nuwax-Internal-Secret": handle.secret,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        prompt,
+        user_id: workspaceUser,
+        agent_work_dir: agentWorkDir,
+        ...extra,
+      }),
+    });
+  }
+
   it("auto-resumes the most recent local session matching cwd when no session_id is sent", async () => {
     sessionMocks.local = [historyRow(workspacePath)];
     const resumeSpy = vi.spyOn(handle.hub, "resumeSession");
@@ -160,18 +176,8 @@ describe("serve /computer/chat auto-resume by projectKey", () => {
     const resumeSpy = vi.spyOn(handle.hub, "resumeSession");
     const startSpy = vi.spyOn(handle.hub, "startSession");
 
-    const res = await fetch(url("/computer/chat"), {
-      method: "POST",
-      headers: {
-        "X-Nuwax-Internal-Secret": handle.secret,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        prompt: "continue after restart",
-        session_id: "276a9b1c-3d89-4081-8981-b0d5b5a6afc4",
-        user_id: workspaceUser,
-        agent_work_dir: agentWorkDir,
-      }),
+    const res = await postChat("continue after restart", {
+      session_id: "276a9b1c-3d89-4081-8981-b0d5b5a6afc4",
     });
 
     expect(res.status).toBe(502);
@@ -182,6 +188,67 @@ describe("serve /computer/chat auto-resume by projectKey", () => {
     expect(startSpy.mock.calls[0][4]).toBe(
       "276a9b1c-3d89-4081-8981-b0d5b5a6afc4",
     );
+
+    resumeSpy.mockRestore();
+    startSpy.mockRestore();
+  });
+
+  it("does not auto-resume when the codex session's developer prompt differs from the request's system_prompt", async () => {
+    // codex freezes thread instructions at thread/start; a resume cannot
+    // swap them (developerInstructions on thread/resume is ignored). A
+    // changed system_prompt must therefore start a fresh session instead
+    // of silently resuming with the old persona.
+    const row = { ...historyRow(workspacePath), developerPrompt: "old persona" };
+    sessionMocks.local = [row];
+    const resumeSpy = vi.spyOn(handle.hub, "resumeSession");
+    const startSpy = vi.spyOn(handle.hub, "startSession");
+
+    const res = await postChat("who are you", {
+      system_prompt: "new persona",
+    });
+
+    expect(res.status).toBe(502);
+    expect(startSpy).toHaveBeenCalledTimes(1);
+    expect(resumeSpy).not.toHaveBeenCalled();
+    // The fresh session must carry the new prompt into its runtime config.
+    expect(startSpy.mock.calls[0][3].systemPrompt).toBe("new persona");
+
+    resumeSpy.mockRestore();
+    startSpy.mockRestore();
+  });
+
+  it("still auto-resumes when the developer prompt matches the request's system_prompt", async () => {
+    const row = { ...historyRow(workspacePath), developerPrompt: "same persona" };
+    sessionMocks.local = [row];
+    const resumeSpy = vi.spyOn(handle.hub, "resumeSession");
+    const startSpy = vi.spyOn(handle.hub, "startSession");
+
+    const res = await postChat("continue", {
+      system_prompt: "same persona",
+    });
+
+    expect(res.status).toBe(502);
+    expect(resumeSpy).toHaveBeenCalledTimes(1);
+    expect(startSpy).not.toHaveBeenCalled();
+
+    resumeSpy.mockRestore();
+    startSpy.mockRestore();
+  });
+
+  it("still auto-resumes with a system_prompt when history lacks a recorded developer prompt", async () => {
+    // Sessions created without a prompt (or by older builds) have no
+    // developerPrompt — resume stays the default behavior.
+    sessionMocks.local = [historyRow(workspacePath)];
+    const resumeSpy = vi.spyOn(handle.hub, "resumeSession");
+    const startSpy = vi.spyOn(handle.hub, "startSession");
+
+    const res = await postChat("continue", {
+      system_prompt: "any persona",
+    });
+
+    expect(res.status).toBe(502);
+    expect(resumeSpy).toHaveBeenCalledTimes(1);
+    expect(startSpy).not.toHaveBeenCalled();
 
     resumeSpy.mockRestore();
     startSpy.mockRestore();

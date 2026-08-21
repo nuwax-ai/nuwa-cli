@@ -12,6 +12,14 @@ export interface LocalSessionSummary {
   filePath: string;
   /** Model used by the session, parsed opportunistically from the transcript. */
   model?: string;
+  /**
+   * Codex-only: the `role:"developer"` instructions codex materialized into
+   * the rollout at thread creation (`developerInstructions` of thread/start).
+   * Codex freezes thread instructions at creation — a later resume cannot
+   * change them — so serve compares this against the incoming system prompt
+   * to detect when auto-resume would silently drop a prompt change.
+   */
+  developerPrompt?: string;
 }
 
 /**
@@ -140,6 +148,7 @@ async function readCodexSessionSummary(
   let cwd: string | undefined;
   let model: string | undefined;
   let title: string | undefined;
+  let developerPrompt: string | undefined;
 
   await scanJsonlHead(filePath, 400, (obj) => {
     if (
@@ -170,13 +179,12 @@ async function readCodexSessionSummary(
     // like injected instructions (leading "#" / "<"). Long prompts are
     // still valid title sources and are truncated by `truncateTitle`.
     if (
-      !title &&
       obj.type === "response_item" &&
       obj.payload &&
       typeof obj.payload === "object"
     ) {
       const payload = obj.payload as Record<string, unknown>;
-      if (payload.type === "message" && payload.role === "user") {
+      if (payload.type === "message" && payload.role === "user" && !title) {
         const text = codexMessageText(payload);
         if (
           text &&
@@ -185,6 +193,14 @@ async function readCodexSessionSummary(
         ) {
           title = truncateTitle(text);
         }
+      }
+      // The thread's frozen developer instructions live in the first
+      // `role:"developer"` response_item (written right after session_meta,
+      // well inside this head scan). Stop-early below doesn't wait for it —
+      // sessions created without a system prompt simply never set it.
+      if (payload.type === "message" && payload.role === "developer") {
+        const text = codexMessageText(payload);
+        if (text) developerPrompt = text;
       }
     }
     return Boolean(sessionId && cwd && model && title);
@@ -200,6 +216,7 @@ async function readCodexSessionSummary(
     updatedAt: stat.mtime.toISOString(),
     filePath,
     model,
+    ...(developerPrompt ? { developerPrompt } : {}),
   };
 }
 
