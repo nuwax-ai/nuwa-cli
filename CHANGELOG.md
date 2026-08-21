@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6-beta.2] - 2026-08-21
+
+### Added
+
+- **`nuwa-cli update` 增量快速路径：** 一级 `dependencies` + `optionalDependencies` 与目标版本完全一致时，`npm pack` + `tar` 只替换 CLI 自身文件，跳过整树重装；`--force` 强制完整重装（doctor 修复指引统一指向此命令）。
+
+### Fixed
+
+- **增量根目录守卫（跨平台）：** 仅当运行入口属于 `npm root -g` 下的本包（含 Windows `nuwa-cli.cmd` / `.ps1` shim）才走增量；拒绝 npx 缓存树（避免「假成功」跳过 `npm install -g`）。路径比较前 `realpath`（macOS `/var`→`/private/var`、Windows junction），Windows 大小写不敏感，`npm root -g` 输出兼容 CRLF。
+
 ## [0.2.6-beta.1] - 2026-08-21
 
 ### Fixed

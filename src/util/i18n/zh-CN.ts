@@ -205,7 +205,9 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "update.incrementalHit":
     "依赖版本无变化，采用增量更新：仅替换 CLI 自身文件，不重装 node_modules。",
   "update.incrementalFallback":
-    "依赖有变化（或增量更新不可用），回退完整 npm 安装。",
+    "增量更新不可用，回退完整 npm 安装。",
+  "update.incrementalFailedFallback":
+    "增量替换校验失败，回退完整 npm 安装。",
   "update.incrementalDone": "增量更新完成。",
   "update.alreadyLatest": "已是最新版本，无需重新安装。",
   "update.step2": "步骤 2/4：停止运行中的服务以释放升级文件...",

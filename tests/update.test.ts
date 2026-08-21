@@ -230,6 +230,248 @@ describe("update command", () => {
     ]);
   });
 
+  it("isNpxCachePath recognizes posix and Windows npx layouts", async () => {
+    const { isNpxCachePath } = await import("../src/commands/update.js");
+    expect(isNpxCachePath("/Users/x/.npm/_npx/abc123/node_modules/@nuwax-ai/nuwa-cli")).toBe(
+      true,
+    );
+    expect(
+      isNpxCachePath(
+        "C:\\Users\\x\\AppData\\Local\\npm-cache\\_npx\\abc\\node_modules\\@nuwax-ai\\nuwa-cli",
+      ),
+    ).toBe(true);
+    expect(
+      isNpxCachePath(
+        "C:\\Users\\x\\AppData\\Roaming\\npm\\node_modules\\@nuwax-ai\\nuwa-cli",
+      ),
+    ).toBe(false);
+  });
+
+  it("isGlobalPackageInstallRoot and bin shim use platform paths", async () => {
+    const path = await import("node:path");
+    const { isGlobalPackageInstallRoot, isNpmGlobalBinShim, pathsEqual } =
+      await import("../src/commands/update.js");
+
+    // 用本机 path.join 构造「npm 前缀 / node_modules / 包」布局（全平台可跑）
+    const npmPrefix = path.join("/mock", "npm");
+    const npmRoot = path.join(npmPrefix, "node_modules");
+    const pkg = path.join(npmRoot, "@nuwax-ai", "nuwa-cli");
+    expect(isGlobalPackageInstallRoot(pkg, npmRoot)).toBe(true);
+    expect(
+      isNpmGlobalBinShim(path.join(npmPrefix, "nuwa-cli.cmd"), npmRoot),
+    ).toBe(true);
+    expect(
+      isNpmGlobalBinShim(path.join(npmPrefix, "nuwa-cli.ps1"), npmRoot),
+    ).toBe(true);
+    expect(
+      isNpmGlobalBinShim(path.join(npmPrefix, "other.cmd"), npmRoot),
+    ).toBe(false);
+
+    // Windows 字面路径 + 大小写：仅在 win32 上验证（posix path.basename 不认反斜杠）
+    if (process.platform === "win32") {
+      const winNpmRoot =
+        "C:\\Users\\Foo\\AppData\\Roaming\\npm\\node_modules";
+      const winPkg =
+        "C:\\Users\\Foo\\AppData\\Roaming\\npm\\node_modules\\@nuwax-ai\\nuwa-cli";
+      expect(isGlobalPackageInstallRoot(winPkg, winNpmRoot)).toBe(true);
+      expect(
+        isGlobalPackageInstallRoot(winPkg.toLowerCase(), winNpmRoot.toUpperCase()),
+      ).toBe(true);
+      expect(pathsEqual("C:\\Users\\Foo\\A", "c:\\users\\foo\\a")).toBe(true);
+      expect(
+        isNpmGlobalBinShim(
+          "C:\\Users\\Foo\\AppData\\Roaming\\npm\\nuwa-cli.cmd",
+          winNpmRoot,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("resolveInstallRoot rejects npx trees and accepts npm root -g package dir", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { resolveInstallRoot } = await import("../src/commands/update.js");
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nuwa-cli-root-"));
+    try {
+      const npmGlobal = path.join(tmp, "node_modules");
+      const pkgRoot = path.join(npmGlobal, "@nuwax-ai", "nuwa-cli");
+      fs.mkdirSync(path.join(pkgRoot, "dist"), { recursive: true });
+      fs.writeFileSync(
+        path.join(pkgRoot, "package.json"),
+        JSON.stringify({ name: "@nuwax-ai/nuwa-cli", version: "0.2.6-beta.1" }),
+      );
+      const entry = path.join(pkgRoot, "dist", "cli.js");
+      fs.writeFileSync(entry, "console.log('ok')\n");
+
+      const runnerOk = vi.fn(() => ({
+        status: 0,
+        stdout: `${npmGlobal}\r\n`, // 模拟 Windows CRLF
+      }));
+      expect(resolveInstallRoot(runnerOk, process.env, entry, "npm")).toBe(
+        fs.realpathSync(pkgRoot),
+      );
+      expect(runnerOk).toHaveBeenCalledWith(
+        "npm",
+        ["root", "-g"],
+        expect.any(Object),
+      );
+
+      // npx 缓存：即使 package.json name 对也不认
+      const npxRoot = path.join(tmp, "_npx", "hash", "node_modules", "@nuwax-ai", "nuwa-cli");
+      fs.mkdirSync(path.join(npxRoot, "dist"), { recursive: true });
+      fs.writeFileSync(
+        path.join(npxRoot, "package.json"),
+        JSON.stringify({ name: "@nuwax-ai/nuwa-cli" }),
+      );
+      const npxEntry = path.join(npxRoot, "dist", "cli.js");
+      fs.writeFileSync(npxEntry, "console.log('npx')\n");
+      expect(
+        resolveInstallRoot(
+          () => ({ status: 0, stdout: npmGlobal }),
+          process.env,
+          npxEntry,
+          "npm",
+        ),
+      ).toBeUndefined();
+
+      // entry 不在全局包内 → 拒绝（防止误升级其它 copy）
+      const outsider = path.join(tmp, "other", "dist", "cli.js");
+      fs.mkdirSync(path.dirname(outsider), { recursive: true });
+      fs.writeFileSync(outsider, "");
+      expect(
+        resolveInstallRoot(
+          () => ({ status: 0, stdout: npmGlobal }),
+          process.env,
+          outsider,
+          "npm",
+        ),
+      ).toBeUndefined();
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("resolveInstallRoot accepts Windows-style global bin shim entry", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { resolveInstallRoot } = await import("../src/commands/update.js");
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nuwa-cli-shim-"));
+    try {
+      // 模拟 %AppData%\npm\node_modules\@nuwax-ai\nuwa-cli + 同级 nuwa-cli.cmd
+      const npmPrefix = path.join(tmp, "npm");
+      const npmGlobal = path.join(npmPrefix, "node_modules");
+      const pkgRoot = path.join(npmGlobal, "@nuwax-ai", "nuwa-cli");
+      fs.mkdirSync(pkgRoot, { recursive: true });
+      fs.writeFileSync(
+        path.join(pkgRoot, "package.json"),
+        JSON.stringify({ name: "@nuwax-ai/nuwa-cli" }),
+      );
+      const shim = path.join(npmPrefix, "nuwa-cli.cmd");
+      fs.writeFileSync(shim, "@echo off\r\n");
+
+      expect(
+        resolveInstallRoot(
+          () => ({ status: 0, stdout: npmGlobal }),
+          process.env,
+          shim,
+          "npm",
+        ),
+      ).toBe(fs.realpathSync(pkgRoot));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("incremental happy path skips npm install when deps match", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { updateCommand } = await import("../src/commands/update.js");
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nuwa-cli-incr-"));
+    const npmGlobal = path.join(tmp, "node_modules");
+    const pkgRoot = path.join(npmGlobal, "@nuwax-ai", "nuwa-cli");
+    fs.mkdirSync(path.join(pkgRoot, "dist"), { recursive: true });
+    const deps = {
+      name: "@nuwax-ai/nuwa-cli",
+      version: "0.2.6-beta.1",
+      dependencies: { commander: "^15.0.0" },
+    };
+    fs.writeFileSync(path.join(pkgRoot, "package.json"), JSON.stringify(deps));
+    const entry = path.join(pkgRoot, "dist", "cli.js");
+    fs.writeFileSync(entry, "#!/usr/bin/env node\nconsole.log('0.2.6-beta.2')\n");
+
+    const prevArgv1 = process.argv[1];
+    process.argv[1] = entry;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const runner = vi.fn((cmd: string, args: string[] = []) => {
+      if (args[0] === "view") return { status: 0, stdout: "0.2.6-beta.2\n" };
+      if (args[0] === "root") return { status: 0, stdout: `${npmGlobal}\n` };
+      if (args[0] === "pack") {
+        const dest = args[args.indexOf("--pack-destination") + 1];
+        const tgzName = "nuwax-ai-nuwa-cli-0.2.6-beta.2.tgz";
+        fs.writeFileSync(path.join(dest, tgzName), "fake");
+        return { status: 0, stdout: `${tgzName}\n` };
+      }
+      if (
+        cmd === "tar" &&
+        args.includes("-C") &&
+        !args.includes("--strip-components=1")
+      ) {
+        const outDir = args[args.indexOf("-C") + 1];
+        const pkgDir = path.join(outDir, "package");
+        fs.mkdirSync(pkgDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(pkgDir, "package.json"),
+          JSON.stringify({
+            name: "@nuwax-ai/nuwa-cli",
+            version: "0.2.6-beta.2",
+            dependencies: { commander: "^15.0.0" },
+          }),
+        );
+        return { status: 0 };
+      }
+      if (cmd === "tar" && args.includes("--strip-components=1")) {
+        fs.writeFileSync(
+          path.join(pkgRoot, "dist", "cli.js"),
+          "#!/usr/bin/env node\nconsole.log('0.2.6-beta.2')\n",
+        );
+        fs.writeFileSync(
+          path.join(pkgRoot, "package.json"),
+          JSON.stringify({
+            name: "@nuwax-ai/nuwa-cli",
+            version: "0.2.6-beta.2",
+            dependencies: { commander: "^15.0.0" },
+          }),
+        );
+        return { status: 0 };
+      }
+      if (args[0]?.includes("cli.js") && args[1] === "--version") {
+        return { status: 0, stdout: "0.2.6-beta.2\n" };
+      }
+      if (args[0] === "install") {
+        return { status: 0 };
+      }
+      return { status: 0 };
+    });
+
+    try {
+      await updateCommand("0.2.6-beta.2", {}, runner);
+      expect(runner.mock.calls.some((c) => c[1]?.[0] === "install")).toBe(
+        false,
+      );
+      expect(runner.mock.calls.some((c) => c[1]?.[0] === "pack")).toBe(true);
+    } finally {
+      process.argv[1] = prevArgv1;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("still runs the full npm install when the incremental prep cannot engage", async () => {
     // vitest 的 argv[1] 不指向安装树 → resolveInstallRoot 为 undefined →
     // 增量准备直接跳过，兜底走完整 npm install（既有行为回归保护）。

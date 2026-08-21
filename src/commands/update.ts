@@ -304,26 +304,144 @@ export function buildPackArgs(
   return args;
 }
 
+/** 跨平台路径相等：Windows 大小写不敏感（盘符/用户目录常见大小写漂移）。 */
+export function pathsEqual(a: string, b: string): boolean {
+  const left = path.resolve(a);
+  const right = path.resolve(b);
+  if (process.platform === "win32") {
+    return left.toLowerCase() === right.toLowerCase();
+  }
+  return left === right;
+}
+
+/** child 是否位于 parent 之内（含相等）；Windows 大小写不敏感。 */
+export function isPathInsideOrEqual(parent: string, child: string): boolean {
+  const p = path.resolve(parent);
+  const c = path.resolve(child);
+  if (pathsEqual(p, c)) return true;
+  const prefix = p.endsWith(path.sep) ? p : p + path.sep;
+  if (process.platform === "win32") {
+    return c.toLowerCase().startsWith(prefix.toLowerCase());
+  }
+  return c.startsWith(prefix);
+}
+
+/**
+ * npx 缓存路径特征（posix: `~/.npm/_npx/...`；Windows:
+ * `%LocalAppData%\\npm-cache\\_npx\\...`）。命中则禁止增量，
+ * 避免把 tarball 解进缓存树并误跳过 `npm install -g`。
+ */
+export function isNpxCachePath(p: string): boolean {
+  const norm = p.replace(/\\/g, "/").toLowerCase();
+  return /(^|\/)_npx(\/|$)/.test(norm);
+}
+
+/**
+ * 安装根是否为「npm root -g 下的本包目录」。
+ * 作用域包：`<npmRootG>/@nuwax-ai/nuwa-cli`（Windows 同样用 path.join）。
+ */
+export function isGlobalPackageInstallRoot(
+  root: string,
+  npmGlobalNodeModules: string,
+): boolean {
+  const expected = path.resolve(
+    path.join(npmGlobalNodeModules, ...PACKAGE_NAME.split("/")),
+  );
+  return pathsEqual(root, expected);
+}
+
+/**
+ * Windows 全局 bin shim：`%AppData%\\npm\\nuwa-cli.cmd`（或 .ps1 / 无后缀），
+ * 与 `npm root -g`（`...\\npm\\node_modules`）相邻。命中时 argv[1] 不是
+ * `dist/cli.js`，不能用 dirname/.. 推包根。
+ */
+export function isNpmGlobalBinShim(
+  entry: string,
+  npmGlobalNodeModules: string,
+): boolean {
+  const binDir = path.resolve(npmGlobalNodeModules, "..");
+  const base = path.basename(entry).toLowerCase();
+  // npm 生成：nuwa-cli / nuwa-cli.cmd / nuwa-cli.ps1
+  if (base !== "nuwa-cli" && base !== "nuwa-cli.cmd" && base !== "nuwa-cli.ps1") {
+    return false;
+  }
+  return pathsEqual(path.dirname(entry), binDir);
+}
+
 /**
  * 解析当前 CLI 的全局安装根目录（package.json 所在层）。
- * 仅当该目录的 package.json name 与本包一致、且不是开发仓库（含 .git，
- * 例如 `node dist/cli.js update` 直接在源码树上跑）时才认——否则返回
- * undefined 让增量路径自动关闭，避免把 tarball 解到源码树。
+ *
+ * 以 `npm root -g` 下的本包目录为唯一合法根；并确认正在运行的 entry
+ * 属于该安装（`dist/cli.js` 在包内，或 Windows 全局 bin shim）。
+ * 开发仓（.git）/ npx 缓存 / 其它前缀一律 undefined → 回退完整 `npm i -g`。
+ *
+ * 路径比较前一律 realpath：macOS 上 `/var`→`/private/var`、Windows junction
+ * 都可能导致「逻辑路径 ≠ 物理路径」，不归一会误判不属于全局安装。
  */
-export function resolveInstallRoot(): string | undefined {
-  const entry = process.argv[1];
-  if (!entry) return undefined;
-  const root = path.resolve(path.dirname(entry), "..");
+export function resolveInstallRoot(
+  runner: CommandRunner = runCommand,
+  env: NodeJS.ProcessEnv = process.env,
+  entryPath = process.argv[1],
+  npmCommand = "npm",
+): string | undefined {
+  if (!entryPath) return undefined;
+
+  let entry = entryPath;
   try {
-    if (fs.existsSync(path.join(root, ".git"))) return undefined;
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(root, "package.json"), "utf8"),
-    ) as { name?: string };
-    return pkg?.name === PACKAGE_NAME ? root : undefined;
+    entry = fs.realpathSync(entry);
+  } catch {
+    entry = path.resolve(entry);
+  }
+  if (isNpxCachePath(entry)) return undefined;
+
+  try {
+    const rootResult = runner(npmCommand, ["root", "-g"], {
+      encoding: "utf-8",
+      env,
+      stdio: "pipe",
+    });
+    if (rootResult.error || rootResult.status !== 0) return undefined;
+    // Windows spawn 常见 \r\n；trim 已够，再剥残留 CR 保齐。
+    const npmGlobalRaw = (rootResult.stdout || "").replace(/\r/g, "").trim();
+    if (!npmGlobalRaw) return undefined;
+
+    let npmGlobal = path.resolve(npmGlobalRaw);
+    try {
+      npmGlobal = fs.realpathSync(npmGlobal);
+    } catch {
+      // npm root -g 目录应存在；不存在则无法增量。
+      return undefined;
+    }
+
+    let expectedRoot = path.resolve(
+      path.join(npmGlobal, ...PACKAGE_NAME.split("/")),
+    );
+    try {
+      expectedRoot = fs.realpathSync(expectedRoot);
+    } catch {
+      return undefined;
+    }
+
+    if (fs.existsSync(path.join(expectedRoot, ".git"))) return undefined;
+
+    const pkgFile = path.join(expectedRoot, "package.json");
+    if (!fs.existsSync(pkgFile)) return undefined;
+    const pkg = JSON.parse(fs.readFileSync(pkgFile, "utf8")) as {
+      name?: string;
+    };
+    if (pkg?.name !== PACKAGE_NAME) return undefined;
+
+    // 运行中的入口必须属于该全局安装，否则（npx / 其它 copy）禁止增量。
+    const fromPackageTree = isPathInsideOrEqual(expectedRoot, entry);
+    const fromGlobalBin = isNpmGlobalBinShim(entry, npmGlobal);
+    if (!fromPackageTree && !fromGlobalBin) return undefined;
+
+    return expectedRoot;
   } catch {
     return undefined;
   }
 }
+
 
 /**
  * 增量更新准备（只读安装目录 + 写临时目录，可安全先于停服执行）：
@@ -334,9 +452,10 @@ function prepareIncrementalUpdate(
   runner: CommandRunner,
   env: NodeJS.ProcessEnv,
   remoteVersion: string,
-  registry?: string,
+  registry: string | undefined,
+  npmCommand: string,
 ): IncrementalUpdatePlan | undefined {
-  const root = resolveInstallRoot();
+  const root = resolveInstallRoot(runner, env, process.argv[1], npmCommand);
   if (!root) return undefined;
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nuwa-cli-update-"));
   const cleanup = () => {
@@ -348,7 +467,7 @@ function prepareIncrementalUpdate(
   };
   try {
     const pack = runner(
-      "npm",
+      npmCommand,
       buildPackArgs(`${PACKAGE_NAME}@${remoteVersion}`, tmp, registry),
       { encoding: "utf-8", env, stdio: "pipe" },
     );
@@ -566,6 +685,7 @@ export async function updateCommand(
               env,
               remoteVersion,
               options.registry,
+              command,
             ),
           )
         : undefined;
@@ -596,7 +716,7 @@ export async function updateCommand(
           console.log(success(t("update.incrementalDone")));
         } else {
           // 覆盖失败/校验不过：落回完整 npm 安装（npm 会整体替换包目录，结果仍正确）。
-          console.log(dim(t("update.incrementalFallback")));
+          console.log(dim(t("update.incrementalFailedFallback")));
         }
       }
       let result: CommandResult | undefined;

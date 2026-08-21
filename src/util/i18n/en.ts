@@ -247,7 +247,9 @@ export const en = {
   "update.incrementalHit":
     "Dependencies unchanged — incremental update: replacing only the CLI's own files, keeping node_modules as-is.",
   "update.incrementalFallback":
-    "Dependencies changed (or incremental update unavailable) — falling back to a full npm install.",
+    "Incremental update unavailable — falling back to a full npm install.",
+  "update.incrementalFailedFallback":
+    "Incremental replace failed verification — falling back to a full npm install.",
   "update.incrementalDone": "Incremental update complete.",
   "update.alreadyLatest": "Already the latest version; no reinstall needed.",
   "update.step2": "Step 2/4: Stopping running services to release upgrade files...",
