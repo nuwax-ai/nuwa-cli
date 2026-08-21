@@ -370,7 +370,13 @@ async function runServeCommand(options: ServeCommandOptions): Promise<void> {
     acceptedSecrets: acceptedSecrets.length,
   });
   console.log(pc.green(t("serve.started", { host, port })));
-  console.log(pc.dim(`X-Nuwax-Internal-Secret: ${secret}`));
+  // daemon 模式 stdout 重定向进 serve.<date>.log：secret 只打掩码，不落明文
+  // （对齐 paths.ts 里 serve.lock "NEVER the X-Nuwax-Internal-Secret" 的约束）。
+  // 前台 TTY 交互运行才展示全量，供本地直连调试。
+  const secretDisplay = process.stdout.isTTY
+    ? secret
+    : `${secret.slice(0, 8)}…${secret.slice(-4)}`;
+  console.log(pc.dim(`X-Nuwax-Internal-Secret: ${secretDisplay}`));
   console.log(
     pc.dim(options.tunnel ? t("serve.secretNoteTunnel") : t("serve.secretNoteLocal")),
   );

@@ -23,6 +23,7 @@ import {
   codexLogDir,
   todayDateStr,
 } from "../util/paths.js";
+import { scrubSecretsInLogFile } from "../util/secretScrub.js";
 
 export const LOG_RETENTION_DAYS = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -131,8 +132,42 @@ export function rotateCodexLog(codexDir: string = codexLogDir()): void {
   }
 }
 
-/** 由 `debugLog.ts` 每小时定时器调用:先按天轮转 codex 日志,再递归清扫过期日志。 */
+/**
+ * 对绕过 debugLog 脱敏的已知日志做密文兜底清洗:
+ * - codex 适配器的 app-server*.log(config dump 携带 ak- bearer token);
+ * - serve daemon 重定向的 serve.<date>.log(历史版本把启动横幅里的
+ *   X-Nuwax-Internal-Secret 落过盘),顺带覆盖 main.<date>.log 兜底。
+ * `latest.log` 是指向 main 的硬链接/符号链接指针,自然跳过避免重复 IO。
+ */
+function scrubKnownSecrets(): void {
+  try {
+    for (const entry of fs.readdirSync(codexLogDir(), { withFileTypes: true })) {
+      if (entry.isFile() && entry.name.toLowerCase().endsWith(".log")) {
+        scrubSecretsInLogFile(path.join(codexLogDir(), entry.name));
+      }
+    }
+  } catch {
+    // 目录不存在/不可读:无事可做。
+  }
+  try {
+    for (const entry of fs.readdirSync(logsDir(), { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const name = entry.name.toLowerCase();
+      if (
+        (name.startsWith("serve.") || name.startsWith("main.")) &&
+        name.endsWith(".log")
+      ) {
+        scrubSecretsInLogFile(path.join(logsDir(), entry.name));
+      }
+    }
+  } catch {
+    // best-effort。
+  }
+}
+
+/** 由 `debugLog.ts` 每小时定时器调用:轮转 → 密文清洗 → 递归清扫过期日志。 */
 export function runLogMaintenance(): void {
   rotateCodexLog();
+  scrubKnownSecrets();
   sweepOldLogs();
 }
