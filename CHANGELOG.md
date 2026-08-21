@@ -7,21 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- `serve --tunnel` file-server / lanproxy 完整启动重试：`bringUpFileServer` / `bringUpLanproxy` 经 `@nuwax-ai/agent-kit@0.3.3` 的 `withStartRetry`（默认 3 次），与 nuwaclaw Electron `ServiceManager` 对齐。详见 [`docs/serve-health-check.md`](docs/serve-health-check.md)。
-- `@nuwax-ai/agent-kit` 纳入 `sync:core-deps` exact-pin 清单（与 lanproxy / mcp-proxy / file-server / ACP 适配器一并检查）。
-
-### Changed
-
-- file-server 单次健康超时默认改为 kit 的 **20s**（原硬编码 10s），覆盖 Windows 冷启。
-- file-server 最终不健康时**跳过** lanproxy，避免「隧道通、文件口挂」。
-- `stopFileServer` / 同 port 重试前 `unregisterProcess`，避免 registry PID 堆积。
+## [0.2.6-beta.1] - 2026-08-21
 
 ### Fixed
 
-- `bringUpLanproxy` 成功返回后、赋值前的 SIGINT 竞态：先挂上 `lanproxyHandle`，若已 shutdown 则立刻 `stop()`，防止孤儿进程。
-- stabilize 窗口内 abort 计为 aborted，不再误判为 stabilize 失败并整轮重试。
+- **codex 系统提示词变更 + auto-resume：** codex 在 `thread/start` 时把指令物化为 rollout 首条 `developer` 消息，`thread/resume` 传入的 `developerInstructions` 会被静默忽略。discovery 从 transcript 头部提取 `developerPrompt`，serve chat 在 auto-resume 前与请求 `system_prompt` 比对，不一致则改走 `startSession` 开新 thread（读不到旧提示词时仍 resume）。
+- **日志密文脱敏：** daemon 启动横幅的 `X-Nuwax-Internal-Secret` 非 TTY 只打掩码（避免明文写入 `serve.<date>.log`）；新增 `secretScrub`，`logSweep` 对 serve / main / codex `app-server*.log` 做值级兜底清洗（`ak-` token、Internal-Secret 头、Bearer、JSON 密键长值）。
+
+## [0.2.6-beta.0] - 2026-08-21
+
+### Added
+
+- `/computer/chat` 顶层 `system_prompt` 经 ACP `_meta.systemPrompt = { append }` 注入（new / load / reconfigure 全路径），对齐 nuwaclaw。
+- 注册 **swarm** 引擎（`@nuwax-ai/swarm` 四专家编排 ACP）；isolation env 注入修复。
+- `serve --tunnel` file-server / lanproxy 经 `@nuwax-ai/agent-kit` `withStartRetry` 完整启动重试。详见 [`docs/serve-health-check.md`](docs/serve-health-check.md)。
+- `@nuwax-ai/agent-kit` 纳入 `sync:core-deps` exact-pin 清单。
+
+### Changed
+
+- 核心依赖：`nuwax-file-server` 1.3.4 → **1.4.2**。
+- file-server 单次健康超时默认改为 kit 的 **20s**；最终不健康时跳过 lanproxy；重试前 `unregisterProcess`。
+
+### Fixed
+
+- 云端系统提示未下发到 agent：`parseDownstreamSessionConfig` 白名单丢弃 + 会话路径未组装 `_meta`。
+- MCP：跨名等价（如 `chrome-tools` ≡ `chrome-devtools`）折叠回 DEFAULT persistent；sanitize 后同名变体（`chrome_devtools`）remap 覆盖定制 args；Rust `mcp-proxy convert`（含 Windows `.exe`）改写为本机 TS 入口；`--config` 聚合形态解包对齐 nuwaclaw。
+- PersistentMcpBridge：配置未变时复用（防抖）；并行 rewrite Promise 链串行化，避免双 `start` 互踩。
+- `bringUpLanproxy` SIGINT 竞态与 stabilize 窗口 abort 误判。
 
 ## [0.2.5] - 2026-08-06
 
