@@ -24,6 +24,7 @@ import {
 } from "../acp/sessionHandle.js";
 import { applySessionMode } from "../acp/sessionMode.js";
 import { debugLog } from "../debugLog.js";
+import { ENGINE_TEARDOWN_BUDGET_MS } from "../processes/killTree.js";
 import { modelFromConfigOptions } from "../ui/modelInfo.js";
 import type { LocalSessionSummary } from "../sessions/discovery.js";
 import type { PermissionMode } from "../permissions/policy.js";
@@ -969,10 +970,15 @@ export class SessionHub {
     // finishes on its own, so /computer/agent/stop would hang for minutes.
     session.abortController.abort();
     // Hard cap so a misbehaving engine that ignores SIGTERM can't keep the
-    // stop call (and thus `serve` shutdown) waiting forever.
+    // stop call (and thus `serve` shutdown) waiting forever. Must exceed the
+    // killTree worst-case budget (ENGINE_TEARDOWN_BUDGET_MS): if stopSession
+    // returned while the SIGKILL escalation timers were still pending, `serve`
+    // would exit and re-orphan the tree (see solution D5).
     await Promise.race([
       session.done.catch(() => {}),
-      new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+      new Promise<void>((resolve) =>
+        setTimeout(resolve, ENGINE_TEARDOWN_BUDGET_MS + 1000),
+      ),
     ]);
     this.terminateSession(sessionId);
     return true;

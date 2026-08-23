@@ -207,6 +207,15 @@ export async function chatCommand(options: ChatCommandOptions): Promise<void> {
     cwd,
     engine: engineId,
   });
+  // The engine adapter is spawned `detached` on POSIX, so a terminal Ctrl+C no
+  // longer signals it by default. Bridge that gap: first Ctrl+C aborts the
+  // connection (tree teardown); a second Ctrl+C hits node's default handler
+  // and exits — the user's escape hatch.
+  const controller = new AbortController();
+  const onSigInt = () => {
+    controller.abort();
+  };
+  process.once("SIGINT", onSigInt);
   try {
     await withEngineConnection(
       { command: resolved.command, args: resolved.args, env, cwd },
@@ -277,8 +286,10 @@ export async function chatCommand(options: ChatCommandOptions): Promise<void> {
           rl.close();
         }
       },
+      controller.signal,
     );
   } finally {
     unregisterProcess(process.pid);
+    process.off("SIGINT", onSigInt);
   }
 }
