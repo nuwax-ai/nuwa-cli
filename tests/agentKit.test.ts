@@ -28,7 +28,7 @@ describe("@nuwax-ai/agent-kit — codex engine resolution", () => {
     expect(r.args).toHaveLength(1);
     // entry is require.resolve("@nuwax-ai/nuwax-codex-acp-ts/dist/index.js")
     expect(r.args[0]).toMatch(
-      /@nuwax-ai\/nuwax-codex-acp-ts\/dist\/index\.js$/,
+      /@nuwax-ai[\\/]nuwax-codex-acp-ts[\\/]dist[\\/]index\.js$/,
     );
     // envOverlay left for the host to fill (nuwa-cli adds CODEX_LOG_DIR).
     expect(r.envOverlay).toBeUndefined();
@@ -81,7 +81,7 @@ describe("@nuwax-ai/agent-kit — codex engine resolution", () => {
     const r = mod.resolveCodexAcp();
     expect(r.command).toBe(process.execPath);
     expect(r.args[0]).toMatch(
-      /@nuwax-ai\/nuwax-codex-acp-ts\/dist\/index\.js$/,
+      /@nuwax-ai[\\/]nuwax-codex-acp-ts[\\/]dist[\\/]index\.js$/,
     );
   });
 });
