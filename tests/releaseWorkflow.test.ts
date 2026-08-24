@@ -33,3 +33,28 @@ describe("beta release workflow", () => {
     expect(pkg.scripts["release:beta:dry-run"]).toContain("--dry-run");
   });
 });
+
+describe("stable release workflow", () => {
+  it("publishes with --tag latest and --ignore-scripts, then S3 stable", () => {
+    const script = fs.readFileSync(
+      path.join(process.cwd(), "scripts", "release-stable.mjs"),
+      "utf8",
+    );
+    expect(script).toContain('"--tag"');
+    expect(script).toContain('"latest"');
+    expect(script).toContain('"--ignore-scripts"');
+    expect(script).toContain('"--channel"');
+    expect(script).toContain('"stable"');
+    expect(script).toContain('scripts/sync-core-deps.mjs", "--check"');
+  });
+
+  it("is wired to npm run release:stable with a dry-run companion", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+    );
+    expect(pkg.scripts["release:stable"]).toBe(
+      "node scripts/release-stable.mjs",
+    );
+    expect(pkg.scripts["release:stable:dry-run"]).toContain("--dry-run");
+  });
+});
