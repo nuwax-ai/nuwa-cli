@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6-beta.5] - 2026-08-24
+
+### Fixed
+
+- **引擎进程树整树清理：** POSIX 上 adapter `detached` 成组；`terminateProcessTree` 经 stdin EOF → 组 SIGTERM → 组 SIGKILL（Windows `taskkill /T /F`），避免 `claude-code-acp-ts` 等孙进程在 stop/abort/Ctrl+C 后孤儿化。`stopSession` / `reconfigureSession` 共用 `ENGINE_STOP_WAIT_MS`（7s）等待预算；前台 `chat` Ctrl+C 干净退出（`exitCode=130`）。
+- **测试稳定性：** abort 前等待孙进程 pid 握手；vitest 默认 `NUWACLI_SKIP_MCP_BRIDGE_WARMUP`，避免并行 `startServeHttp` 争用 PersistentMcpBridge 导致 `stop()` 超时。
+
 ## [0.2.6-beta.4] - 2026-08-21
 
 ### Changed
