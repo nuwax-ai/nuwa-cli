@@ -215,16 +215,38 @@ describe("rewriteMcpServersForEngine defaults", () => {
   });
 
   it("warmupPersistentMcpBridge 以 DEFAULT persistent 启动 Bridge", async () => {
-    const { warmupPersistentMcpBridge, isPersistentMcpBridgeRunning } =
-      await import("../src/core/mcp/proxyRewrite.js");
-    await warmupPersistentMcpBridge();
-    expect(mocks.bridgeStart).toHaveBeenCalled();
-    const started = mocks.bridgeStart.mock.calls[0]![0] as Record<
-      string,
-      { persistent?: boolean }
-    >;
-    expect(started["chrome-devtools"]?.persistent).toBe(true);
-    expect(isPersistentMcpBridgeRunning()).toBe(true);
+    // vitest.config 默认跳过 warmup；本用例专门覆盖预热路径，临时打开。
+    const prev = process.env.NUWACLI_SKIP_MCP_BRIDGE_WARMUP;
+    delete process.env.NUWACLI_SKIP_MCP_BRIDGE_WARMUP;
+    try {
+      const { warmupPersistentMcpBridge, isPersistentMcpBridgeRunning } =
+        await import("../src/core/mcp/proxyRewrite.js");
+      await warmupPersistentMcpBridge();
+      expect(mocks.bridgeStart).toHaveBeenCalled();
+      const started = mocks.bridgeStart.mock.calls[0]![0] as Record<
+        string,
+        { persistent?: boolean }
+      >;
+      expect(started["chrome-devtools"]?.persistent).toBe(true);
+      expect(isPersistentMcpBridgeRunning()).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.NUWACLI_SKIP_MCP_BRIDGE_WARMUP;
+      else process.env.NUWACLI_SKIP_MCP_BRIDGE_WARMUP = prev;
+    }
+  });
+
+  it("NUWACLI_SKIP_MCP_BRIDGE_WARMUP 跳过预热", async () => {
+    process.env.NUWACLI_SKIP_MCP_BRIDGE_WARMUP = "1";
+    try {
+      const { warmupPersistentMcpBridge } = await import(
+        "../src/core/mcp/proxyRewrite.js"
+      );
+      await warmupPersistentMcpBridge();
+      expect(mocks.bridgeStart).not.toHaveBeenCalled();
+    } finally {
+      // Restore vitest default so later cases in this file stay skipped.
+      process.env.NUWACLI_SKIP_MCP_BRIDGE_WARMUP = "1";
+    }
   });
 
   it("跨名等价的下发 server 折叠回 DEFAULT persistent（chrome-tools ≡ chrome-devtools）", async () => {

@@ -28,6 +28,13 @@ export default defineConfig({
     include: ["tests/**/*.{test,spec}.ts"],
     exclude: ["node_modules", "dist"],
     testTimeout: 15000,
+    // Parallel startServeHttp would otherwise contend on the process-wide
+    // PersistentMcpBridge (real npx chrome-devtools) and flake stop() past
+    // testTimeout. Warmup is still covered in proxyRewriteDefaults with the
+    // env unset for that case.
+    env: {
+      NUWACLI_SKIP_MCP_BRIDGE_WARMUP: "1",
+    },
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],

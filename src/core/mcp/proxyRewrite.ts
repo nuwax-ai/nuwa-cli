@@ -343,8 +343,18 @@ export async function ensurePersistentMcpBridge(
 /**
  * serve / Gateway 启动时预热 Bridge（对齐 nuwaclaw warmup）。
  * 失败只打日志，不阻断 serve；后续 rewrite 仍会再 ensure。
+ *
+ * `NUWACLI_SKIP_MCP_BRIDGE_WARMUP=1`：跳过预热。vitest 默认开启，避免并行
+ * 用例里多个 startServeHttp 抢同一 PersistentMcpBridge 单例（真实 npx
+ * chrome-devtools 启动/停止串在 bridgeOp 队列上，stop() 动辄 >15s 超时）。
+ * 需要测 warmup 本身的用例请临时 unset 该变量。
  */
 export async function warmupPersistentMcpBridge(): Promise<void> {
+  const skip = process.env.NUWACLI_SKIP_MCP_BRIDGE_WARMUP;
+  if (skip === "1" || skip === "true") {
+    debugLog("mcp-proxy", "PersistentMcpBridge warmup skipped (NUWACLI_SKIP_MCP_BRIDGE_WARMUP)");
+    return;
+  }
   const servers = buildDefaultPersistentServers();
   if (Object.keys(servers).length === 0) return;
   try {

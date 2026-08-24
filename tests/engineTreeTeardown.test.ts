@@ -52,19 +52,23 @@ describe("engine process-tree teardown", () => {
         { permissionMode: "yolo", onAgentText: () => {} },
         async (ctx) => {
           const session = await ctx.buildSession(process.cwd()).start();
+          // Hang after spawning the grandchild — mirrors a long tool call.
           await session.prompt("spawn-grandchild");
           return "unreachable";
         },
         controller.signal,
       );
-      // Let initialize + session/new + session/prompt (grandchild spawn) land,
-      // then abort mid-hang — exactly like a long tool call being interrupted.
-      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // Wait for the pid handshake *before* aborting. A fixed sleep races under
+      // full-suite load (initialize + session/new + prompt can exceed 200ms),
+      // which made readGrandchildPid return 0 after teardown already wiped the
+      // tree (or never let the grandchild start).
+      const grandchildPid = await readGrandchildPid(pidFile, 10000);
+      expect(grandchildPid).toBeGreaterThan(0);
+
       controller.abort();
       await expect(result).rejects.toThrow(/engine session aborted/);
 
-      const grandchildPid = await readGrandchildPid(pidFile, 5000);
-      expect(grandchildPid).toBeGreaterThan(0);
       // Default killTree budget is 6s; assert the grandchild is gone within
       // the teardown window plus margin.
       await expect
