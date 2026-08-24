@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6-beta.6] - 2026-08-24
+
+### Fixed
+
+- **codex auto-resume：** system_prompt 门控改为「包含」判断（rollout 会在提示词后拼接 AGENTS.md / permissions 等动态段，整串相等会误判并每条消息新开 thread）；`/computer/chat` 未带 `session_id` 时按 engine+cwd 复用已就绪活会话，避免反复冷启动 MCP。
+- **claude Windows：** 不再把 `claude.CMD` 等不可裸 spawn 的 shim 写入 `CLAUDE_CODE_EXECUTABLE`（Node≥18.20 会 EINVAL）；仅 `.exe` 等可直接 spawn 的路径才注入，否则回落 SDK 内置运行时。
+- **测试：** agentKit 适配器入口正则兼容 Windows `\` 路径分隔符。
+
 ## [0.2.6-beta.5] - 2026-08-24
 
 ### Fixed
