@@ -1,4 +1,4 @@
-import { findOnPath } from "../../util/which.js";
+import { findOnPath, isDirectlySpawnable } from "../../util/which.js";
 import { resolveClaudeAcp } from "@nuwax-ai/agent-kit";
 import { resolveInstalledPackageEntry } from "./packageResolve.js";
 import type { EngineSpec, ResolvedEngine } from "./types.js";
@@ -19,7 +19,15 @@ export const claudeEngine: EngineSpec = {
       args,
       // Prefer the user's installed CLI when present. Otherwise the adapter
       // resolves the native Claude runtime bundled by claude-agent-sdk.
-      envOverlay: claudeBin ? { CLAUDE_CODE_EXECUTABLE: claudeBin } : {},
+      // The CLI must be directly spawnable, though: on Windows `which` usually
+      // finds the npm shim (claude.CMD), and the adapter spawns
+      // CLAUDE_CODE_EXECUTABLE without a shell — a shim here kills session/new
+      // with spawn EINVAL (surfaces as ACP "Internal error" → engine start
+      // failed). Non-spawnable paths fall back to the bundled runtime.
+      envOverlay:
+        claudeBin && isDirectlySpawnable(claudeBin)
+          ? { CLAUDE_CODE_EXECUTABLE: claudeBin }
+          : {},
     };
   },
 };

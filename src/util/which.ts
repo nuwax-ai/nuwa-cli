@@ -9,6 +9,17 @@ export function isBatchShim(command: string): boolean {
   return isWindows() && /\.(cmd|bat)$/i.test(command);
 }
 
+/**
+ * True when a child process can spawn this path directly. On Windows the npm
+ * shims (claude.CMD, extensionless sh script, .ps1) all need a shell or a
+ * script host — spawning them bare throws EINVAL (Node >= 18.20 blocks
+ * .cmd/.bat without shell: true), so only .exe counts as directly spawnable.
+ */
+export function isDirectlySpawnable(command: string): boolean {
+  if (!isWindows()) return true;
+  return /\.exe$/i.test(command);
+}
+
 /** Resolve a command to an absolute path via the shell's own lookup (which/where). */
 export function findOnPath(command: string): string | null {
   try {
