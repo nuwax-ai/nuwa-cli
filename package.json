@@ -1,6 +1,6 @@
 {
   "name": "@nuwax-ai/nuwa-cli",
-  "version": "0.2.6-beta.6",
+  "version": "0.2.6",
   "packageManager": "npm@10.9.2",
   "workspaces": [
     "packages/lanproxy"
@@ -36,6 +36,8 @@
     "sync:core-deps:check": "node scripts/sync-core-deps.mjs --check",
     "release:beta": "node scripts/release-beta.mjs",
     "release:beta:dry-run": "node scripts/release-beta.mjs --dry-run",
+    "release:stable": "node scripts/release-stable.mjs",
+    "release:stable:dry-run": "node scripts/release-stable.mjs --dry-run",
     "release:lanproxy": "node scripts/release-lanproxy.mjs"
   },
   "dependencies": {

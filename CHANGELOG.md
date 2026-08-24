@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-08-24
+
+Stable release promoting the `0.2.6-beta.*` line. Distributed as npm `latest` and S3 `stable` (`channels/stable.json` + `latest.json`); the beta channel continues for pre-releases.
+
+### Added
+
+- `/computer/chat` 顶层 `system_prompt` 经 ACP `_meta.systemPrompt = { append }` 注入（new / load / reconfigure），对齐 nuwaclaw。
+- 注册 **swarm** 引擎（`@nuwax-ai/swarm` 四专家编排 ACP）。
+- `serve --tunnel` file-server / lanproxy 经 `@nuwax-ai/agent-kit` `withStartRetry` 完整启动重试（见 [`docs/serve-health-check.md`](docs/serve-health-check.md)）。
+- **`nuwa-cli update` 增量快速路径：** 一级依赖表未变时只替换 CLI 自身文件；`--force` 完整重装。跨平台守卫拒绝 npx 缓存树。
+
+### Changed
+
+- 核心依赖：`nuwax-file-server` → **1.4.2**；`@nuwax-ai/agent-kit` 纳入 `sync:core-deps` exact-pin。
+- file-server 健康超时默认 **20s**；最终不健康时跳过 lanproxy。
+
+### Fixed
+
+- **引擎进程树整树清理：** POSIX `detached` 进程组 + `terminateProcessTree`（stdin EOF → SIGTERM → SIGKILL / Windows `taskkill /T`），避免 ACP 孙进程孤儿化；`stopSession` / `reconfigureSession` 共用等待预算；前台 `chat` Ctrl+C 干净退出（`exitCode=130`）。
+- **codex auto-resume：** system_prompt 门控改为包含判断；未带 `session_id` 时按 engine+cwd 复用活会话，避免每条消息冷启动 MCP。
+- **claude Windows：** 不把 `claude.CMD` 等不可裸 spawn 的 shim 写入 `CLAUDE_CODE_EXECUTABLE`。
+- 云端系统提示 / MCP 折叠与 remap / PersistentMcpBridge 防抖与串行化 / lanproxy SIGINT 竞态。
+- 日志密文脱敏（daemon 非 TTY secret 掩码 + `secretScrub` / `logSweep`）。
+
 ## [0.2.6-beta.6] - 2026-08-24
 
 ### Fixed

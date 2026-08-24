@@ -196,6 +196,17 @@ npm view @nuwax-ai/nuwa-cli dist-tags
 npx -y @nuwax-ai/nuwa-cli@beta --version
 ```
 
+### 发布正式版（stable / latest）
+
+版本必须是纯 `x.y.z`（无 `-beta`）。`package.json` 的 `publishConfig.tag` 仍固定为 `beta`（防误发）；正式发布走：
+
+```bash
+# 先把 version 改成 x.y.z，更新 CHANGELOG，commit
+npm run release:stable
+```
+
+流程：测试/构建 → `npm publish --tag latest --ignore-scripts` → `cnpm sync` → 核验 npmmirror `latest` → S3 `--channel stable`（写 `channels/stable.json` + `latest.json`）。预演：`npm run release:stable:dry-run`。
+
 ### 同步核心依赖（exact pin）
 
 以下 6 个包是 CLI 的运行时核心依赖；`package.json` 里必须写精确版本（不用 `^`/`~`）。CLI 某次发布锁定的一组 pin 即兼容单元，用户只升 `nuwa-cli`，不单独升这些子包：
