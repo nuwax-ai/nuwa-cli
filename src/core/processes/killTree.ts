@@ -6,11 +6,20 @@ import { debugLog } from "../debugLog.js";
  * Worst-case budget for a full `terminateProcessTree` pass:
  * naturalExitMs (2s) + termEscalateMs (3s) + killVerifyMs (1s).
  *
- * `stopSession` must wait at least this long (plus margin) before returning,
- * otherwise the host `serve` process can exit while the SIGKILL escalation
- * timers are still pending — re-orphaning the tree (see sessionHub stopSession).
+ * Callers that abort a runner and then wait on `session.done` (stopSession,
+ * reconfigureSession) must wait at least this long (plus margin) before
+ * returning or spawning a replacement engine — otherwise the host can proceed
+ * while SIGKILL escalation is still pending and re-orphan the tree (or overlap
+ * two engines on the same logical session).
  */
 export const ENGINE_TEARDOWN_BUDGET_MS = 6000;
+
+/**
+ * Hard cap used by SessionHub when racing `session.done` after abort.
+ * = teardown budget + 1s slack so the group SIGKILL phase can finish before
+ * the hub continues (shutdown, or spawning the next runner).
+ */
+export const ENGINE_STOP_WAIT_MS = ENGINE_TEARDOWN_BUDGET_MS + 1000;
 
 export interface TerminateTreeOptions {
   /** How long to wait for the adapter to exit on its own after stdin EOF. */
