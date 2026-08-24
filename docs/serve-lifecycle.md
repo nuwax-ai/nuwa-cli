@@ -23,12 +23,12 @@
 
 ### 1. 会话可中断：`AbortController` 透传（#5 的基础）
 
-`withEngineConnection` 增加可选第 4 参 `signal?: AbortSignal`（向后兼容：`chat` 不传，`serve` 传）。
+`withEngineConnection` 增加可选第 4 参 `signal?: AbortSignal`（`serve` 与前台 `chat` 均传入；其它调用方可省略）。
 
-- `signal` 触发时对引擎子进程 `proc.kill()`（SIGTERM）。引擎死亡 → stdout 流关闭 → `ndJsonStream` 报错 → 阻塞中的 `ctx.request(session/prompt)` 被 reject → `op` reject → `withEngineConnection` 的 `catch` 命中 `signal?.aborted` 分支，抛出"引擎会话已被中止"。
-- `finally` 里 `proc.kill()` 兜底，并 `removeEventListener` 清理。
+- `signal` 触发时对引擎进程树执行 `terminateProcessTree`（见 §7）：stdin EOF → 组 SIGTERM → 组 SIGKILL。引擎（及组内孙进程）死亡 → stdout 流关闭 → `ndJsonStream` 报错 → 阻塞中的 `ctx.request(session/prompt)` 被 reject → `op` reject → `withEngineConnection` 的 `catch` 命中 `signal?.aborted` 分支，抛出"引擎会话已被中止"。
+- `finally` 里以幂等单例 `startTreeKill` 兜底（与 abort 路径共享同一 promise），并 `removeEventListener` 清理。
 - **为何用 kill 而非 `session/cancel`**：ACP 的 `session/cancel` 在两个引擎实现里支持度不一，且即便发了，引擎也未必及时中止正在执行的工具；直接终结进程是最确定的中断手段。代价是"强制"，故在文档中如实标注（stop 是 bounded 但 forceful）。
-- `SessionHub.stopSession`：`abortController.abort()` 后用 `Promise.race` 加 **3 秒硬上限**等待 `session.done`，防止引擎忽略 SIGTERM 时把 stop（进而把 `serve` 关闭）拖死。
+- `SessionHub.stopSession` / `reconfigureSession`：`abortController.abort()` 后用 `Promise.race` 加 **`ENGINE_STOP_WAIT_MS`（=`ENGINE_TEARDOWN_BUDGET_MS + 1000` =7s）硬上限**等待 `session.done`，防止引擎忽略 SIGTERM 时把 stop（进而把 `serve` 关闭）拖死，或在换引擎时与旧进程树重叠。窗口必须大于 killTree 最坏预算（6s），否则会在组 SIGKILL 定时器触发前继续（见 §7）。
 
 ### 2. 会话终结统一收口：`terminateSession`（#4）
 
@@ -58,15 +58,28 @@
 - yolo 模式启动时打印醒目安全提示：所有工具调用（含破坏性写/命令/网络）都会被自动放行、且无路径限制。
 - **路径越界守卫未移植**（见"暂未覆盖"），仅以告警形式如实暴露风险。
 
+### 7. 进程树整树清理：孙进程孤儿 + SIGKILL 升级（已覆盖）
+
+原「暂未覆盖」第 2、3 条在本方案中已实现：
+
+- 引擎 adapter 以 `detached: true`（仅 POSIX）spawn，成为独立进程组组长（pgid = adapter pid）；Windows 不启用 detached（无组语义，且 `taskkill /T` 会漏掉 detached 树）。
+- 终止原语升级为 `terminateProcessTree`（`src/core/processes/killTree.ts`）三段式：stdin EOF 优雅前置 → 组 SIGTERM（Windows 用 `taskkill /PID <pid> /T /F` 树杀）→ 组 SIGKILL 升级 → 组级探测校验。全程 try/catch 容错，失败仅 debugLog 不 throw。
+- `stopSession` / `reconfigureSession` 等待窗口 3s → `ENGINE_STOP_WAIT_MS`（=7s），与 killTree 预算联动；正常场景 stdin EOF 优雅链 <2s 完成，stop 实际耗时不变。换引擎路径必须同一预算，避免新旧 runner 短时间并存。
+- `chat` 前台 Ctrl+C：`process.once("SIGINT")` → abort 透传 → 整树清理；`chatCommand` 将 abort 视为干净退出（`exitCode=130`），不把 "engine session aborted" 抛给 commander。第二次 Ctrl+C 走 node 默认退出（teardown 卡住时的 escape hatch）。
+
+**剩余限制（R5）**：`nuwa serve` 自身被 SIGKILL / 崩溃 / 断电时 stopAll 无从执行，整树仍可能孤儿——需 watchdog（独立立项）或 Windows Job Object。
+
 ## 涉及文件
 
 | 文件 | 改动 |
 |---|---|
 | `src/core/acp/connection.ts` | `withEngineConnection` 加 `signal` 参数；abort 时 kill；`finally` 清理监听 |
+| `src/core/processes/killTree.ts` | 新增：`terminateProcessTree` 组树三段式杀伤 + `ENGINE_TEARDOWN_BUDGET_MS` / `ENGINE_STOP_WAIT_MS` |
 | `src/core/serve/sessionHub.ts` | `ManagedSession` 加 `abortController`；新增 `terminateSession` / `stopAll`；`stopSession` 中断+限时；所有退出路径收口 |
 | `src/core/serve/server.ts` | `stop()` 改 async：`hub.stopAll()` → `closeAllConnections()` → `close()`；listening 写 serve 锁、stop 清锁 |
 | `src/commands/serve.ts` | `--approve` 校验；yolo 告警；shutdown 调 `stopFileServer` |
 | `tests/fixtures/mock-acp-agent.mjs` | 新增 `trigger-hang` 模式（永不回应 session/prompt） |
+| `tests/engineTreeTeardown.test.ts` | 新增：真实 fixture 进程的组树清理回归（孙进程消失 / 优雅路径不误杀） |
 | `tests/connection.test.ts` | 新增 abort 中断用例 |
 | `src/core/serve/serveLock.ts` | 新增：serve 锁读写 + `/health` 探活 + `getServeStatus`（PID 已死则自动清残留锁） |
 | `src/util/paths.ts` | 新增 `cliServeLockPath()`（含 `NUWACLI_SERVE_LOCK_PATH` 测试覆盖） |
@@ -89,8 +102,7 @@
 以下在本次方案中**有意未做**，记录于此便于后续跟进：
 
 1. **yolo 路径越界守卫**：未移植 Electron 客户端的 strict-permission gate。需要 workspace 根跟踪 + 按工具类型解析目标路径，工作量较大，建议单独立项。当前仅启动告警。敏感访问（本地 sessions）已另见 [`acp-permission-guardrails.md`](./acp-permission-guardrails.md)。
-2. **进程树清理（孙进程孤儿）**：`proc.kill()` 仅 SIGTERM 直接子进程；`claude-code-acp-ts` 再拉起的 `claude` 等孙进程不受信号。建议改为 `detached:true` spawn + 进程组 kill。注意：本方案的 abort/stopAll 也走同一个 `proc.kill`，因此 serve 路径同样未覆盖孙进程。
-3. **SIGTERM → SIGKILL 升级**：当前只发 SIGTERM；若引擎忽略信号，靠 `stopSession` 的 3s 上限兜底（强制返回，但底层 runner promise 会延迟回收）。
+2. **宿主硬死（R5）残留**：`nuwa serve` 被 SIGKILL / 崩溃 / 断电时，stopAll 无从执行，引擎进程树仍可能孤儿化（见 §7 剩余限制）。watchdog 独立立项。
 
 ## ACP 权限审批护栏
 

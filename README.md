@@ -225,7 +225,7 @@ See [`docs/serve-lifecycle.md`](docs/serve-lifecycle.md) for full lifecycle, aut
 
 ## Known limitations
 
-- **Process-tree teardown**: grandchild processes (e.g. `claude` binary under `claude-code-acp-ts`) aren't signalled and may be orphaned on exit.
+- **Process-tree teardown on host crash**: engine process groups are signalled through SIGTERM→SIGKILL on stop/shutdown; if the host itself is SIGKILLed or crashes, grandchildren may still be orphaned (watchdog planned).
 - **No path confinement in yolo**: `--approve auto` auto-approves all ordinary tool calls regardless of target path.
 - **Prompt timeout**: 5 minutes per prompt; engine hangs produce an error instead of infinite wait.
 - **MCP startup**: engines wait for MCP servers to initialize before first prompt; `npm exec` MCP servers may take minutes on first run. MCP servers are injected as raw stdio; both TS adapters handle ACP `mcpServers` natively at the adapter layer. `chrome-devtools` is always enabled by default as a raw stdio MCP (`npx -y chrome-devtools-mcp@latest`, one per session, no cross-session persistence, no `--isolated`). `@nuwax-ai/mcp-proxy-ts` remains a dependency for host adapter tool / default service merging, but is no longer used to inject a proxy entry for the engine.
@@ -463,7 +463,7 @@ nuwa-cli 还会启动本地**文件服务**（HTTP，默认端口 `60015`，`ser
 
 ### 已知限制
 
-- **进程树清理**：孙进程（如 `claude-code-acp-ts` 拉起的 `claude` 二进制）不会被信号通知，可能成为孤儿。
+- **进程树清理（宿主崩溃时）**：stop/shutdown 路径会对引擎进程组执行 SIGTERM→SIGKILL 整树清理；若宿主自身被 SIGKILL 或崩溃，孙进程仍可能孤儿化（watchdog 待立项）。
 - **yolo 无路径限制**：`--approve auto` 对普通工具不论目标路径一律自动批准。
 - **Prompt 超时**：每条 prompt 限时 5 分钟，引擎卡住时报错而非无限等待。
 - **MCP 启动**：引擎等所有 MCP server 初始化后才处理首条消息；`npm exec` MCP server 首次可能需数分钟。MCP server 以原始 stdio 形式注入引擎，两个 TS adapter 在 adapter 层原生处理 ACP `mcpServers`。默认始终启用 `chrome-devtools`（`npx -y chrome-devtools-mcp@latest`，每 session 自启，无跨 session 持久化，无 `--isolated`）。注意：`@nuwax-ai/mcp-proxy-ts` 仍是依赖（host adapter 工具/默认服务合并），但不再用于给 engine 注入 proxy 入口。

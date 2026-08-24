@@ -17,6 +17,7 @@ import { decidePermission } from "../permissions/policy.js";
 import type { PermissionCoordinator } from "../permissions/coordinator.js";
 import { CLI_VERSION } from "../version.js";
 import { debugLog } from "../debugLog.js";
+import { terminateProcessTree } from "../processes/killTree.js";
 
 export interface SpawnTarget {
   command: string;
@@ -99,10 +100,11 @@ function routeSessionUpdate(
  * `ClientContext`. The connection (and the child process) is torn down when
  * `op` resolves, rejects, or throws — mirroring `ClientApp.connectWith`.
  *
- * If `signal` is provided and aborted, the engine child is killed (SIGTERM) so
- * a long-running `op` (e.g. an in-flight `session/prompt`) is interrupted
- * instead of having to finish on its own — this is what makes a session
- * cancellable from the outside (`serve` `/computer/agent/stop`).
+ * If `signal` is provided and aborted, the engine process tree is torn down
+ * (stdin EOF → group SIGTERM → group SIGKILL) so a long-running `op` (e.g. an
+ * in-flight `session/prompt`) is interrupted instead of having to finish on
+ * its own — this is what makes a session cancellable from the outside
+ * (`serve` `/computer/agent/stop`).
  */
 export async function withEngineConnection<T>(
   target: SpawnTarget,
@@ -115,6 +117,11 @@ export async function withEngineConnection<T>(
     env: target.env,
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
+    // POSIX: make the adapter the leader of its own process group so the
+    // teardown below can signal the whole tree (including grandchildren).
+    // Windows has no group semantics and `taskkill /T` would miss a detached
+    // tree, so it stays in the host's group (matching serveSingleton's note).
+    detached: process.platform !== "win32",
   }) as ChildProcessWithoutNullStreams;
 
   const getStderrTail = captureStderr(proc);
@@ -130,10 +137,19 @@ export async function withEngineConnection<T>(
     processState.exitInfo = { code, signal };
   });
 
-  // Abort -> kill the engine so a parked `op` (e.g. awaiting session/prompt)
-  // stops promptly instead of running until the engine finishes naturally.
+  // Single-flight, idempotent tree teardown shared by the abort path and the
+  // final cleanup below — both may fire (abort during teardown, or vice
+  // versa) and must resolve to the same promise.
+  let treeKill: Promise<void> | null = null;
+  const startTreeKill = () => {
+    if (!treeKill) treeKill = terminateProcessTree(proc);
+  };
+
+  // Abort -> tear down the engine tree so a parked `op` (e.g. awaiting
+  // session/prompt) stops promptly instead of running until the engine
+  // finishes naturally.
   const onAbort = () => {
-    if (!proc.killed) proc.kill();
+    startTreeKill();
   };
   if (signal) {
     if (signal.aborted) onAbort();
@@ -190,7 +206,8 @@ export async function withEngineConnection<T>(
     }
     throw err;
   } finally {
-    if (!proc.killed) proc.kill();
+    startTreeKill();
+    await treeKill;
     signal?.removeEventListener("abort", onAbort);
   }
 }

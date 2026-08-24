@@ -24,6 +24,7 @@ import {
 } from "../acp/sessionHandle.js";
 import { applySessionMode } from "../acp/sessionMode.js";
 import { debugLog } from "../debugLog.js";
+import { ENGINE_STOP_WAIT_MS } from "../processes/killTree.js";
 import { modelFromConfigOptions } from "../ui/modelInfo.js";
 import type { LocalSessionSummary } from "../sessions/discovery.js";
 import type { PermissionMode } from "../permissions/policy.js";
@@ -825,9 +826,12 @@ export class SessionHub {
     session.systemPrompt = runtime.systemPrompt;
     this.resetReadiness(session);
 
+    // Must match stopSession: wait out the full killTree budget before the
+    // replacement runner starts, or the old and new engines briefly overlap
+    // (same cwd / MCP / ports) while group SIGKILL is still pending.
     await Promise.race([
       oldDone.catch(() => {}),
-      new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+      new Promise<void>((resolve) => setTimeout(resolve, ENGINE_STOP_WAIT_MS)),
     ]);
     this.spawnRunner(session, async (ctx) => {
       const mcpServers = await rewriteMcpServersForEngine(
@@ -969,10 +973,13 @@ export class SessionHub {
     // finishes on its own, so /computer/agent/stop would hang for minutes.
     session.abortController.abort();
     // Hard cap so a misbehaving engine that ignores SIGTERM can't keep the
-    // stop call (and thus `serve` shutdown) waiting forever.
+    // stop call (and thus `serve` shutdown) waiting forever. Must exceed the
+    // killTree worst-case budget: if stopSession returned while the SIGKILL
+    // escalation timers were still pending, `serve` would exit and re-orphan
+    // the tree (see solution D5). Same constant as reconfigureSession.
     await Promise.race([
       session.done.catch(() => {}),
-      new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+      new Promise<void>((resolve) => setTimeout(resolve, ENGINE_STOP_WAIT_MS)),
     ]);
     this.terminateSession(sessionId);
     return true;

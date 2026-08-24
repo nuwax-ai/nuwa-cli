@@ -38,6 +38,9 @@ vi.mock("../src/core/sessions/discovery.js", async (importOriginal) => {
 });
 
 describe("serve /computer/chat auto-resume by projectKey", () => {
+  // stopSession waits up to ENGINE_STOP_WAIT_MS (7s) per session; under a
+  // contended full suite the default 10s hookTimeout is too tight for afterAll.
+  const HOOK_MS = 30_000;
   let handle: ReturnType<typeof startServeHttp>;
   const serverCwd = path.join(os.tmpdir(), "nuwa-cli-autoresume-ws");
   const workspaceUser = "autoresume-user";
@@ -66,7 +69,7 @@ describe("serve /computer/chat auto-resume by projectKey", () => {
     await new Promise<void>((resolve) =>
       handle.server.once("listening", resolve),
     );
-  });
+  }, HOOK_MS);
 
   afterAll(async () => {
     await handle.stop();
@@ -76,7 +79,7 @@ describe("serve /computer/chat auto-resume by projectKey", () => {
     }
     delete process.env.NUWACLI_SERVE_LOCK_PATH;
     delete process.env.NUWACLI_DEBUG_LOG_PATH;
-  });
+  }, HOOK_MS);
 
   function url(pathname: string): string {
     const address = handle.server.address();
