@@ -112,8 +112,15 @@ async function findRecentLocalSession(
  * `role:"developer"` 消息），resume 时传入的 developerInstructions 不会生效
  * ——app-server 既不重写 developer 消息，`thread_settings_applied` 里
  * developer_instructions 也恒为 null。因此当本次请求带 system_prompt 且与
- * 历史会话创建时的 developerPrompt 不同，继续 auto-resume 会静默沿用旧
+ * 历史会话创建时的提示词不同，继续 auto-resume 会静默沿用旧
  * 提示词，必须改走 startSession 开新 thread。
+ *
+ * 注意物化进 rollout 的 developer 消息并非 system_prompt 原文：codex 会在
+ * 其后拼接自动生成的动态段（AGENTS.md、<permissions instructions>、环境
+ * 信息等），整串相等比较恒不等——曾导致同一会话每条消息都被判成“提示词
+ * 变了”而开新 thread、整轮重启 MCP。因此按包含判断：组合结果仍包含本次
+ * system_prompt 即视为未变；提示词被真正编辑后通常不再是子串，仍会正确
+ * 换新 thread。
  *
  * 历史记录读不到 developerPrompt（无提示词创建的会话/旧版 transcript）时
  * 保持原行为继续 resume；claude 引擎的 session/load 侧由适配器重放
@@ -125,7 +132,8 @@ function codexResumeWouldDropPrompt(
 ): boolean {
   if (downstream.engine !== "codex" || !downstream.systemPrompt) return false;
   if (typeof recent.developerPrompt !== "string") return false;
-  return recent.developerPrompt.trim() !== downstream.systemPrompt.trim();
+  // 两边在产出侧均已 trim（codexMessageText / parseDownstreamSessionConfig）。
+  return !recent.developerPrompt.includes(downstream.systemPrompt);
 }
 
 function workspaceSegment(value: string, fallback: string): string {
@@ -380,8 +388,11 @@ export function startServeHttp(options: ServeOptions): {
                 : `${server.name}: ${server.type ?? "http"} ${"url" in server ? server.url : ""}`,
             ),
           });
-          // 内存命中 → reconfigure；否则按 cwd 自动续接最近本地会话（对齐
-          // `chat --resume`，读磁盘 transcript，重启后仍可续接）；都不命中才新建。
+          // 内存命中 → reconfigure；否则按 cwd 自动续接（先找同 cwd 的活会话
+          // 复用已就绪的引擎连接——下游普遍不带 session_id，若直接走磁盘续接
+          // 会每条消息新起一个引擎适配器、整轮重启 MCP；serve 重启后活会话
+          // 不存在，再退回读磁盘 transcript 的 `chat --resume` 语义）；都不命中
+          // 才新建。
           const target = await (async () => {
             if (session) {
               return await hub.reconfigureSession(
@@ -392,6 +403,24 @@ export function startServeHttp(options: ServeOptions): {
             }
             // 仅当请求未带 session_id 时才自动续接：带了 id（哪怕已 stale）则
             // 尊重客户端 id，走 startSession(existingId) 保留公开会话 id。
+            if (!existingId) {
+              const live = hub.findLiveSession(
+                downstream.engine,
+                cwdResult.cwd,
+              );
+              if (live) {
+                debugLog("serve.chat", "reusing live session for cwd", {
+                  projectKey: cwdResult.projectKey,
+                  cwd: cwdResult.cwd,
+                  sessionId: live.sessionId,
+                });
+                return await hub.reconfigureSession(
+                  live.sessionId,
+                  downstream.engine,
+                  downstream,
+                );
+              }
+            }
             const recent = existingId
               ? undefined
               : await findRecentLocalSession(downstream.engine, cwdResult.cwd);

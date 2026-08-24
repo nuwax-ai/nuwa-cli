@@ -789,6 +789,27 @@ export class SessionHub {
   }
 
   /**
+   * Finds the most recently created ready session for the same engine + cwd.
+   * Used by /chat when the request carries no session_id: downstream clients
+   * typically omit it, and falling straight through to disk auto-resume would
+   * spawn a fresh engine adapter (and re-run the whole MCP startup) for every
+   * message of the same conversation. Dead runners are evicted from the map
+   * by terminateSession, so a `readyOk` hit here is a healthy live session.
+   */
+  findLiveSession(
+    engineId: EngineKind,
+    cwd: string,
+  ): ManagedSession | undefined {
+    let match: ManagedSession | undefined;
+    for (const session of this.sessions.values()) {
+      if (session.engine !== engineId || session.cwd !== cwd) continue;
+      if (session.readyOk !== true) continue;
+      match = session; // Map 迭代按插入序，留在最后的是最新会话。
+    }
+    return match;
+  }
+
+  /**
    * Applies newly delivered ACP runtime configuration to an existing logical
    * session. ACP sessions are engine-specific, so a model/provider/MCP/engine
    * change cancels the active turn and replaces only the underlying runner.

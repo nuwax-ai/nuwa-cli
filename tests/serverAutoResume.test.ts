@@ -238,6 +238,32 @@ describe("serve /computer/chat auto-resume by projectKey", () => {
     startSpy.mockRestore();
   });
 
+  it("still auto-resumes when the recorded developer prompt contains codex-appended sections", async () => {
+    // codex materializes the developer message as system_prompt + generated
+    // sections (AGENTS.md, <permissions instructions>, environment). Exact
+    // equality here would flag every message as a prompt change and spin a
+    // fresh thread (with a full MCP restart) per message.
+    const row = {
+      ...historyRow(workspacePath),
+      developerPrompt:
+        "same persona\n\n<permissions instructions>\nsandbox etc.\n</permissions instructions>",
+    };
+    sessionMocks.local = [row];
+    const resumeSpy = vi.spyOn(handle.hub, "resumeSession");
+    const startSpy = vi.spyOn(handle.hub, "startSession");
+
+    const res = await postChat("continue", {
+      system_prompt: "same persona",
+    });
+
+    expect(res.status).toBe(502);
+    expect(resumeSpy).toHaveBeenCalledTimes(1);
+    expect(startSpy).not.toHaveBeenCalled();
+
+    resumeSpy.mockRestore();
+    startSpy.mockRestore();
+  });
+
   it("still auto-resumes with a system_prompt when history lacks a recorded developer prompt", async () => {
     // Sessions created without a prompt (or by older builds) have no
     // developerPrompt — resume stays the default behavior.
