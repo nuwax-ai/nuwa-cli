@@ -104,7 +104,9 @@ step(2, "核验核心依赖 exact pin");
 run("node", ["scripts/sync-core-deps.mjs", "--check"], { mutating: false });
 
 step(3, "运行完整测试与构建");
-run("npm", ["test", "--", "--run"], { mutating: false });
+run("npm", ["test", "--", "--run", "--no-file-parallelism"], {
+  mutating: false,
+});
 run("npm", ["run", "build"], { mutating: false });
 
 step(4, "发布 npm latest");
