@@ -8,26 +8,19 @@ Headless multi-engine agent CLI. `nuwa-cli` bundles ACP runtimes for Codex and C
 
 ## Install
 
-**Recommended** (interactive wizard — pick language, stop running services if needed, then global npm install):
+**Recommended · new install** (interactive wizard — language, stop services if needed, global npm install, then login / start until Gateway is ready):
 
 ```bash
 npx @nuwax-ai/nuwa-cli@latest install
 ```
 
-Automation / CI (non-interactive):
+Automation / CI (non-interactive; if already logged in, starts Gateway; if not, installs the package and prints how to finish):
 
 ```bash
 npx -y @nuwax-ai/nuwa-cli@latest install --yes
 ```
 
-**Alternative · bare npm** (no wizard: no language prompt, does not stop services):
-
-```bash
-npm install -g @nuwax-ai/nuwa-cli --progress=true
-nuwa-cli doctor
-```
-
-**Alternative · S3 one-liner** (CN-reachable mirror, auto-configures PATH):
+**Alternative · S3 one-liner** (CN-reachable mirror). **Not installed:** tarball + PATH, then silent `install --yes --bootstrap`. **Already installed:** `nuwa-cli update <version> --yes` (same kernel as daily upgrades, including logged-in restart). Same version: skip.
 
 ```bash
 # Windows (PowerShell)
@@ -37,34 +30,31 @@ irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from
 curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.sh | bash
 ```
 
-> npm too slow? `NUWACLI_REGISTRY=https://registry.npmmirror.com` (bash) / `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'` (PowerShell).
+> npm too slow? `NUWACLI_REGISTRY=https://registry.npmmirror.com` (bash) / `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'` (PowerShell). Skip login/start tail: `NUWACLI_NO_START=1`.
+
+See [`docs/install-upgrade-split.md`](docs/install-upgrade-split.md) for the new-install vs upgrade split.
 
 ### Upgrade
 
-Prefer **`nuwa-cli update`** (interactive confirm before stopping Gateway/Console/tunnels; `--yes` skips the prompt; releases Windows vendor `.exe` locks; supports the incremental path). On Windows, **do not** run bare `npm i -g @nuwax-ai/nuwa-cli@…` while services are running — npm will `EBUSY` on locked `nuwax-lanproxy.exe` / `nuwax-codex.exe`. If you must use npm manually: `nuwa-cli stop --all` first, then install.
+Prefer **`nuwa-cli update`** (interactive confirm before stopping Gateway/Console/tunnels; `--yes` skips the prompt; releases Windows vendor `.exe` locks; incremental path; **logged-in → restart**). On Windows, **do not** run bare `npm i -g @nuwax-ai/nuwa-cli@…` while services are running — npm will `EBUSY` on locked `nuwax-lanproxy.exe` / `nuwax-codex.exe`. If you must use npm manually: `nuwa-cli stop --all` first, then install. `npx … install` when already installed hints to use `update` (overlay only with `--force`).
 
 ## Uninstall
 
-**One-line uninstaller** (stops services, removes the system service if installed, npm-uninstalls the global package):
+**Recommended** (stops services, removes OS autostart if installed, `npm uninstall -g`; **keeps** `~/.nuwa-cli` by default):
 
 ```bash
-# Windows (PowerShell)
-irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.ps1 | iex
-
-# macOS / Linux
-curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.sh | bash
+npx @nuwax-ai/nuwa-cli@latest uninstall
 ```
 
-User data (`~/.nuwa-cli`: credentials / sessions / logs / workspaces) is **kept by default**. Purge it too:
+Also delete user data (credentials / sessions / logs / workspaces):
 
 ```bash
-# Windows
-$env:NUWACLI_PURGE='1'; irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.ps1 | iex
-# macOS / Linux
-curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.sh | NUWACLI_PURGE=1 bash
+npx @nuwax-ai/nuwa-cli@latest uninstall --purge --yes
 ```
 
-Or via npm: `npm uninstall -g @nuwax-ai/nuwa-cli` (stop services first with `nuwa-cli stop`).
+Automation: `npx -y @nuwax-ai/nuwa-cli@latest uninstall --yes`.
+
+> Distinct from `nuwa-cli service uninstall` (removes login autostart only, keeps the package).
 
 ---
 
@@ -105,6 +95,7 @@ nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>  # cloud tun
 | `nuwa-cli service` | OS-level autostart (LaunchAgent / systemd / Scheduled Task) |
 | `nuwa-cli update` | Upgrade the npm package (preferred; confirms before stopping services; `--yes` for CI) |
 | `nuwa-cli install` | First-time install wizard (usually via `npx @nuwax-ai/nuwa-cli@latest install`) |
+| `nuwa-cli uninstall` | Remove the global package (usually via `npx … uninstall`; keeps `~/.nuwa-cli` unless `--purge`) |
 | `nuwa-cli lang` | Show or set the UI language (`en` / `zh-CN` / `auto`) |
 
 ### Process management
@@ -256,26 +247,19 @@ See [`docs/serve-lifecycle.md`](docs/serve-lifecycle.md) for full lifecycle, aut
 
 ### 安装
 
-**推荐**（交互向导：选语言、按需停服务，再全局 npm 安装）：
+**推荐 · 新装**（交互向导：选语言、按需停服务、全局安装，再登录 / start 直到 Gateway 就绪）：
 
 ```bash
 npx @nuwax-ai/nuwa-cli@latest install
 ```
 
-自动化 / CI（非交互）：
+自动化 / CI（非交互；已登录则 start；未登录则只装包并提示收尾）：
 
 ```bash
 npx -y @nuwax-ai/nuwa-cli@latest install --yes
 ```
 
-**备选 · 裸 npm**（无向导：不选语言、不停服务）：
-
-```bash
-npm install -g @nuwax-ai/nuwa-cli --progress=true
-nuwa-cli doctor
-```
-
-**备选 · S3 一键安装**（国内可达镜像，自动配置 PATH）：
+**备选 · S3 一键**（国内可达镜像）。**未安装：** tarball + PATH，再静默 `install --yes --bootstrap`。**已安装：** `nuwa-cli update <version> --yes`（与日常升级同一内核，含已登录 restart）。同版本：跳过。
 
 ```bash
 # Windows (PowerShell)
@@ -285,34 +269,31 @@ irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from
 curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.sh | bash
 ```
 
-> npm 太慢？`NUWACLI_REGISTRY=https://registry.npmmirror.com`（bash）/ `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'`（PowerShell）。
+> npm 太慢？`NUWACLI_REGISTRY=https://registry.npmmirror.com`（bash）/ `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'`（PowerShell）。跳过 login/start：`NUWACLI_NO_START=1`。
+
+分流细节见 [`docs/install-upgrade-split.md`](docs/install-upgrade-split.md)。
 
 ### 升级
 
-请优先使用 **`nuwa-cli update`**（有服务在跑时交互确认是否停止；`--yes` 跳过确认；释放 Windows vendor `.exe` 锁；支持增量路径）。Windows 上**不要**在服务仍运行时裸跑 `npm i -g @nuwax-ai/nuwa-cli@…`——npm 会对被锁的 `nuwax-lanproxy.exe` / `nuwax-codex.exe` 报 `EBUSY`。若必须手动 npm：先 `nuwa-cli stop --all`，再安装。
+请优先使用 **`nuwa-cli update`**（有服务在跑时交互确认是否停止；`--yes` 跳过确认；释放 Windows vendor `.exe` 锁；增量路径；**已登录 → restart**）。Windows 上**不要**在服务仍运行时裸跑 `npm i -g @nuwax-ai/nuwa-cli@…`——npm 会对被锁的 `nuwax-lanproxy.exe` / `nuwax-codex.exe` 报 `EBUSY`。若必须手动 npm：先 `nuwa-cli stop --all`，再安装。已安装时 `npx … install` 会提示改用 `update`（仅 `--force` 覆盖）。
 
 ### 卸载
 
-**一键卸载**（停止服务、移除系统服务（若已安装）、npm 卸载全局包）：
+**推荐**（停服务、移除开机自启、`npm uninstall -g`；**默认保留** `~/.nuwa-cli`）：
 
 ```bash
-# Windows (PowerShell)
-irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.ps1 | iex
-
-# macOS / Linux
-curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.sh | bash
+npx @nuwax-ai/nuwa-cli@latest uninstall
 ```
 
-用户数据（`~/.nuwa-cli`：凭证 / 会话 / 日志 / 工作空间）**默认保留**。一并清除：
+同时删除用户数据（凭证 / 会话 / 日志 / 工作空间）：
 
 ```bash
-# Windows
-$env:NUWACLI_PURGE='1'; irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.ps1 | iex
-# macOS / Linux
-curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/uninstall-from-s3.sh | NUWACLI_PURGE=1 bash
+npx @nuwax-ai/nuwa-cli@latest uninstall --purge --yes
 ```
 
-或通过 npm：`npm uninstall -g @nuwax-ai/nuwa-cli`（先用 `nuwa-cli stop` 停服务）。
+自动化：`npx -y @nuwax-ai/nuwa-cli@latest uninstall --yes`。
+
+> 与 `nuwa-cli service uninstall` 不同（后者只卸登录自启，保留全局包）。
 
 ---
 
@@ -354,6 +335,7 @@ nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>  # 云端隧
 | `nuwa-cli service` | 系统级开机自启（LaunchAgent / systemd / 计划任务） |
 | `nuwa-cli update` | 升级 npm 包（推荐；有服务时确认停止；`--yes` 供 CI） |
 | `nuwa-cli install` | 首次安装向导（通常：`npx @nuwax-ai/nuwa-cli@latest install`） |
+| `nuwa-cli uninstall` | 卸载全局包（通常：`npx … uninstall`；默认保留 `~/.nuwa-cli`，`--purge` 才清数据） |
 | `nuwa-cli lang` | 查看或设置界面语言（`en` / `zh-CN` / `auto`） |
 
 #### 进程管理

@@ -1,6 +1,13 @@
 # nuwa-cli S3 installer (Windows / PowerShell).
 # Pulls from the public Nuwax bucket — no credentials, no aws-cli needed.
 #
+# Product split (align with `nuwa-cli install` / `nuwa-cli update`):
+#   - Not installed → download tarball → npm i -g → PATH →
+#       `nuwa-cli install --yes --bootstrap` (silent login/start)
+#   - Installed, different version → `nuwa-cli update <VERSION> --yes`
+#       (update kernel: stop/locks/incremental + logged-in restart)
+#   - Same version → skip (no restart, no bootstrap)
+#
 # One-liner:
 #   irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.ps1 | iex
 #
@@ -8,10 +15,11 @@
 # Pin a version:        $env:NUWACLI_VERSION='0.2.0'
 # Override npm registry: $env:NUWACLI_REGISTRY='https://registry.npmjs.org'
 # Self-signed endpoint: $env:NUWAX_S3_INSECURE='1'
+# Skip bootstrap start: $env:NUWACLI_NO_START='1'
 #
 # Messages are ASCII English only: Windows PowerShell 5.1 + irm|iex often
-# mojibakes UTF-8 CJK in the console. When we MUST print UTF-8 from nuwa-cli
-# (post-upgrade restart), use Invoke-NativeUtf8 so capture/decoding matches.
+# mojibakes UTF-8 CJK in the console. When we MUST print UTF-8 from nuwa-cli,
+# use Invoke-NativeUtf8 so capture/decoding matches.
 $ErrorActionPreference = "Stop"
 
 $endpoint = if ($env:NUWAX_S3_ENDPOINT) { $env:NUWAX_S3_ENDPOINT } else { "https://s3.nuwax.com:9443" }
@@ -20,6 +28,7 @@ $prefix   = if ($env:NUWAX_S3_PREFIX)   { $env:NUWAX_S3_PREFIX }   else { "agent
 $channel  = if ($env:NUWACLI_CHANNEL)   { $env:NUWACLI_CHANNEL }   else { "stable" }
 $pinned   = $env:NUWACLI_VERSION
 $insecure = ($env:NUWAX_S3_INSECURE -eq "1")
+$noStart  = ($env:NUWACLI_NO_START -eq "1")
 
 function Ok($m)   { Write-Host "[OK] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[!]  $m" -ForegroundColor Yellow }
@@ -48,10 +57,27 @@ function Invoke-NativeUtf8([scriptblock]$Script) {
 # picocolors 写入的 ANSI 在非 VT 控制台会显示成 [22m/[39m 残渣；剥离后再打印。
 function Format-CliCapture($Captured) {
     $text = ($Captured | Out-String)
-    # CSI ... m 与裸 [Nm 色码
     $text = [regex]::Replace($text, '\x1B\[[0-9;]*m', '')
     $text = [regex]::Replace($text, '\[(?:\d{1,3};)*\d{1,3}m', '')
     return $text.TrimEnd()
+}
+
+# Resolve absolute path to nuwa-cli.cmd for this session (PATH may lag User PATH).
+function Resolve-NuwaCli {
+    $cmd = Get-Command nuwa-cli -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) { return $cmd.Source }
+    $npmPrefix = (npm config get prefix 2>$null)
+    if ($npmPrefix) { $npmPrefix = $npmPrefix.Trim() }
+    if (-not $npmPrefix) { return $null }
+    foreach ($candidate in @(
+        (Join-Path $npmPrefix "nuwa-cli.cmd"),
+        (Join-Path $npmPrefix "nuwa-cli"),
+        (Join-Path $npmPrefix "bin\nuwa-cli.cmd"),
+        (Join-Path $npmPrefix "bin\nuwa-cli")
+    )) {
+        if (Test-Path $candidate) { return $candidate }
+    }
+    return $null
 }
 
 function Invoke-NpmWithProgress($NpmArgs, $StartPercent) {
@@ -93,15 +119,8 @@ function Invoke-NpmWithProgress($NpmArgs, $StartPercent) {
 
         $stdout = if (Test-Path $stdoutLog) { Get-Content $stdoutLog -Raw -ErrorAction SilentlyContinue } else { $null }
         $stderr = if (Test-Path $stderrLog) { Get-Content $stderrLog -Raw -ErrorAction SilentlyContinue } else { $null }
-        # PS 5.1: Get-Content -Raw on an empty file returns $null, not "". Calling
-        # .Trim() on $null throws "不能对 Null 值表达式调用方法" and masks real npm output.
         if ($null -eq $stdout) { $stdout = "" }
         if ($null -eq $stderr) { $stderr = "" }
-        # ExitCode can be empty/$null when the child PowerShell exits via
-        # `exit $LASTEXITCODE` and Windows npm.cmd doesn't propagate a code
-        # (npm itself already printed "added N packages" successfully). Treat
-        # falsy (null/empty/0) as non-failure; the Get-Command nuwa-cli check
-        # later in the script is the source of truth.
         if ($child.ExitCode -and $child.ExitCode -ne 0) {
             if ($stdout.Trim()) { Write-Host $stdout.TrimEnd() }
             if ($stderr.Trim()) { Write-Host $stderr.TrimEnd() -ForegroundColor Red }
@@ -119,8 +138,6 @@ function Invoke-NpmWithProgress($NpmArgs, $StartPercent) {
 
 $base = "$endpoint/$bucket/$prefix"
 
-# Public GET; if the endpoint uses a self-signed cert and the user didn't opt
-# into -k, retry ignoring the certificate. We never send credentials here.
 function Fetch($url, $dest) {
     $ProgressPreference = 'SilentlyContinue'
     $ok = $false
@@ -138,9 +155,6 @@ function Fetch($url, $dest) {
     }
 }
 
-# --- Upgrade detection (was nuwa-cli already installed before install?) ---
-$WasInstalled = [bool](Get-Command nuwa-cli -ErrorAction SilentlyContinue)
-
 # --- Node check ---
 Step 1 4 "Checking Node.js and resolving the release ..."
 $node = Get-Command node -ErrorAction SilentlyContinue
@@ -148,6 +162,10 @@ if (-not $node) { Fail "Node.js not found. Install Node.js 22+: https://nodejs.o
 $nodeMajor = [int](node -p "process.versions.node.split('.')[0]")
 if ($nodeMajor -lt 22) { Fail "Node.js too old ($(node -v); need 22+): https://nodejs.org/" }
 Ok "Node.js $(node -v)"
+
+# --- Detect whether nuwa-cli is already globally installed (not just visible on PATH) ---
+$nuwaBinPre = Resolve-NuwaCli
+$WasInstalled = [bool]$nuwaBinPre
 
 $tmpDir = Join-Path ([IO.Path]::GetTempPath()) ("nuwa-cli-s3-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
@@ -165,22 +183,58 @@ if ($pinned) {
     Ok "channel '$channel' -> $version"
 }
 
-# --- Skip if already at target version ---
-$SkipInstall = $false
+# --- Same version: skip entirely (no restart, no bootstrap) ---
 if ($WasInstalled) {
     try {
-        $installedVersion = (nuwa-cli --version 2>$null).Trim()
+        $installedVersion = (& $nuwaBinPre --version 2>$null).Trim()
         if ($installedVersion -eq $version) {
             Ok "nuwa-cli $version already installed; skipping."
-            $SkipInstall = $true
+            Write-Host "-> Prefer daily upgrades via: nuwa-cli update" -ForegroundColor Cyan
+            Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+            return
         }
     } catch {}
 }
 
-# --- Download tarball ---
-if (-not $SkipInstall) {
+# --- Upgrade path: already installed, different version → update kernel ---
+if ($WasInstalled) {
+    $nuwaBin = $nuwaBinPre
+    Step 2 2 "Already installed -> nuwa-cli update $version --yes ..."
+    Write-Host "-> Upgrade uses the update kernel (stop / Windows locks / incremental). Do not bare npm i -g." -ForegroundColor Cyan
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $updateOutput = Invoke-NativeUtf8 { & $nuwaBin update $version --yes 2>&1 }
+        $formatted = Format-CliCapture $updateOutput
+        if ($formatted) { Write-Host $formatted }
+        if ($LASTEXITCODE -ne 0) {
+            Fail "nuwa-cli update failed (exit $LASTEXITCODE). Retry: nuwa-cli update $version --yes"
+        }
+        Ok "Upgrade complete (update restarts Gateway when logged in)"
+        $credPath = Join-Path $env:USERPROFILE ".nuwa-cli\credentials.json"
+        $loggedIn = $false
+        if (Test-Path $credPath) {
+            try {
+                $cred = Get-Content $credPath -Raw | ConvertFrom-Json
+                if ($cred.configKey) { $loggedIn = $true }
+            } catch {}
+        }
+        # Logged-in restart is owned by update — do not call install --bootstrap.
+        if (-not $loggedIn -and -not $noStart) {
+            Write-Host "-> Not logged in: silent bootstrap hint (no auto start)..." -ForegroundColor Cyan
+            $bootOutput = Invoke-NativeUtf8 { & $nuwaBin install --yes --bootstrap 2>&1 }
+            $bootText = Format-CliCapture $bootOutput
+            if ($bootText) { Write-Host $bootText }
+        }
+    } finally {
+        $ErrorActionPreference = $prevEAP
+        Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    return
+}
+
+# --- New install: download tarball → npm i -g → PATH → install --bootstrap ---
 $pkgName = "@nuwax-ai/nuwa-cli"
-# @nuwax-ai/nuwa-cli → nuwax-ai-nuwa-cli (npm pack tarball naming)
 $pkgBase = ($pkgName -replace '^@','') -replace '/', '-'
 $tarball = "$pkgBase-$version.tgz"
 Step 2 4 "Downloading $tarball ..."
@@ -188,19 +242,7 @@ $tarballPath = Join-Path $tmpDir $tarball
 try { Fetch "$base/versions/$version/artifacts/$tarball" $tarballPath } catch { Fail "Tarball download failed: $base/versions/$version/artifacts/$tarball" }
 Ok "Download complete"
 
-# --- Stop full runtime before npm install (align with `nuwa-cli update`) ---
-# Gateway holds dist/cli.js; detached file-server / lanproxy hold binaries.
-# Only killing lanproxy leaves serve half-alive → post-upgrade restart 假成功。
-if ($WasInstalled) {
-    Write-Host "-> Stopping running nuwa-cli services before upgrade..." -ForegroundColor Cyan
-    $prevEapStop = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        & nuwa-cli stop --all 2>&1 | Out-Null
-    } catch {}
-    $ErrorActionPreference = $prevEapStop
-}
-# Release + verify vendor .exe locks (fail fast instead of opaque npm EBUSY).
+# Release vendor .exe locks if any leftover processes hold them (usually none on first install).
 $vendorImages = @("nuwax-codex.exe", "nuwax-lanproxy.exe")
 $stuck = @()
 for ($attempt = 1; $attempt -le 3; $attempt++) {
@@ -218,10 +260,9 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
     if ($stuck.Count -eq 0) { break }
 }
 if ($stuck.Count -gt 0) {
-    Fail "Cannot upgrade while $($stuck -join ', ') is still running (Windows locks vendor binaries for npm copyfile). Run: nuwa-cli stop --all ; taskkill /F /IM nuwax-lanproxy.exe ; taskkill /F /IM nuwax-codex.exe ; then retry. Prefer: nuwa-cli update"
+    Fail "Cannot install while $($stuck -join ', ') is still running. Run: taskkill /F /IM nuwax-lanproxy.exe ; taskkill /F /IM nuwax-codex.exe ; then retry."
 }
 
-# --- npm install -g <tarball> (deps resolved via npm registry) ---
 $registry = if ($env:NUWACLI_REGISTRY) {
     $env:NUWACLI_REGISTRY
 } else {
@@ -235,7 +276,7 @@ Write-Host "      Large platform packages are downloaded on first install. npm w
 try {
     $installElapsed = Invoke-NpmWithProgress $installArgs 55
 } catch {
-    Fail "npm install failed: $($_.Exception.Message). If you saw EBUSY / resource busy or locked, stop services first (nuwa-cli stop --all) or use nuwa-cli update. To retry against the official registry: `$env:NUWACLI_REGISTRY='https://registry.npmjs.org'; then re-run the installer"
+    Fail "npm install failed: $($_.Exception.Message). If you saw EBUSY / resource busy or locked, stop services first or use nuwa-cli update. To retry against the official registry: `$env:NUWACLI_REGISTRY='https://registry.npmjs.org'; then re-run the installer"
 }
 Ok "Dependencies installed in $([math]::Round($installElapsed.TotalSeconds, 1))s"
 
@@ -271,68 +312,37 @@ if ($all -contains $prefixNorm) {
     Warn "Reopen PowerShell so PATH changes take full effect."
 }
 
-# --- Verify ---
-$nuwa = Get-Command nuwa-cli -ErrorAction SilentlyContinue
-if ($nuwa) {
-    $ver = try { (nuwa-cli --version 2>$null).Trim() } catch { "" }
-    # When an install was actually attempted (not skipped), require the resulting
-    # version to match the target. Windows npm.cmd can exit 0 even when the install
-    # failed (e.g. mangled args), which would otherwise leave the OLD version active
-    # and print a false "Install succeeded".
-    if (-not $SkipInstall) {
-        if (-not $ver) {
-            Fail "Install verification failed: nuwa-cli is present but 'nuwa-cli --version' returned nothing. The npm install did not complete (Windows npm.cmd can swallow errors). Re-run the installer, or: npm i -g @nuwax-ai/nuwa-cli@$channel"
-        } elseif ($ver -ne $version) {
-            Fail "Install verification failed: expected nuwa-cli $version but found $ver. The npm install did not complete (Windows npm.cmd can swallow errors); the previous install is still active. Re-run the installer, or: npm i -g @nuwax-ai/nuwa-cli@$channel"
-        }
-    }
-    Ok "nuwa-cli ready: $ver"
-    Write-Host ""
-    Write-Host "Install succeeded. Run nuwa-cli -h for help." -ForegroundColor Green
-} else {
-    Warn "nuwa-cli is installed but not visible in this session. Reopen PowerShell and run: nuwa-cli -h"
+$nuwaBin = Resolve-NuwaCli
+if (-not $nuwaBin) {
+    Fail "nuwa-cli is installed but not visible in this session. Reopen PowerShell and run: nuwa-cli -h"
+}
+$ver = try { (& $nuwaBin --version 2>$null).Trim() } catch { "" }
+if (-not $ver) {
+    Fail "Install verification failed: nuwa-cli is present but --version returned nothing. Re-run the installer, or: npm i -g @nuwax-ai/nuwa-cli@$channel"
+} elseif ($ver -ne $version) {
+    Fail "Install verification failed: expected nuwa-cli $version but found $ver. Re-run the installer, or: npm i -g @nuwax-ai/nuwa-cli@$channel"
+}
+Ok "nuwa-cli ready: $ver"
+Write-Host ""
+Write-Host "Install succeeded." -ForegroundColor Green
+
+Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+
+if ($noStart) {
+    Write-Host "-> NUWACLI_NO_START=1: skipping login/start. Next: nuwa-cli login ; nuwa-cli start" -ForegroundColor Cyan
+    return
 }
 
-# --- Post-upgrade serve restart (logged in only) ---
-if ($WasInstalled) {
-    $credPath = Join-Path $env:USERPROFILE ".nuwa-cli\credentials.json"
-    $loggedIn = $false
-    if (Test-Path $credPath) {
-        try {
-            $cred = Get-Content $credPath -Raw | ConvertFrom-Json
-            if ($cred.configKey) { $loggedIn = $true }
-        } catch {}
+Write-Host "-> Continuing silent bootstrap: install --yes --bootstrap ..." -ForegroundColor Cyan
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    $bootOutput = Invoke-NativeUtf8 { & $nuwaBin install --yes --bootstrap 2>&1 }
+    $formatted = Format-CliCapture $bootOutput
+    if ($formatted) { Write-Host $formatted }
+    if ($LASTEXITCODE -ne 0) {
+        Warn "bootstrap did not finish (exit $LASTEXITCODE). If not logged in, run: nuwa-cli login ; nuwa-cli start"
     }
-    if ($loggedIn) {
-        Write-Host "Logged in: restarting nuwa-cli serve in background (post-upgrade)..." -ForegroundColor Cyan
-        # restart 现已等待 Gateway+/lanproxy 就绪；未就绪会 exit 1。务必打印输出，
-        # 勿再把「spawn 成功」当成「栈已就绪」。ErrorActionPreference=Continue 避免
-        # Node/DEP 写 stderr 时被 Stop 误判为脚本异常。
-        $prevEAP = $ErrorActionPreference
-        $ErrorActionPreference = 'Continue'
-        try {
-            $restartOutput = Invoke-NativeUtf8 { & nuwa-cli restart 2>&1 }
-            $formatted = Format-CliCapture $restartOutput
-            if ($formatted) { Write-Host $formatted }
-            if ($LASTEXITCODE -eq 0) {
-                Ok "nuwa-cli serve restarted (Gateway + lanproxy ready)"
-            } else {
-                Warn "serve auto-restart failed (exit $LASTEXITCODE). Run manually: nuwa-cli start"
-                Warn "Check log: $env:USERPROFILE\.nuwa-cli\logs\serve.$(Get-Date -Format 'yyyy-MM-dd').log"
-            }
-            # KeepAlive 提示（无自启时开机不会拉 Gateway）
-            $svcOut = Invoke-NativeUtf8 { & nuwa-cli service status 2>&1 }
-            $svcText = Format-CliCapture $svcOut
-            if ($svcText -match '未安装|not installed') {
-                Write-Host "Tip: login autostart (KeepAlive) is not installed. To start Gateway after reboot: nuwa-cli service install" -ForegroundColor Cyan
-            }
-        } catch {
-            Warn "serve auto-restart failed: $_. Run manually: nuwa-cli start"
-        } finally {
-            $ErrorActionPreference = $prevEAP
-        }
-    } else {
-        Write-Host "Not logged in: skipping serve auto-restart." -ForegroundColor Cyan
-    }
+} finally {
+    $ErrorActionPreference = $prevEAP
 }
-} # end if (-not $SkipInstall)

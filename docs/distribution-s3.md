@@ -2,6 +2,8 @@
 
 把 `nuwa-cli` 的 npm tarball 和安装器发布到 Nuwax 自有的 S3 兼容存储(MinIO,`s3.nuwax.com:9443`),让国内用户一行命令安装,不依赖 npm registry 登录、不踩 GitHub raw 的墙。
 
+产品分流（新装 vs 升级）见 [`install-upgrade-split.md`](install-upgrade-split.md)。
+
 ## 为什么用 S3
 
 - **国内可达**:`s3.nuwax.com:9443` 是自有 MinIO,无 GitHub raw / npm registry 的网络问题。
@@ -92,15 +94,21 @@ NUWAX_S3_NO_VERIFY_SSL=1
 
 ## 安装(用户侧)
 
-**日常推荐入口**（交互向导，选语言 / 停服务后再全局安装；文档默认不带 `-y`）：
+**日常推荐入口 · 新装**（交互向导，选语言 / 停服务 / 装包 / 登录 / start；文档默认不带 `-y`）：
 
 ```bash
 npx @nuwax-ai/nuwa-cli@latest install
 ```
 
-自动化：`npx -y @nuwax-ai/nuwa-cli@latest install --yes`。已安装后升级请用 `nuwa-cli update`（增量路径 + 停服务确认）。
+自动化：`npx -y @nuwax-ai/nuwa-cli@latest install --yes`。已安装后升级请用 `nuwa-cli update`（增量路径 + 停服务确认 + 已登录 restart）。
 
-**S3 一键命令**适合国内网络 / 无 npm 登录场景（公开读,无需凭证、无需 aws-cli）——与 npx 向导分工：S3 = 镜像可达的 bootstrap；npx install = 交互引导 + 与 registry 对齐的全局包。
+**S3 一键**适合国内网络 / 无 npm 登录场景（公开读,无需凭证、无需 aws-cli）。按是否已安装分流：
+
+| 本机状态 | S3 脚本行为 |
+|----------|-------------|
+| 未安装 | 下 tarball → `npm i -g` → 配 PATH → `nuwa-cli install --yes --bootstrap` |
+| 已装、版本不同 | `nuwa-cli update <VERSION> --yes`（update 内核；已登录 restart） |
+| 同版本 | 跳过（不 restart、不 bootstrap） |
 
 ```bash
 # Windows (PowerShell)
@@ -110,22 +118,21 @@ irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from
 curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.sh | bash
 ```
 
-安装器逻辑:读 `channels/<channel>.json` → 取 version → 下载 `versions/<v>/artifacts/<tarball>` → `npm install -g <tarball>`(依赖仍走 npm registry,可用 `NUWACLI_REGISTRY` 镜像)→ 配 PATH → 校验 `nuwa-cli`。
-
 可选环境变量:
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `NUWACLI_CHANNEL` | `beta` | 安装的 channel |
+| `NUWACLI_CHANNEL` | `stable` | 安装的 channel |
 | `NUWACLI_VERSION` | — | 直接指定版本,跳过 channel 解析 |
-| `NUWACLI_REGISTRY` | — | 透传给 `npm install --registry`(国内用 `https://registry.npmmirror.com`) |
+| `NUWACLI_REGISTRY` | npmmirror（S3 脚本） | 透传给 `npm install --registry` |
 | `NUWAX_S3_INSECURE` | `0` | 设 `1` 跳过证书校验(自签 MinIO);不设时也会在证书失败后自动降级 `-k` 重试 |
+| `NUWACLI_NO_START` | `0` | 设 `1` 时新装跳过 `install --yes --bootstrap` |
 
 ### 升级场景的 serve 处理
 
-升级场景(安装前 `nuwa-cli` 已存在):安装器会先 `nuwa-cli stop --all`，并在 Windows 上 taskkill / 校验 `nuwax-codex.exe`、`nuwax-lanproxy.exe` 已退出（仍占用则直接失败并提示改用 `nuwa-cli update`），再跑 npm，避免 EBUSY。安装成功后,若已登录(`~/.nuwa-cli/credentials.json` 的 `configKey` 存在),安装器会静默后台 restart `nuwa-cli serve --daemon`,使升级后的 serve 自动用上新版本;未登录或首次安装都跳过 restart,仅完成安装与 PATH 配置。`nuwa-cli update` 走 npm 升级路径时行为一致(已登录静默 restart,未登录打印提示并跳过)。
+升级走 **`nuwa-cli update`**（S3 已装分支亦调用它）：先停服并释放 Windows vendor `.exe` 锁，再增量或全量安装；成功后若已登录（`~/.nuwa-cli/credentials.json` 的 `configKey`）则 **`restartServeIfLoggedIn`**。未登录则跳过 restart。新装路径用 `start` / bootstrap，不与 upgrade restart 叠用。
 
-**Windows 注意：** 服务运行中请勿裸跑 `npm i -g @nuwax-ai/nuwa-cli@…`；请用 `nuwa-cli update` 或本安装脚本。
+**Windows 注意：** 服务运行中请勿裸跑 `npm i -g @nuwax-ai/nuwa-cli@…`；请用 `nuwa-cli update` 或本安装脚本的升级分支。二次调用请用本会话 PATH 或 `nuwa-cli.cmd` 绝对路径。
 
 ## channel / latest 指针
 
@@ -141,4 +148,10 @@ curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/insta
 
 ## 与 npm registry 的关系
 
-S3 是**主分发渠道**(国内友好);npm registry(`@nuwax-ai/nuwa-cli@beta`)与 `scripts/install.sh`/`install.ps1`(走 npm registry)是**备选**。两者装出的产物一致(同一个 tarball),只是来源不同。
+- **产品新装入口**:`npx … install`（registry）。
+- **产品卸载入口**:`npx … uninstall`（默认保留 `~/.nuwa-cli`；`--purge` 才清数据）。S3 `uninstall-from-s3.*` 仅作兼容。
+- **国内镜像新装 / 升级进线**:S3 一键脚本（按是否已装分流到 tarball 或 `update`）。
+- **日常升级**:`nuwa-cli update`（registry；与 S3 升级共用内核）。
+- **legacy**:`scripts/install.sh` / `install.ps1`（直连 registry + PATH）不作为产品入口宣传。
+
+装出的全局包一致；差别只在进线与是否走交互向导。

@@ -2,8 +2,11 @@
  * First-time install wizard (`nuwa-cli install`).
  *
  * Typical entry: `npx @nuwax-ai/nuwa-cli@latest install`
- * Backend is always `npm install -g @nuwax-ai/nuwa-cli@<tag>` (no yarn/pnpm/brew).
- * Upgrade for already-installed users stays on `nuwa-cli update`.
+ * - New install: npm install -g, then login / start (bootstrap).
+ * - Already installed: prefer `nuwa-cli update` (stop/locks/incremental +
+ *   logged-in restart). `--force` overlays via `updateCommand(..., { force })`.
+ * - `--bootstrap`: skip packaging; only run login / start (S3 new-install tail).
+ * Upgrade for everyday users stays on `nuwa-cli update`.
  */
 import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -40,9 +43,13 @@ import {
   buildInstallArgs,
   buildPackageManagerEnv,
   resolvePackageManagerInvocation,
+  updateCommand,
   type CommandResult,
   type CommandRunner,
 } from "./update.js";
+import { readCredentials } from "../core/auth/credentials.js";
+import { loginCommand } from "./login.js";
+import { startCommand } from "./start.js";
 
 export interface InstallOptions {
   /** Skip confirmations; stop services if any; skip language select unless --lang. */
@@ -54,6 +61,46 @@ export interface InstallOptions {
   registry?: string;
   /** Reinstall even when the package is already globally installed. */
   force?: boolean;
+  /**
+   * Only install the global package; do not continue into login / start.
+   * Default false — wizard runs through until Gateway is ready.
+   * Wins over `--bootstrap` when both are set.
+   */
+  noStart?: boolean;
+  /**
+   * Skip npm install -g; assume the package is already on PATH and only run
+   * login / start. Used by S3 new-install scripts after tarball install.
+   */
+  bootstrap?: boolean;
+}
+
+/**
+ * Injectable hooks for post-install bootstrap (unit tests). Production uses
+ * real `loginCommand` / `startCommand` / `readCredentials`.
+ */
+export interface InstallBootstrapDeps {
+  readCredentials: typeof readCredentials;
+  loginCommand: typeof loginCommand;
+  startCommand: typeof startCommand;
+}
+
+/** Injectable update entry for --force overlay (unit tests). */
+export type InstallUpdateFn = typeof updateCommand;
+
+const defaultBootstrapDeps: InstallBootstrapDeps = {
+  readCredentials,
+  loginCommand,
+  startCommand,
+};
+
+function formatLoginAccountLabel(creds: {
+  username?: string;
+  computerName?: string;
+  domain?: string;
+}): string {
+  const who = creds.username || creds.computerName || "?";
+  const where = creds.domain || "?";
+  return `${who} @ ${where}`;
 }
 
 /** Allowed npm dist-tags for --tag (plus any semver). */
@@ -250,12 +297,101 @@ async function confirmStopIfNeeded(options: InstallOptions): Promise<boolean> {
 }
 
 /**
+ * After a successful global install: login (or skip if already logged in) then
+ * `start` until Gateway is ready. Kept separate so tests can inject deps.
+ *
+ * Upgrade paths must NOT call this after `restartServeIfLoggedIn` — start
+ * reuses a healthy Gateway stack and does not --force-kill a just-restarted
+ * instance, but double invocation is still wasted work.
+ */
+export async function bootstrapAfterInstall(
+  options: InstallOptions,
+  deps: InstallBootstrapDeps = defaultBootstrapDeps,
+): Promise<void> {
+  const creds = deps.readCredentials();
+  const loggedIn = Boolean(creds.configKey);
+  const interactive = isInteractive() && !isCI() && !options.yes;
+
+  if (loggedIn) {
+    // Ask whether to skip re-login; --yes / CI / non-TTY default to skip.
+    let skipLogin = true;
+    if (interactive) {
+      const skip = await clack.confirm({
+        message: t("install.skipLoginConfirm", {
+          account: formatLoginAccountLabel(creds),
+        }),
+        initialValue: true,
+      });
+      if (clack.isCancel(skip)) {
+        printCancelled();
+        process.exitCode = CANCEL_EXIT_CODE;
+        return;
+      }
+      skipLogin = Boolean(skip);
+    }
+    if (!skipLogin) {
+      console.log(t("install.loggingIn"));
+      await deps.loginCommand({});
+      if (!deps.readCredentials().configKey) {
+        console.log(warn(t("install.loginCancelledHint")));
+        process.exitCode = process.exitCode || 1;
+        return;
+      }
+    }
+  } else if (!interactive) {
+    // Non-interactive / --yes cannot collect credentials; leave package
+    // installed and tell the operator how to finish.
+    console.log(warn(t("install.loginRequiredHint")));
+    process.exitCode = process.exitCode || 1;
+    return;
+  } else {
+    // Interactive + not logged in: startCommand will prompt login itself.
+    // We still call start below so login + gateway stay one path.
+  }
+
+  console.log(t("install.starting"));
+  await deps.startCommand({});
+  if (process.exitCode && process.exitCode !== 0) {
+    console.log(warn(t("install.startFailedHint")));
+    return;
+  }
+  if (!deps.readCredentials().configKey) {
+    // start may have returned early after cancelled login without setting exit.
+    console.log(warn(t("install.loginCancelledHint")));
+    process.exitCode = process.exitCode || 1;
+    return;
+  }
+  console.log(success(t("install.ready")));
+}
+
+async function finishAfterPackage(
+  options: InstallOptions,
+  bootstrapDeps?: InstallBootstrapDeps,
+): Promise<void> {
+  if (options.noStart) {
+    console.log(t("install.nextSteps"));
+    return;
+  }
+
+  // Under Vitest, skip real login/start unless the test injects deps.
+  if (process.env.VITEST && !bootstrapDeps) {
+    console.log(t("install.nextSteps"));
+    return;
+  }
+
+  await bootstrapAfterInstall(options, bootstrapDeps ?? defaultBootstrapDeps);
+}
+
+/**
  * First-time install wizard. Injectable `runner` for unit tests (npm list /
  * install). Under VITEST, real npm install is skipped unless a runner is given.
+ * Optional `bootstrapDeps` / `updateFn` inject login/start/update for tests.
  */
 export async function installCommand(
   options: InstallOptions = {},
   runnerArg?: CommandRunner | unknown,
+  bootstrapDeps?: InstallBootstrapDeps,
+  updateFn: InstallUpdateFn = updateCommand,
 ): Promise<void> {
   try {
     const runner: CommandRunner =
@@ -268,6 +404,18 @@ export async function installCommand(
     // “already installed → prefer update” exits.
     const langToPersist = await resolveLangForInstall(options);
     if (langToPersist === null) return;
+
+    // --bootstrap: package already on PATH (e.g. S3 tarball just installed).
+    // Skip "already installed?" / npm i -g; only run login / start.
+    if (options.bootstrap) {
+      if (langToPersist) {
+        writeLangConfig(langToPersist);
+        console.log(t("install.langSet", { lang: langToPersist }));
+      }
+      console.log(t("install.bootstrapOnly"));
+      await finishAfterPackage(options, bootstrapDeps);
+      return;
+    }
 
     const command = resolveNpmCommand();
     if (!command) {
@@ -303,6 +451,37 @@ export async function installCommand(
         process.exitCode = 0;
         return;
       }
+    }
+
+    // Overlay reinstall: reuse update kernel (stop/locks/incremental|full +
+    // logged-in restart). Then bootstrap for login/start when needed.
+    // update already restarts when logged in — startCommand will reuse the
+    // healthy stack rather than force-killing it.
+    if (already && options.force) {
+      if (langToPersist) {
+        writeLangConfig(langToPersist);
+        console.log(t("install.langSet", { lang: langToPersist }));
+      }
+      console.log(t("install.forceViaUpdate"));
+      const skipRealUpdate =
+        Boolean(process.env.VITEST) &&
+        typeof runnerArg !== "function" &&
+        updateFn === updateCommand;
+      if (!skipRealUpdate) {
+        await updateFn(
+          tag,
+          {
+            force: true,
+            yes: options.yes === true || !isInteractive() || isCI(),
+            registry: options.registry,
+          },
+          typeof runnerArg === "function" ? runner : undefined,
+        );
+        if (process.exitCode && process.exitCode !== 0) return;
+      }
+      console.log(success(t("install.done")));
+      await finishAfterPackage(options, bootstrapDeps);
+      return;
     }
 
     if (!(await confirmStopIfNeeded(options))) return;
@@ -349,7 +528,7 @@ export async function installCommand(
     }
 
     console.log(success(t("install.done")));
-    console.log(t("install.nextSteps"));
+    await finishAfterPackage(options, bootstrapDeps);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exitCode = 1;

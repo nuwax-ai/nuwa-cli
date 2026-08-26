@@ -5,6 +5,7 @@ import { registerCloudCommands } from "./registerCloudCommands.js";
 import { registerContextCommands } from "./registerContextCommands.js";
 import { registerServiceCommands } from "./registerServiceCommands.js";
 import { registerInstallCommand } from "./registerInstallCommand.js";
+import { registerUninstallCommand } from "./registerUninstallCommand.js";
 import { registerUpdateCommand } from "./registerUpdateCommand.js";
 import { registerUiCommand } from "./registerUiCommand.js";
 import { registerLangCommand } from "../commands/lang.js";
@@ -24,6 +25,7 @@ export function createProgram(): Command {
   registerServiceCommands(program);
   registerUiCommand(program);
   registerInstallCommand(program);
+  registerUninstallCommand(program);
   registerUpdateCommand(program);
   registerLangCommand(program);
 

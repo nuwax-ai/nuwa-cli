@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.8-beta.0] - 2026-08-26
+
+### Added
+
+- **`nuwa-cli uninstall`：** 推荐 `npx @nuwax-ai/nuwa-cli@latest uninstall`；停服 / 卸自启 / `npm uninstall -g`；**默认保留** `~/.nuwa-cli`；`--purge` 才清用户数据。与 `service uninstall` 区分。
+
+### Changed
+
+- **新装 / 升级分流收口：** `install` 负责新装（装包 + 登录/start）；日常升级唯一入口 `update`（含已登录 restart）。S3 一键：未装 → tarball + `install --yes --bootstrap`；已装 → `update <version> --yes`；同版本跳过。`--force` 经 update 内核覆盖；导出 `restartServeIfLoggedIn`。详见 [`docs/install-upgrade-split.md`](docs/install-upgrade-split.md)。
+- 文档卸载入口改为 npx `uninstall`（S3 `uninstall-from-s3.*` 仍保留为兼容脚本，不再作为产品主推）。
+
 ## [0.2.7] - 2026-08-26
 
 Stable release promoting `0.2.7-beta.0`. Distributed as npm `latest` and S3 `stable`.

@@ -116,7 +116,12 @@ async function runInstallWithProgress(
  * 在 Windows 上能可靠存活。restart 在 launchDaemon 后即 return 退出，故 await 有界，
  * 还能据退出码确认是否真的拉起。
  */
-async function restartServeIfLoggedIn(): Promise<void> {
+/**
+ * Shared post-upgrade / post-overlay restart. Exported so install --force and
+ * docs can point at one implementation; S3 upgrade path calls `update` which
+ * invokes this — scripts must not duplicate a parallel restart.
+ */
+export async function restartServeIfLoggedIn(): Promise<void> {
   try {
     const { readCredentials } = await import("../core/auth/credentials.js");
     if (!readCredentials().configKey) {

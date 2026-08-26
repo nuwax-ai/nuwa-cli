@@ -37,6 +37,7 @@ describe("createProgram", () => {
       "service",
       "console",
       "install",
+      "uninstall",
       "update",
       "lang",
     ]);
@@ -50,9 +51,17 @@ describe("createProgram", () => {
         "--tag",
         "--registry",
         "--force",
+        "--no-start",
+        "--bootstrap",
       ]),
     );
     expect(optionLongNames("update")).toContain("--yes");
+  });
+
+  it("registers uninstall --purge / --yes", () => {
+    expect(optionLongNames("uninstall")).toEqual(
+      expect.arrayContaining(["--purge", "--yes", "--registry"]),
+    );
   });
 
   it("does not expose legacy command aliases", () => {

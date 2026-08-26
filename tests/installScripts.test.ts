@@ -77,19 +77,47 @@ describe("install script progress", () => {
   });
 
   it("releases Windows vendor exe locks before npm install and null-safes log Trim", () => {
-    for (const name of ["install.ps1", "install-from-s3.ps1"] as const) {
-      const ps1 = readScript(name);
-      expect(ps1).toContain("nuwax-codex.exe");
-      expect(ps1).toContain("nuwax-lanproxy.exe");
-      expect(ps1).toContain("nuwa-cli stop --all");
-      expect(ps1).toContain("Get-Process -Name $procName");
-      expect(ps1).toContain("Prefer: nuwa-cli update");
-      expect(ps1).toContain('if ($null -eq $stdout) { $stdout = "" }');
-      expect(ps1).toContain('if ($null -eq $stderr) { $stderr = "" }');
-    }
+    const ps1 = readScript("install.ps1");
+    expect(ps1).toContain("nuwax-codex.exe");
+    expect(ps1).toContain("nuwax-lanproxy.exe");
+    expect(ps1).toContain("nuwa-cli stop --all");
+    expect(ps1).toContain("Get-Process -Name $procName");
+    expect(ps1).toContain("Prefer: nuwa-cli update");
+    expect(ps1).toContain('if ($null -eq $stdout) { $stdout = "" }');
+    expect(ps1).toContain('if ($null -eq $stderr) { $stderr = "" }');
+
+    const s3ps1 = readScript("install-from-s3.ps1");
+    expect(s3ps1).toContain("nuwax-codex.exe");
+    expect(s3ps1).toContain("nuwax-lanproxy.exe");
+    expect(s3ps1).toContain("Get-Process -Name $procName");
+    expect(s3ps1).toContain('if ($null -eq $stdout) { $stdout = "" }');
+    expect(s3ps1).toContain('if ($null -eq $stderr) { $stderr = "" }');
+
     const s3sh = readScript("install-from-s3.sh");
     expect(s3sh).toContain("taskkill //F //IM nuwax-codex.exe");
-    expect(s3sh).toContain("nuwa-cli update");
     expect(s3sh).toContain('IMAGENAME eq ${image}');
+  });
+
+  it("S3 scripts split new-install vs upgrade: tarball+bootstrap vs update VERSION --yes", () => {
+    const sh = readScript("install-from-s3.sh");
+    expect(sh).toContain("install --yes --bootstrap");
+    expect(sh).toContain('update "$VERSION" --yes');
+    expect(sh).toContain("NUWACLI_NO_START");
+    expect(sh).toContain('NUWA_BIN_PRE="$(resolve_nuwa_cli || true)"');
+    expect(sh).toContain('INSTALLED_VERSION="$("$NUWA_BIN_PRE" --version');
+    expect(sh).not.toMatch(/nuwa-cli restart/);
+
+    const ps1 = readScript("install-from-s3.ps1");
+    expect(ps1).toContain("install --yes --bootstrap");
+    expect(ps1).toContain("update $version --yes");
+    expect(ps1).toContain("NUWACLI_NO_START");
+    expect(ps1).toContain("Resolve-NuwaCli");
+    expect(ps1).toContain("$nuwaBinPre = Resolve-NuwaCli");
+    expect(ps1).toContain("(& $nuwaBinPre --version 2>$null).Trim()");
+    expect(ps1).toContain("$bootText = Format-CliCapture $bootOutput");
+    expect(ps1).not.toMatch(/& nuwa-cli restart/);
+    expect(ps1).not.toContain(
+      'Invoke-NativeUtf8 { & $nuwaBin install --yes --bootstrap 2>&1 } | Out-Null',
+    );
   });
 });

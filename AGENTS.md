@@ -7,8 +7,10 @@ Agent guidance for `@nuwax-ai/nuwa-cli` (headless multi-engine ACP CLI: Gateway 
 - **Runtime:** Node.js ≥ 22, TypeScript ESM, Vitest.
 - **Package:** `@nuwax-ai/nuwa-cli`. npm dist-tags: `latest` (stable), `beta` (prerelease). S3 channel name `stable` ≡ npm `latest` (alias in `update` / `install --tag`).
 - **Install backend:** global `npm install -g` only (no yarn / pnpm / brew installers in product paths).
-- **Top-level `install`** = first-time product wizard (`npx … install`). Distinct from **`service install`** (OS autostart).
-- **Upgrade:** `nuwa-cli update` (incremental path, stop-before-overlay). Do not reinvent update logic inside the install wizard.
+- **Top-level `install`** = first-time product wizard (`npx … install` → package + login/start). Distinct from **`service install`** (OS autostart).
+- **Top-level `uninstall`** = remove global package (`npx … uninstall`). Keeps `~/.nuwa-cli` by default; `--purge` deletes user data. Distinct from **`service uninstall`**.
+- **Upgrade:** `nuwa-cli update` only (incremental, stop-before-overlay, logged-in restart). S3 scripts: not installed → tarball + `install --yes --bootstrap`; already installed → `update <version> --yes`. See [`docs/install-upgrade-split.md`](docs/install-upgrade-split.md).
+- **Do not** reinvent update stop/lock/restart logic inside parallel S3 overlay paths.
 - **ACP protocol strings stay English** (clients/engines). Human terminal UI uses i18n (`en` + `zh-CN`).
 
 ## Repo map
@@ -40,7 +42,7 @@ npm run release:beta          # requires clean tree + x.y.z-beta.n
 npm run release:stable        # requires clean tree + x.y.z; npm --tag latest
 ```
 
-Local docs: [`docs/local-debugging.md`](docs/local-debugging.md), [`docs/distribution-s3.md`](docs/distribution-s3.md), [`docs/i18n.md`](docs/i18n.md).
+Local docs: [`docs/local-debugging.md`](docs/local-debugging.md), [`docs/distribution-s3.md`](docs/distribution-s3.md), [`docs/install-upgrade-split.md`](docs/install-upgrade-split.md), [`docs/i18n.md`](docs/i18n.md).
 
 ## Coding rules
 
@@ -48,7 +50,7 @@ Local docs: [`docs/local-debugging.md`](docs/local-debugging.md), [`docs/distrib
 2. **i18n:** every new user-facing string → `en.ts` **and** `zh-CN.ts` (same keys). ACP / protocol payloads: English only.
 3. **Windows upgrades:** never recommend bare `npm i -g` while Gateway/tunnels run; prefer `nuwa-cli update` / stop-before-install (`upgradeStop.ts`). Vendor locks: `nuwax-lanproxy.exe`, `nuwax-codex.exe`.
 4. **Tests:** prefer Vitest with injectable runners / mocks; `stopRuntimeProcessesForUpdate` is a no-op under `VITEST`.
-5. **Docs / site:** product install entry is `npx @nuwax-ai/nuwa-cli@latest install` (no `-y` for humans). Automation: `npx -y … install --yes`. Upgrade: `nuwa-cli update`.
+5. **Docs / site:** product install entry is `npx @nuwax-ai/nuwa-cli@latest install` (no `-y` for humans). Automation: `npx -y … install --yes`. Upgrade: `nuwa-cli update`. S3 = mirror entry with the same new/upgrade split.
 6. **Scope:** smallest change that solves the task. Don’t expand into unrelated refactors or extra markdown unless asked.
 7. **Commits:** only when the user asks. No `Co-authored-by` trailers. Prefer clear Chinese or conventional messages consistent with recent history.
 8. **Release:** worktree must be clean. Beta first (`publishConfig.tag` stays `beta`); stable uses `release:stable` (`--tag latest --ignore-scripts`). Do not invent a npm `stable` dist-tag.

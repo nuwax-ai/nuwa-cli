@@ -5,6 +5,9 @@ import { t } from "../util/i18n/index.js";
 /**
  * Top-level `install` = first-time product install wizard (npx entry).
  * Distinct from `service install` (OS autostart / keep-alive).
+ *
+ * Product split: new install → this command; upgrade → `nuwa-cli update`.
+ * S3 scripts call `install --yes --bootstrap` after a fresh tarball install.
  */
 export function registerInstallCommand(program: Command): void {
   program
@@ -15,6 +18,20 @@ export function registerInstallCommand(program: Command): void {
     .option("--tag <tag>", t("cli.cmd.install.opt.tag"))
     .option("--registry <url>", t("cli.cmd.install.opt.registry"))
     .option("--force", t("cli.cmd.install.opt.force"))
+    .option("--no-start", t("cli.cmd.install.opt.noStart"))
+    .option("--bootstrap", t("cli.cmd.install.opt.bootstrap"))
     .addHelpText("after", t("cli.cmd.install.help"))
-    .action((options) => installCommand(options));
+    .action((options) =>
+      installCommand({
+        yes: options.yes,
+        lang: options.lang,
+        tag: options.tag,
+        registry: options.registry,
+        force: options.force,
+        // commander maps --no-start → start:false; normalize to noStart.
+        // --no-start wins over --bootstrap (package-only, no login/start).
+        noStart: options.start === false,
+        bootstrap: options.bootstrap === true,
+      }),
+    );
 }

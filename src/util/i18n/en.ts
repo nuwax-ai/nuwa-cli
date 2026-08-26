@@ -229,17 +229,30 @@ export const en = {
   "cli.cmd.update.help":
     "\nExamples:\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update stable\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n  nuwa-cli update --yes\n\nNotes:\n  - update uses npm to upgrade the global CLI package; it does not modify ~/.nuwa-cli login data.\n  - Default channel follows the installed build: stable builds → latest, pre-releases → beta. Pass an explicit version or dist-tag to override.\n  - Alias: `stable` maps to the npm `latest` dist-tag (S3 uses the name stable; npm does not publish a `stable` tag).\n  - When Gateway/Console/tunnels are running, an interactive TTY asks before stopping them; `--yes` / CI / non-TTY stop without asking.\n  - Windows: bare `npm i -g` while services are running often hits EBUSY on locked nuwax-lanproxy.exe / nuwax-codex.exe. Use this command (it stops services and releases locks); do not overlay with npm while Gateway is up.\n  - First-time install: `npx @nuwax-ai/nuwa-cli@latest install` (see `install --help`).",
   "cli.cmd.install.desc":
-    "First-time install wizard: pick language, stop running services if needed, then npm install -g",
+    "First-time install wizard: pick language, install globally, then login and start Gateway until ready",
   "cli.cmd.install.opt.yes":
-    "Non-interactive: skip confirms; stop running services automatically; skip language select unless --lang (does not force reinstall — use --force)",
+    "Non-interactive: skip confirms; stop running services automatically; skip language select unless --lang (does not force reinstall — use --force). If already logged in, skips re-login and starts; if not logged in, installs the package only and prints how to finish.",
   "cli.cmd.install.opt.lang": "UI language to persist (en | zh-CN)",
   "cli.cmd.install.opt.tag":
     "npm dist-tag or semver (default: latest for stable builds, beta for pre-releases; `stable` aliases to latest)",
   "cli.cmd.install.opt.registry": "Specify the npm registry",
   "cli.cmd.install.opt.force":
-    "Reinstall even when @nuwax-ai/nuwa-cli is already globally installed",
+    "Reinstall even when @nuwax-ai/nuwa-cli is already globally installed (uses update --force internally)",
+  "cli.cmd.install.opt.noStart":
+    "Only install the global package; do not continue into login / start",
+  "cli.cmd.install.opt.bootstrap":
+    "Skip npm install -g; assume the package is already on PATH and only run login / start (S3 new-install tail)",
   "cli.cmd.install.help":
-    "\nExamples:\n  npx @nuwax-ai/nuwa-cli@latest install\n  npx -y @nuwax-ai/nuwa-cli@latest install --yes\n  npx @nuwax-ai/nuwa-cli@latest install --lang zh-CN\n  npx @nuwax-ai/nuwa-cli@beta install --tag beta\n  npx @nuwax-ai/nuwa-cli@latest install --force --yes\n\nNotes:\n  - Preferred first-time entry (docs omit `-y` so humans get the interactive wizard).\n  - Always installs via `npm install -g @nuwax-ai/nuwa-cli@<tag>`.\n  - `--tag stable` is accepted as an alias for npm `latest`.\n  - If already installed globally, prefers `nuwa-cli update`; use `--force` to overlay-reinstall (interactive can also confirm).\n  - `--yes` skips prompts only — it does not imply `--force`.\n  - Automation: `npx -y @nuwax-ai/nuwa-cli@latest install --yes`.",
+    "\nExamples:\n  npx @nuwax-ai/nuwa-cli@latest install\n  npx -y @nuwax-ai/nuwa-cli@latest install --yes\n  npx @nuwax-ai/nuwa-cli@latest install --lang zh-CN\n  npx @nuwax-ai/nuwa-cli@beta install --tag beta\n  npx @nuwax-ai/nuwa-cli@latest install --force --yes\n  npx @nuwax-ai/nuwa-cli@latest install --no-start\n  nuwa-cli install --yes --bootstrap\n\nNotes:\n  - Preferred first-time entry (docs omit `-y` so humans get the interactive wizard).\n  - New install: `npm install -g` then login + `start` until Gateway is ready.\n  - Already installed: prefer `nuwa-cli update` (keeps stop/locks/incremental + logged-in restart). Use `--force` only to overlay-reinstall via the update kernel.\n  - If already logged in, asks whether to skip login (default: skip). `--yes` skips re-login automatically.\n  - `--tag stable` aliases to npm `latest`.\n  - `--yes` skips prompts only — it does not imply `--force`.\n  - `--bootstrap` skips packaging (for S3 after tarball install). `--no-start` installs the package only.\n  - Automation: `npx -y @nuwax-ai/nuwa-cli@latest install --yes` (full start requires prior login).",
+  "cli.cmd.uninstall.desc":
+    "Uninstall the global nuwa-cli package (keeps ~/.nuwa-cli login data by default)",
+  "cli.cmd.uninstall.opt.purge":
+    "Also delete ~/.nuwa-cli (credentials, sessions, logs, workspaces)",
+  "cli.cmd.uninstall.opt.yes":
+    "Skip the interactive confirmation (CI / Agent)",
+  "cli.cmd.uninstall.opt.registry": "Specify the npm registry",
+  "cli.cmd.uninstall.help":
+    "\nExamples:\n  npx @nuwax-ai/nuwa-cli@latest uninstall\n  npx -y @nuwax-ai/nuwa-cli@latest uninstall --yes\n  npx @nuwax-ai/nuwa-cli@latest uninstall --purge --yes\n  nuwa-cli uninstall\n\nNotes:\n  - Preferred entry is npx (fresh copy; safer than self-removing a running global install, especially on Windows).\n  - Stops Gateway/Console/tunnels, removes OS autostart (`service uninstall`), then `npm uninstall -g`.\n  - Distinct from `nuwa-cli service uninstall` (autostart only).\n  - User data under ~/.nuwa-cli is KEPT by default. Pass `--purge` to delete it.\n  - `--yes` skips the confirmation prompt only.",
   "cli.cmd.console.desc":
     "Start the local Web Console: view/resume/create sessions and chat directly (foreground single-instance only)",
   // —— install wizard ——
@@ -266,7 +279,49 @@ export const en = {
   "install.failed": "npm install failed.",
   "install.done": "Installation complete.",
   "install.nextSteps":
-    "Next steps:\n  nuwa-cli doctor\n  nuwa-cli login\n  nuwa-cli start",
+    "Next steps:\n  nuwa-cli login\n  nuwa-cli start",
+  "install.skipLoginConfirm":
+    "Already logged in as {account}. Skip login and start Gateway?",
+  "install.loggingIn": "Continuing to Nuwax login...",
+  "install.loginRequiredHint":
+    "Package installed. Not logged in and this run is non-interactive — finish with:\n  nuwa-cli login\n  nuwa-cli start",
+  "install.loginCancelledHint":
+    "Login was cancelled. Package is installed; finish with `nuwa-cli login` then `nuwa-cli start`.",
+  "install.starting": "Starting Gateway...",
+  "install.startFailedHint":
+    "Package installed, but Gateway did not become ready. Check `nuwa-cli status` or run `nuwa-cli start`.",
+  "install.ready": "nuwa-cli is installed and Gateway is ready.",
+  "install.bootstrapOnly":
+    "Package already present; continuing with login / start (bootstrap).",
+  "install.forceViaUpdate":
+    "Already installed — overlay reinstall via `nuwa-cli update --force` ...",
+  // —— uninstall ——
+  "uninstall.confirm":
+    "Uninstall the global @nuwax-ai/nuwa-cli package? User data under ~/.nuwa-cli will be kept.",
+  "uninstall.confirmPurge":
+    "Uninstall the global package AND delete ~/.nuwa-cli (credentials / sessions / logs / workspaces)?",
+  "uninstall.noNpm": "npm not found. Please install Node.js/npm first and retry.",
+  "uninstall.stopping":
+    "Removing OS autostart (if any) and stopping running services...",
+  "uninstall.serviceFailed":
+    "Could not remove OS autostart ({msg}); continuing with package uninstall.",
+  "uninstall.stopped": "Stopped running services / released upgrade locks.",
+  "uninstall.notInstalled":
+    "Global @nuwax-ai/nuwa-cli is not installed (nothing to npm-uninstall).",
+  "uninstall.uninstalling": "Uninstalling {pkg} ...",
+  "uninstall.execute": "Run: {cmd}",
+  "uninstall.npmFailed": "npm uninstall failed.",
+  "uninstall.verifyFailed":
+    "Uninstall verification failed: {pkg} is still listed in the npm global tree. Retry with npx, or manually: npm uninstall -g {pkg}",
+  "uninstall.packageDone": "Global package uninstalled.",
+  "uninstall.purging": "Deleting user data {dir} ...",
+  "uninstall.purged": "Removed {dir}.",
+  "uninstall.purgeFailed":
+    "Could not fully delete {dir} ({msg}). Retry later: rm -rf \"{dir}\" (or Remove-Item -Recurse -Force on Windows).",
+  "uninstall.purgeSkippedMissing": "No user data directory at {dir}; nothing to purge.",
+  "uninstall.dataKept":
+    "User data kept at {dir} (credentials / sessions / logs / workspaces). To delete it: npx @nuwax-ai/nuwa-cli@latest uninstall --purge --yes",
+  "uninstall.done": "Uninstall complete.",
   // —— update ——
   "update.emptyTarget":
     "Upgrade target cannot be empty. Example: nuwa-cli update latest or nuwa-cli update 0.2.2",

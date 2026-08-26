@@ -867,7 +867,7 @@ h1,h2,h3{ font-family:var(--ff-display); font-weight:600; line-height:1.04; lett
         </div>
 
         <div class="os-pane" data-pane="npx">
-          <div class="label"><span class="zh">推荐 · 首次安装向导（选语言、按需停服务，再全局安装）</span><span class="en">Recommended · first-time wizard (language, stop services if needed, then global install)</span></div>
+          <div class="label"><span class="zh">推荐 · 新装向导（选语言、装包、登录，直到 Gateway 就绪）</span><span class="en">Recommended · new-install wizard (language, package, login, until Gateway is ready)</span></div>
           <div class="code-row">
             <code id="code-npx">npx @nuwax-ai/nuwa-cli@latest install</code>
             <button class="copy-btn" data-copy="code-npx"><svg width="13" height="13"><use href="#i-copy"/></svg><span class="zh">复制</span><span class="en">Copy</span></button>
@@ -876,10 +876,12 @@ h1,h2,h3{ font-family:var(--ff-display); font-weight:600; line-height:1.04; lett
             <code>npx -y @nuwax-ai/nuwa-cli@latest install --yes</code></p>
           <p class="os-note"><span class="zh">已安装后升级：</span><span class="en">Already installed? Upgrade with:</span>
             <code>nuwa-cli update</code></p>
+          <p class="os-note"><span class="zh">卸载（默认保留登录数据）：</span><span class="en">Uninstall (keeps login data by default):</span>
+            <code>npx @nuwax-ai/nuwa-cli@latest uninstall</code></p>
         </div>
 
         <div class="os-pane" data-pane="s3-mac" hidden>
-          <div class="label"><span class="zh">备选 · S3 一键安装 · curl（国内可达，自动配置 PATH）</span><span class="en">Alternative · S3 one-liner · curl (CN-reachable, auto PATH)</span></div>
+          <div class="label"><span class="zh">备选 · S3 镜像（未装→装包+静默收尾；已装→update）</span><span class="en">Alternative · S3 mirror (new→package+silent bootstrap; installed→update)</span></div>
           <div class="code-row">
             <code id="code-s3-mac">curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.sh | bash</code>
             <button class="copy-btn" data-copy="code-s3-mac"><svg width="13" height="13"><use href="#i-copy"/></svg><span class="zh">复制</span><span class="en">Copy</span></button>
@@ -889,7 +891,7 @@ h1,h2,h3{ font-family:var(--ff-display); font-weight:600; line-height:1.04; lett
         </div>
 
         <div class="os-pane" data-pane="s3-win" hidden>
-          <div class="label"><span class="zh">备选 · S3 一键安装 · PowerShell</span><span class="en">Alternative · S3 one-liner · PowerShell</span></div>
+          <div class="label"><span class="zh">备选 · S3 镜像 · PowerShell（未装→装包+静默收尾；已装→update）</span><span class="en">Alternative · S3 mirror · PowerShell (new→package+silent bootstrap; installed→update)</span></div>
           <div class="code-row">
             <code id="code-s3-win">irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.ps1 | iex</code>
             <button class="copy-btn" data-copy="code-s3-win"><svg width="13" height="13"><use href="#i-copy"/></svg><span class="zh">复制</span><span class="en">Copy</span></button>

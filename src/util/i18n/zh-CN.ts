@@ -187,17 +187,29 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "cli.cmd.update.help":
     "\n示例：\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update stable\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n  nuwa-cli update --yes\n\n说明：\n  - update 使用 npm 升级全局 CLI 包，不修改 ~/.nuwa-cli 登录数据。\n  - 默认通道随当前安装版本：正式版 → latest，预发布版 → beta；也可显式指定版本或 dist-tag。\n  - 别名：`stable` 映射为 npm 的 `latest` dist-tag（S3 通道叫 stable；npm 不发布名为 stable 的 tag）。\n  - 检测到 Gateway/Console/隧道在跑时，交互 TTY 会先确认是否停止；`--yes` / CI / 非 TTY 直接停。\n  - Windows：服务运行中裸跑 `npm i -g` 常因 nuwax-lanproxy.exe / nuwax-codex.exe 被锁而 EBUSY；请用本命令（会先 stop 并释放锁），不要直接 npm 覆盖。\n  - 首次安装：`npx @nuwax-ai/nuwa-cli@latest install`（见 `install --help`）。",
   "cli.cmd.install.desc":
-    "首次安装向导：选择语言、按需停止运行中服务，再执行 npm install -g",
+    "首次安装向导：选择语言、全局安装，再登录并启动 Gateway 直至就绪",
   "cli.cmd.install.opt.yes":
-    "非交互：跳过确认；有服务则直接停止；除非指定 --lang 否则不交互选语言（不会强制重装，重装请用 --force）",
+    "非交互：跳过确认；有服务则直接停止；除非指定 --lang 否则不交互选语言（不会强制重装，重装请用 --force）。已登录则跳过重登并 start；未登录则只装包并提示如何收尾。",
   "cli.cmd.install.opt.lang": "持久化 UI 语言（en | zh-CN）",
   "cli.cmd.install.opt.tag":
     "npm dist-tag 或 semver（正式版默认 latest，预发布版默认 beta；`stable` 为 latest 别名）",
   "cli.cmd.install.opt.registry": "指定 npm registry",
   "cli.cmd.install.opt.force":
-    "即使全局已安装 @nuwax-ai/nuwa-cli 也强制用向导重装",
+    "即使全局已安装 @nuwax-ai/nuwa-cli 也强制用向导重装（内部走 update --force）",
+  "cli.cmd.install.opt.noStart":
+    "只安装全局包，不继续登录 / 启动",
+  "cli.cmd.install.opt.bootstrap":
+    "跳过 npm install -g；假定包已在 PATH，只跑登录 / 启动（供 S3 新装收尾）",
   "cli.cmd.install.help":
-    "\n示例：\n  npx @nuwax-ai/nuwa-cli@latest install\n  npx -y @nuwax-ai/nuwa-cli@latest install --yes\n  npx @nuwax-ai/nuwa-cli@latest install --lang zh-CN\n  npx @nuwax-ai/nuwa-cli@beta install --tag beta\n  npx @nuwax-ai/nuwa-cli@latest install --force --yes\n\n说明：\n  - 推荐的首次安装入口（文档默认不带 `-y`，便于交互向导）。\n  - 始终通过 `npm install -g @nuwax-ai/nuwa-cli@<tag>` 安装。\n  - `--tag stable` 会映射为 npm 的 `latest`。\n  - 若已全局安装，建议改用 `nuwa-cli update`；覆盖重装请加 `--force`（交互也可确认）。\n  - `--yes` 只跳过确认，不等于 `--force`。\n  - 自动化：`npx -y @nuwax-ai/nuwa-cli@latest install --yes`。",
+    "\n示例：\n  npx @nuwax-ai/nuwa-cli@latest install\n  npx -y @nuwax-ai/nuwa-cli@latest install --yes\n  npx @nuwax-ai/nuwa-cli@latest install --lang zh-CN\n  npx @nuwax-ai/nuwa-cli@beta install --tag beta\n  npx @nuwax-ai/nuwa-cli@latest install --force --yes\n  npx @nuwax-ai/nuwa-cli@latest install --no-start\n  nuwa-cli install --yes --bootstrap\n\n说明：\n  - 推荐的首次安装入口（文档默认不带 `-y`，便于交互向导）。\n  - 新装：`npm install -g` 后继续登录 + `start` 直到 Gateway 就绪。\n  - 已安装：请用 `nuwa-cli update`（停服/释锁/增量 + 已登录 restart）。仅 `--force` 时经 update 内核覆盖重装。\n  - 若已登录，会询问是否跳过登录（默认跳过）；`--yes` 自动跳过重登。\n  - `--tag stable` 会映射为 npm 的 `latest`。\n  - `--yes` 只跳过确认，不等于 `--force`。\n  - `--bootstrap` 跳过装包（S3 tarball 装完后收尾）；`--no-start` 仅装包。\n  - 自动化：`npx -y @nuwax-ai/nuwa-cli@latest install --yes`（要完整 start 需事先已登录）。",
+  "cli.cmd.uninstall.desc":
+    "卸载全局 nuwa-cli 包（默认保留 ~/.nuwa-cli 登录与用户数据）",
+  "cli.cmd.uninstall.opt.purge":
+    "同时删除 ~/.nuwa-cli（凭证、会话、日志、工作空间）",
+  "cli.cmd.uninstall.opt.yes": "跳过交互确认（CI / Agent）",
+  "cli.cmd.uninstall.opt.registry": "指定 npm registry",
+  "cli.cmd.uninstall.help":
+    "\n示例：\n  npx @nuwax-ai/nuwa-cli@latest uninstall\n  npx -y @nuwax-ai/nuwa-cli@latest uninstall --yes\n  npx @nuwax-ai/nuwa-cli@latest uninstall --purge --yes\n  nuwa-cli uninstall\n\n说明：\n  - 推荐用 npx 入口（临时副本执行；比全局进程自我卸载更稳，尤其 Windows）。\n  - 会停止 Gateway/Console/隧道、移除开机自启（`service uninstall`），再 `npm uninstall -g`。\n  - 与 `nuwa-cli service uninstall`（仅卸自启）不同。\n  - 默认保留 ~/.nuwa-cli；加 `--purge` 才删除用户数据。\n  - `--yes` 只跳过确认。",
   "cli.cmd.console.desc":
     "启动本地 Web Console：查看/续接/新建会话并直接聊天（仅前台单例）",
   // —— install wizard ——
@@ -224,7 +236,48 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "install.failed": "npm 安装失败。",
   "install.done": "安装完成。",
   "install.nextSteps":
-    "下一步：\n  nuwa-cli doctor\n  nuwa-cli login\n  nuwa-cli start",
+    "下一步：\n  nuwa-cli login\n  nuwa-cli start",
+  "install.skipLoginConfirm":
+    "已登录为 {account}。跳过登录并直接启动 Gateway？",
+  "install.loggingIn": "继续 Nuwax 登录...",
+  "install.loginRequiredHint":
+    "包已安装。当前未登录且为非交互运行，请手动完成：\n  nuwa-cli login\n  nuwa-cli start",
+  "install.loginCancelledHint":
+    "已取消登录。包已安装；请执行 `nuwa-cli login` 再 `nuwa-cli start`。",
+  "install.starting": "正在启动 Gateway...",
+  "install.startFailedHint":
+    "包已安装，但 Gateway 未就绪。请检查 `nuwa-cli status` 或运行 `nuwa-cli start`。",
+  "install.ready": "nuwa-cli 已安装且 Gateway 就绪。",
+  "install.bootstrapOnly":
+    "包已就绪；继续登录 / 启动（bootstrap）。",
+  "install.forceViaUpdate":
+    "已安装 — 经 `nuwa-cli update --force` 覆盖重装 ...",
+  // —— uninstall ——
+  "uninstall.confirm":
+    "卸载全局 @nuwax-ai/nuwa-cli 包？将保留 ~/.nuwa-cli 下的用户数据。",
+  "uninstall.confirmPurge":
+    "卸载全局包并删除 ~/.nuwa-cli（凭证 / 会话 / 日志 / 工作空间）？",
+  "uninstall.noNpm": "未找到 npm。请先安装 Node.js/npm 后重试。",
+  "uninstall.stopping": "正在移除开机自启（若有）并停止运行中的服务...",
+  "uninstall.serviceFailed":
+    "移除开机自启失败（{msg}）；继续卸载全局包。",
+  "uninstall.stopped": "已停止运行中的服务 / 释放升级锁。",
+  "uninstall.notInstalled":
+    "全局未安装 @nuwax-ai/nuwa-cli（无需 npm uninstall）。",
+  "uninstall.uninstalling": "正在卸载 {pkg} ...",
+  "uninstall.execute": "执行：{cmd}",
+  "uninstall.npmFailed": "npm 卸载失败。",
+  "uninstall.verifyFailed":
+    "卸载校验失败：{pkg} 仍在 npm 全局树中。请用 npx 重试，或手动：npm uninstall -g {pkg}",
+  "uninstall.packageDone": "全局包已卸载。",
+  "uninstall.purging": "正在删除用户数据 {dir} ...",
+  "uninstall.purged": "已删除 {dir}。",
+  "uninstall.purgeFailed":
+    "未能完全删除 {dir}（{msg}）。请稍后重试：rm -rf \"{dir}\"（Windows 可用 Remove-Item -Recurse -Force）。",
+  "uninstall.purgeSkippedMissing": "不存在用户数据目录 {dir}；无需清理。",
+  "uninstall.dataKept":
+    "用户数据保留在 {dir}（凭证 / 会话 / 日志 / 工作空间）。若要删除：npx @nuwax-ai/nuwa-cli@latest uninstall --purge --yes",
+  "uninstall.done": "卸载完成。",
   // —— update ——
   "update.emptyTarget":
     "升级版本不能为空。示例：nuwa-cli update latest 或 nuwa-cli update 0.2.2",

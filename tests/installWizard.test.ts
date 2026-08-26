@@ -164,8 +164,9 @@ describe("install wizard", () => {
       expect.objectContaining({ stdio: "pipe" }),
     );
     const printed = logSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(printed).toContain("Installation complete");
-    expect(printed).toContain("nuwa-cli doctor");
+    expect(printed).toMatch(/Installation complete|安装完成/);
+    expect(printed).toContain("nuwa-cli login");
+    expect(printed).toContain("nuwa-cli start");
   });
 
   it("redirects to update when already installed without --force (even with --yes)", async () => {
@@ -186,21 +187,28 @@ describe("install wizard", () => {
     expect(printed).toMatch(/nuwa-cli update/);
   });
 
-  it("reinstalls with --force when already installed", async () => {
+  it("reinstalls with --force via the update kernel when already installed", async () => {
     const { installCommand } = await import("../src/commands/install.js");
     vi.spyOn(console, "log").mockImplementation(() => {});
     const runner = installedRunner();
+    const updateFn = vi.fn(async () => {});
 
     await installCommand(
       { yes: true, force: true, tag: "latest", lang: "zh-CN" },
       runner,
+      undefined,
+      updateFn,
     );
 
     expect(mocks.writeLangConfig).toHaveBeenCalledWith("zh-CN");
-    expect(mocks.stopRuntime).toHaveBeenCalled();
-    expect(runner).toHaveBeenCalledWith(
+    expect(updateFn).toHaveBeenCalledWith(
+      "latest",
+      expect.objectContaining({ force: true, yes: true }),
+      runner,
+    );
+    expect(runner).not.toHaveBeenCalledWith(
       "npm",
-      expect.arrayContaining(["install", "-g", "@nuwax-ai/nuwa-cli@latest"]),
+      expect.arrayContaining(["install"]),
       expect.anything(),
     );
   });
@@ -264,5 +272,98 @@ describe("install wizard", () => {
     expect(mocks.writeLangConfig).not.toHaveBeenCalled();
     expect(mocks.stopRuntime).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(0);
+  });
+
+  it("skips npm and bootstraps when --bootstrap is set", async () => {
+    const { installCommand } = await import("../src/commands/install.js");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const runner = notInstalledRunner();
+    const startCommand = vi.fn(async () => {});
+    const loginCommand = vi.fn(async () => {});
+    const readCredentials = vi
+      .fn()
+      .mockReturnValue({ configKey: "k", username: "alice", domain: "example.com" });
+
+    await installCommand(
+      { yes: true, bootstrap: true },
+      runner,
+      { readCredentials, loginCommand, startCommand },
+    );
+
+    expect(runner).not.toHaveBeenCalled();
+    expect(loginCommand).not.toHaveBeenCalled();
+    expect(startCommand).toHaveBeenCalled();
+    const printed = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(printed).toMatch(/bootstrap/i);
+  });
+
+  it("--yes without login does not start Gateway", async () => {
+    const { installCommand } = await import("../src/commands/install.js");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const runner = notInstalledRunner();
+    const startCommand = vi.fn(async () => {});
+    const loginCommand = vi.fn(async () => {});
+    const readCredentials = vi.fn().mockReturnValue({});
+
+    await installCommand(
+      { yes: true, tag: "latest" },
+      runner,
+      { readCredentials, loginCommand, startCommand },
+    );
+
+    expect(runner).toHaveBeenCalledWith(
+      "npm",
+      expect.arrayContaining(["install", "-g"]),
+      expect.anything(),
+    );
+    expect(loginCommand).not.toHaveBeenCalled();
+    expect(startCommand).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    const printed = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(printed).toMatch(/nuwa-cli login/);
+  });
+
+  it("--yes when logged in starts Gateway without re-login", async () => {
+    const { installCommand } = await import("../src/commands/install.js");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const runner = notInstalledRunner();
+    const startCommand = vi.fn(async () => {});
+    const loginCommand = vi.fn(async () => {});
+    const readCredentials = vi.fn().mockReturnValue({
+      configKey: "k",
+      username: "alice",
+      domain: "https://agent.nuwax.com",
+    });
+
+    await installCommand(
+      { yes: true, tag: "latest" },
+      runner,
+      { readCredentials, loginCommand, startCommand },
+    );
+
+    expect(loginCommand).not.toHaveBeenCalled();
+    expect(startCommand).toHaveBeenCalled();
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("--no-start skips bootstrap even when deps are injected", async () => {
+    const { installCommand } = await import("../src/commands/install.js");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const runner = notInstalledRunner();
+    const startCommand = vi.fn(async () => {});
+
+    await installCommand(
+      { yes: true, tag: "latest", noStart: true },
+      runner,
+      {
+        readCredentials: () => ({}),
+        loginCommand: async () => {},
+        startCommand,
+      },
+    );
+
+    expect(startCommand).not.toHaveBeenCalled();
+    const printed = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(printed).toContain("nuwa-cli start");
   });
 });
