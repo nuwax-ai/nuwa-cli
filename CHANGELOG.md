@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.8-beta.1] - 2026-08-26
+
+### Fixed
+
+- **`dist/cli.js` 可执行位：** `build.mjs` 打包后 `chmod 0755`，避免全局 bin symlink 目标无 +x 导致 `Permission denied`（exit 126）。
+- **S3 `install-from-s3.sh`：** `$VAR` 紧贴中文改为 `${VAR}`（修复 `set -u` 下 `UPDATE_RC�: unbound variable`）；`run_nuwa_cli` 对 shim/目标 best-effort `chmod +x`，失败则 `node dist/cli.js` 兜底。
+
 ## [0.2.8-beta.0] - 2026-08-26
 
 ### Added

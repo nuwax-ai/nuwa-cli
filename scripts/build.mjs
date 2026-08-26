@@ -8,12 +8,13 @@
  */
 
 import * as esbuild from "esbuild";
-import { readFile, rm } from "node:fs/promises";
+import { chmod, readFile, rm } from "node:fs/promises";
 
 const pkg = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf-8"),
 );
 const distDir = new URL("../dist", import.meta.url);
+const outfileUrl = new URL("../dist/cli.js", import.meta.url);
 await rm(distDir, { recursive: true, force: true });
 await esbuild.build({
   entryPoints: ["src/cli.ts"],
@@ -60,3 +61,8 @@ await esbuild.build({
   // non-ASCII char — smaller bundle, readable output, served verbatim.
   charset: "utf8",
 });
+
+// npm bin is often a symlink to dist/cli.js; the kernel checks the *target*
+// execute bit. Without +x, `nuwa-cli` → Permission denied (exit 126) even
+// though `node dist/cli.js` works. Pack must ship 0755.
+await chmod(outfileUrl, 0o755);

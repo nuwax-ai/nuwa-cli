@@ -81,6 +81,8 @@ run_npm_with_progress() {
 
 # Resolve an absolute path to the nuwa-cli bin for the current session
 # (PATH may not yet include npm global bin on a fresh install).
+# Accept non-executable shims too — older packs shipped dist/cli.js as 0644;
+# callers use run_nuwa_cli (chmod / node fallback).
 resolve_nuwa_cli() {
   if command -v nuwa-cli >/dev/null 2>&1; then
     command -v nuwa-cli
@@ -90,12 +92,44 @@ resolve_nuwa_cli() {
   prefix="$(npm config get prefix 2>/dev/null || true)"
   [ -n "$prefix" ] || return 1
   for bin in "$prefix/bin/nuwa-cli" "$prefix/nuwa-cli"; do
-    if [ -x "$bin" ]; then
+    if [ -e "$bin" ]; then
       printf '%s\n' "$bin"
       return 0
     fi
   done
   return 1
+}
+
+# Realpath of a bin shim/symlink → dist/cli.js (for node fallback / chmod target).
+resolve_nuwa_cli_js() {
+  local bin="$1"
+  [ -e "$bin" ] || return 1
+  node -e "process.stdout.write(require('fs').realpathSync(process.argv[1]))" "$bin" 2>/dev/null
+}
+
+# Run nuwa-cli: best-effort chmod +x on shim + target, else `node dist/cli.js`.
+# Always prefer ${VAR} in messages that sit next to CJK (set -u + bash UTF-8 quirk).
+run_nuwa_cli() {
+  local bin="$1"
+  shift
+  local js
+  js="$(resolve_nuwa_cli_js "$bin" || true)"
+  if [ -n "$js" ]; then
+    chmod +x "$js" 2>/dev/null || true
+  fi
+  if [ -e "$bin" ]; then
+    chmod +x "$bin" 2>/dev/null || true
+  fi
+  if [ -x "$bin" ]; then
+    "$bin" "$@"
+    return $?
+  fi
+  if [ -n "$js" ] && [ -f "$js" ]; then
+    warn "nuwa-cli 不可直接执行，改用 node 兜底: ${js}"
+    node "$js" "$@"
+    return $?
+  fi
+  fail "无法运行 nuwa-cli（${bin}）。请 chmod +x 后重试，或: npm i -g @nuwax-ai/nuwa-cli@${CHANNEL}"
 }
 
 base="$ENDPOINT/$BUCKET/$PREFIX"
@@ -130,20 +164,20 @@ trap 'rm -rf "$TMP"' EXIT
 # --- Resolve version (channel pointer or pinned) ---
 if [[ -n "$PINNED_VERSION" ]]; then
   VERSION="$PINNED_VERSION"
-  ok "指定版本: $VERSION"
+  ok "指定版本: ${VERSION}"
 else
-  info "解析 channel '$CHANNEL' ..."
+  info "解析 channel '${CHANNEL}' ..."
   fetch "$base/channels/$CHANNEL.json" "$TMP/channel.json" || fail "无法读取 channel pointer: $base/channels/$CHANNEL.json"
   VERSION="$(node -p "require('$TMP/channel.json').version" 2>/dev/null || true)"
-  [[ -n "$VERSION" ]] || fail "channel pointer 无 version 字段。已发布过 $CHANNEL 吗?"
-  ok "channel '$CHANNEL' → $VERSION"
+  [[ -n "$VERSION" ]] || fail "channel pointer 无 version 字段。已发布过 ${CHANNEL} 吗?"
+  ok "channel '${CHANNEL}' → ${VERSION}"
 fi
 
 # --- Same version: skip entirely (no restart, no bootstrap) ---
 if [ "$WAS_INSTALLED" = "1" ]; then
-  INSTALLED_VERSION="$("$NUWA_BIN_PRE" --version 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
+  INSTALLED_VERSION="$(run_nuwa_cli "$NUWA_BIN_PRE" --version 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
   if [ "$INSTALLED_VERSION" = "$VERSION" ]; then
-    ok "nuwa-cli $VERSION 已安装，跳过。"
+    ok "nuwa-cli ${VERSION} 已安装，跳过。"
     info "日常升级请用: nuwa-cli update"
     exit 0
   fi
@@ -154,15 +188,15 @@ fi
 # inside `nuwa-cli update`. Pin the S3-resolved semver so npm matches the channel.
 if [ "$WAS_INSTALLED" = "1" ]; then
   NUWA_BIN="$NUWA_BIN_PRE"
-  step 2 2 "已安装 → 走 nuwa-cli update $VERSION --yes ..."
+  step 2 2 "已安装 → 走 nuwa-cli update ${VERSION} --yes ..."
   info "升级请用 update 内核（停服 / Windows 释锁 / 增量）；勿裸 npm i -g。"
   set +e
-  UPDATE_OUT="$("$NUWA_BIN" update "$VERSION" --yes 2>&1)"
+  UPDATE_OUT="$(run_nuwa_cli "$NUWA_BIN" update "$VERSION" --yes 2>&1)"
   UPDATE_RC=$?
   set -e
   printf '%s\n' "$UPDATE_OUT"
   if [ "$UPDATE_RC" -ne 0 ]; then
-    fail "nuwa-cli update 失败（exit $UPDATE_RC）。可手动重试: nuwa-cli update $VERSION --yes"
+    fail "nuwa-cli update 失败（exit ${UPDATE_RC}）。可手动重试: nuwa-cli update ${VERSION} --yes"
   fi
   ok "升级完成（已登录时 update 会 restart Gateway）"
   # Logged-in restart is owned by update — do not call install --bootstrap
@@ -175,7 +209,7 @@ if [ "$WAS_INSTALLED" = "1" ]; then
   fi
   if [ "$LOGGED_IN" = "0" ] && [ "$NO_START" != "1" ]; then
     info "未登录：静默提示收尾（不自动 start）..."
-    "$NUWA_BIN" install --yes --bootstrap || true
+    run_nuwa_cli "$NUWA_BIN" install --yes --bootstrap || true
   fi
   exit 0
 fi
@@ -184,7 +218,7 @@ fi
 PKG_NAME="@nuwax-ai/nuwa-cli"
 PKG_BASE="${PKG_NAME#@}"; PKG_BASE="${PKG_BASE//\//-}"
 TARBALL="$PKG_BASE-$VERSION.tgz"
-step 2 4 "下载 $TARBALL ..."
+step 2 4 "下载 ${TARBALL} ..."
 fetch "$base/versions/$VERSION/artifacts/$TARBALL" "$TMP/$TARBALL" || fail "tarball 下载失败: $base/versions/$VERSION/artifacts/$TARBALL"
 ok "下载完成"
 
@@ -204,7 +238,7 @@ if [ "$(uname -s 2>/dev/null)" != "Darwin" ] && command -v taskkill >/dev/null 2
     [ -z "$stuck" ] && break
   done
   if [ -n "$stuck" ]; then
-    fail "无法安装：仍在运行 $stuck。请先: taskkill //F //IM nuwax-lanproxy.exe 与 nuwax-codex.exe；然后重试。"
+    fail "无法安装：仍在运行 ${stuck}。请先: taskkill //F //IM nuwax-lanproxy.exe 与 nuwax-codex.exe；然后重试。"
   fi
 fi
 
@@ -225,14 +259,14 @@ NPM_PREFIX="$(npm config get prefix 2>/dev/null || true)"
 if   [ -d "$NPM_PREFIX/bin" ]; then NPM_BIN="$NPM_PREFIX/bin"
 elif [ -d "$NPM_PREFIX" ];         then NPM_BIN="$NPM_PREFIX"
 else                                NPM_BIN="$NPM_PREFIX/bin"; fi
-ok "npm 全局 bin: $NPM_BIN"
+ok "npm 全局 bin: ${NPM_BIN}"
 
 path_has() { case ":$PATH:" in *":$1:"*) return 0 ;; *) return 1 ;; esac; }
 
 if path_has "$NPM_BIN"; then
-  ok "PATH 已包含 $NPM_BIN"
+  ok "PATH 已包含 ${NPM_BIN}"
 else
-  warn "$NPM_BIN 不在当前 PATH 中"
+  warn "${NPM_BIN} 不在当前 PATH 中"
   if [ -n "${ZSH_VERSION:-}" ]; then
     RC="${ZDOTDIR:-$HOME}/.zshrc"
   elif [ -n "${BASH_VERSION:-}" ]; then
@@ -247,23 +281,27 @@ else
   fi
   touch "$RC" 2>/dev/null || RC="$HOME/.profile"
   if grep -qF "$NPM_BIN" "$RC" 2>/dev/null; then
-    ok "$RC 已含 $NPM_BIN(重开终端或 source 即可)"
+    ok "${RC} 已含 ${NPM_BIN}(重开终端或 source 即可)"
   else
     { printf '\n# nuwa-cli installer: add npm global bin to PATH\nexport PATH="%s:$PATH"\n' "$NPM_BIN"; } >> "$RC"
-    ok "已写入 PATH 到 $RC"
+    ok "已写入 PATH 到 ${RC}"
   fi
   export PATH="$NPM_BIN:$PATH"
-  warn "请重开终端(或 source \"$RC\")使 PATH 生效。"
+  warn "请重开终端(或 source \"${RC}\")使 PATH 生效。"
 fi
 
 NUWA_BIN="$(resolve_nuwa_cli)" || fail "nuwa-cli 已安装,但当前 shell 未识别。请重开终端后运行: nuwa-cli -h"
-VER="$("$NUWA_BIN" --version 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
+# Ensure execute bit on freshly installed tree before version check.
+NUWA_JS="$(resolve_nuwa_cli_js "$NUWA_BIN" || true)"
+[ -n "$NUWA_JS" ] && chmod +x "$NUWA_JS" 2>/dev/null || true
+chmod +x "$NUWA_BIN" 2>/dev/null || true
+VER="$(run_nuwa_cli "$NUWA_BIN" --version 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
 if [ -z "$VER" ]; then
-  fail "安装校验失败：nuwa-cli 存在但 --version 无输出。请重跑安装脚本，或手动：npm i -g @nuwax-ai/nuwa-cli@$CHANNEL"
+  fail "安装校验失败：nuwa-cli 存在但 --version 无输出。请重跑安装脚本，或手动：npm i -g @nuwax-ai/nuwa-cli@${CHANNEL}"
 elif [ "$VER" != "$VERSION" ]; then
-  fail "安装校验失败：期望 nuwa-cli $VERSION，实际 $VER。请重跑安装脚本。"
+  fail "安装校验失败：期望 nuwa-cli ${VERSION}，实际 ${VER}。请重跑安装脚本。"
 fi
-ok "nuwa-cli 已就绪: $VER"
+ok "nuwa-cli 已就绪: ${VER}"
 printf '\n%s安装成功!%s\n\n' "$GREEN" "$NC"
 
 # Silent product tail: same bootstrap as npx install --yes
@@ -273,9 +311,10 @@ if [ "$NO_START" = "1" ]; then
 fi
 info "继续静默收尾: install --yes --bootstrap ..."
 set +e
-"$NUWA_BIN" install --yes --bootstrap
+BOOT_OUT="$(run_nuwa_cli "$NUWA_BIN" install --yes --bootstrap 2>&1)"
 BOOT_RC=$?
 set -e
+printf '%s\n' "$BOOT_OUT"
 if [ "$BOOT_RC" -ne 0 ]; then
-  warn "bootstrap 未完成（exit $BOOT_RC）。若未登录，请手动: nuwa-cli login && nuwa-cli start"
+  warn "bootstrap 未完成（exit ${BOOT_RC}）。若未登录，请手动: nuwa-cli login && nuwa-cli start"
 fi

@@ -104,7 +104,13 @@ describe("install script progress", () => {
     expect(sh).toContain('update "$VERSION" --yes');
     expect(sh).toContain("NUWACLI_NO_START");
     expect(sh).toContain('NUWA_BIN_PRE="$(resolve_nuwa_cli || true)"');
-    expect(sh).toContain('INSTALLED_VERSION="$("$NUWA_BIN_PRE" --version');
+    expect(sh).toContain("run_nuwa_cli");
+    expect(sh).toContain("resolve_nuwa_cli_js");
+    // Brace vars next to CJK so `set -u` does not eat UTF-8 into the name.
+    expect(sh).toContain("exit ${UPDATE_RC}");
+    expect(sh).toContain("exit ${BOOT_RC}");
+    expect(sh).toContain('INSTALLED_VERSION="$(run_nuwa_cli "$NUWA_BIN_PRE" --version');
+    expect(sh).toContain("改用 node 兜底");
     expect(sh).not.toMatch(/nuwa-cli restart/);
 
     const ps1 = readScript("install-from-s3.ps1");
