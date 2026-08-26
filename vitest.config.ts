@@ -27,13 +27,17 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.{test,spec}.ts"],
     exclude: ["node_modules", "dist"],
+    setupFiles: ["./tests/setup.ts"],
     testTimeout: 15000,
     // Parallel startServeHttp would otherwise contend on the process-wide
     // PersistentMcpBridge (real npx chrome-devtools) and flake stop() past
     // testTimeout. Warmup is still covered in proxyRewriteDefaults with the
     // env unset for that case.
+    // NUWACLI_LANG=en: keep assertion-facing UI English regardless of host
+    // locale / ~/.nuwa-cli config (see tests/setup.ts).
     env: {
       NUWACLI_SKIP_MCP_BRIDGE_WARMUP: "1",
+      NUWACLI_LANG: "en",
     },
     coverage: {
       provider: "v8",
