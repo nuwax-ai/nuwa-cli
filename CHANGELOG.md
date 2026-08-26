@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-08-26
+
+Stable release promoting `0.2.8-beta.0` / `0.2.8-beta.1`. Distributed as npm `latest` and S3 `stable`.
+
+### Added
+
+- **`nuwa-cli uninstall`：** 推荐 `npx @nuwax-ai/nuwa-cli@latest uninstall`；停服 / 卸自启 / `npm uninstall -g`；**默认保留** `~/.nuwa-cli`；`--purge` 才清用户数据。与 `service uninstall` 区分。
+
+### Changed
+
+- **新装 / 升级分流收口：** `install` 负责新装（装包 + 登录/start）；日常升级唯一入口 `update`（含已登录 restart）。S3 一键：未装 → tarball + `install --yes --bootstrap`；已装 → `update <version> --yes`；同版本跳过。`--force` 经 update 内核覆盖；导出 `restartServeIfLoggedIn`。详见 [`docs/install-upgrade-split.md`](docs/install-upgrade-split.md)。
+- 文档卸载入口改为 npx `uninstall`（S3 `uninstall-from-s3.*` 仍保留为兼容脚本，不再作为产品主推）。
+
+### Fixed
+
+- **`dist/cli.js` 可执行位：** `build.mjs` 打包后 `chmod 0755`，避免全局 bin symlink 目标无 +x 导致 `Permission denied`（exit 126）。
+- **S3 `install-from-s3.sh`：** `$VAR` 紧贴中文改为 `${VAR}`（修复 `set -u` 下 unbound variable）；`run_nuwa_cli` 对 shim/目标 best-effort `chmod +x`，失败则 `node dist/cli.js` 兜底。
+
 ## [0.2.8-beta.1] - 2026-08-26
 
 ### Fixed
