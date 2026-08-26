@@ -6,18 +6,26 @@ import {
   CLI_VERSION,
   DEFAULT_DIST_TAG,
   PACKAGE_NAME,
+  resolveNpmChannelAlias,
 } from "../core/version.js";
 import { findOnPath, isBatchShim } from "../util/which.js";
-import { stopProcessIds } from "../core/processes/processRegistry.js";
 import {
-  ensureWindowsUpgradeLocksReleased,
-  findServeProcessIds,
-  stopServeProcesses,
-  stopTunnelChildProcesses,
-} from "../core/processes/serveSingleton.js";
-import { findUiProcessIds } from "../core/processes/uiSingleton.js";
-import { withSpinner, success, dim, warn } from "../util/ui.js";
+  collectRunningRuntimeSnapshot,
+  hasRunningRuntimeProcesses,
+  stopRuntimeProcessesForUpdate,
+} from "../core/processes/upgradeStop.js";
+import {
+  withSpinner,
+  success,
+  dim,
+  warn,
+  isInteractive,
+  isCI,
+  printCancelled,
+  CANCEL_EXIT_CODE,
+} from "../util/ui.js";
 import { t } from "../util/i18n/index.js";
+import * as clack from "@clack/prompts";
 
 export interface UpdateOptions {
   check?: boolean;
@@ -25,6 +33,11 @@ export interface UpdateOptions {
   registry?: string;
   /** 强制完整重装：跳过增量路径，npm 整树重装（修复安装异常）。 */
   force?: boolean;
+  /**
+   * Skip the interactive “stop running services?” confirm (CI / Agent).
+   * Non-TTY already skips the prompt and stops automatically.
+   */
+  yes?: boolean;
 }
 
 export interface CommandResult {
@@ -155,30 +168,6 @@ export function resolvePackageManagerInvocation(
   return { command: process.execPath, args: [npmCli, ...args] };
 }
 
-async function stopRuntimeProcessesForUpdate(): Promise<void> {
-  if (process.env.VITEST) return;
-  const gatewayPids = findServeProcessIds(0).filter(
-    (pid) => pid !== process.pid,
-  );
-  const consolePids = findUiProcessIds().filter((pid) => pid !== process.pid);
-
-  // stopServeProcesses 已内含 stopTunnelChildProcesses（含 Windows 上对
-  // nuwax-codex.exe / nuwax-lanproxy.exe 的 taskkill 兜底）；无 gateway 时仍
-  // 显式清一次 orphan，避免升级时 EBUSY 锁住 vendor 二进制。
-  if (gatewayPids.length > 0) await stopServeProcesses(gatewayPids);
-  else await stopTunnelChildProcesses();
-  if (consolePids.length > 0) await stopProcessIds(consolePids);
-
-  // 注册表停机后仍可能有孤儿 exe 占锁：再强制 taskkill + tasklist 校验。
-  // 杀不掉则直接失败，避免 npm 在 copyfile 阶段抛出难读的 EBUSY。
-  const stillLocked = await ensureWindowsUpgradeLocksReleased();
-  if (stillLocked.length > 0) {
-    throw new Error(
-      t("update.windowsLocksHeld", { images: stillLocked.join(", ") }),
-    );
-  }
-}
-
 /** 解析 semver(核心 + 预发布);非 semver 返回 null。 */
 function parseSemver(
   v: string,
@@ -225,13 +214,24 @@ export function compareSemver(a: string, b: string): number {
 }
 
 export function normalizeUpdateTarget(target?: string): string {
+  return resolveUpdateTarget(target).target;
+}
+
+/** Normalize and report whether a channel alias was applied (for UI hints). */
+export function resolveUpdateTarget(target?: string): {
+  target: string;
+  aliasedFrom?: string;
+} {
   const value = (target || DEFAULT_DIST_TAG).trim();
   if (!value || value.startsWith("-")) {
     throw new Error(t("update.emptyTarget"));
   }
-  return value.startsWith("v") && /^\d/.test(value.slice(1))
-    ? value.slice(1)
-    : value;
+  const stripped =
+    value.startsWith("v") && /^\d/.test(value.slice(1))
+      ? value.slice(1)
+      : value;
+  // S3 / product channel "stable" → npm dist-tag "latest".
+  return resolveNpmChannelAlias(stripped);
 }
 
 export function buildInstallArgs(
@@ -548,7 +548,8 @@ function verifyIncrementalInstall(
   }
 }
 
-function buildPackageManagerEnv(): NodeJS.ProcessEnv {
+/** Strip secrets / lock overrides from the env passed to npm install/view. */
+export function buildPackageManagerEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   delete env.NUWACLI_PASSWORD;
   delete env.NUWAX_CONFIG_KEY;
@@ -578,7 +579,8 @@ export async function updateCommand(
       typeof runnerArg === "function"
         ? (runnerArg as CommandRunner)
         : runCommand;
-    const target = normalizeUpdateTarget(targetArg);
+    const resolved = resolveUpdateTarget(targetArg);
+    const target = resolved.target;
     const command = resolveCommand();
     if (!command) {
       throw new Error(t("update.noNpm"));
@@ -586,6 +588,17 @@ export async function updateCommand(
 
     const packageSpec = `${PACKAGE_NAME}@${target}`;
     const env = buildPackageManagerEnv();
+
+    if (resolved.aliasedFrom) {
+      console.log(
+        dim(
+          t("update.channelAlias", {
+            from: resolved.aliasedFrom,
+            to: target,
+          }),
+        ),
+      );
+    }
 
     if (options.check) {
       const viewArgs = buildViewArgs(packageSpec, options.registry);
@@ -669,6 +682,25 @@ export async function updateCommand(
       t("update.execute", { cmd: printableCommand("npm", installArgs) }),
     );
 
+    // Ask before any download / stop. Declining must not leave a partial
+    // incremental staging dir or waste a npm pack round-trip.
+    const running = collectRunningRuntimeSnapshot();
+    if (
+      hasRunningRuntimeProcesses(running) &&
+      isInteractive() &&
+      !isCI() &&
+      !options.yes
+    ) {
+      const ok = await clack.confirm({
+        message: t("update.confirmStopServices"),
+      });
+      if (clack.isCancel(ok) || !ok) {
+        printCancelled(t("update.stopDeclined"));
+        process.exitCode = clack.isCancel(ok) ? CANCEL_EXIT_CODE : 1;
+        return;
+      }
+    }
+
     // 增量准备（只读安装目录、写临时目录，可安全先于停服执行）：依赖表与目标
     // 版本完全一致时，升级只需替换 CLI 自身文件（dist/cli.js 等，~1MB），跳过
     // npm 整树重装。npm -g 的依赖全部装在包目录内，root 版本一变会重写全部
@@ -731,9 +763,14 @@ export async function updateCommand(
       }
       if (result?.error) throw result.error;
       if (result && result.status !== 0) {
-        // Windows 上常见根因仍是 vendor .exe 被占用；stdio inherit 时用户已见 npm
-        // EBUSY，这里补一条可操作建议（优先 update / 先 stop，勿裸 npm i -g）。
-        if (process.platform === "win32") {
+        // Prefer a specific hint when npm reports ETARGET (unknown tag/version);
+        // Windows EBUSY hint only when the failure looks like a file lock.
+        const detail = `${result.stderr ?? ""}\n${result.stdout ?? ""}`;
+        if (/ETARGET|No matching version found/i.test(detail)) {
+          console.error(t("update.etargetHint", { spec: packageSpec }));
+        } else if (process.platform === "win32") {
+          // Windows 上常见根因仍是 vendor .exe 被占用；stdio inherit 时用户已见 npm
+          // EBUSY，这里补一条可操作建议（优先 update / 先 stop，勿裸 npm i -g）。
           console.error(t("update.windowsInstallFailedHint"));
         }
         process.exitCode = result.status ?? 1;

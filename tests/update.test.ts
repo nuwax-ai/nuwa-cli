@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const mocks = vi.hoisted(() => ({
   spawnSync: vi.fn(),
   whichSync: vi.fn(),
+  confirm: vi.fn(),
+  isCancel: vi.fn(() => false),
 }));
 
 vi.mock("node:child_process", () => ({
@@ -13,12 +15,25 @@ vi.mock("which", () => ({
   default: { sync: mocks.whichSync },
 }));
 
+vi.mock("@clack/prompts", () => ({
+  confirm: (...args: unknown[]) => mocks.confirm(...args),
+  isCancel: (...args: unknown[]) => mocks.isCancel(...args),
+  select: vi.fn(),
+  text: vi.fn(),
+  intro: vi.fn(),
+  outro: vi.fn(),
+  spinner: vi.fn(() => ({ start: vi.fn(), stop: vi.fn() })),
+}));
+
 describe("update command", () => {
   beforeEach(() => {
     mocks.spawnSync.mockReset();
     mocks.spawnSync.mockImplementation(() => ({ status: 0, stdout: "" }));
     mocks.whichSync.mockReset();
     mocks.whichSync.mockReturnValue("npm");
+    mocks.confirm.mockReset();
+    mocks.isCancel.mockReset();
+    mocks.isCancel.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -31,6 +46,8 @@ describe("update command", () => {
       await import("../src/commands/update.js");
     expect(normalizeUpdateTarget()).toBe("beta");
     expect(normalizeUpdateTarget("v0.2.0")).toBe("0.2.0");
+    expect(normalizeUpdateTarget("stable")).toBe("latest");
+    expect(normalizeUpdateTarget("STABLE")).toBe("latest");
     expect(buildInstallArgs("@nuwax-ai/nuwa-cli@beta")).toEqual([
       "install",
       "-g",
@@ -47,6 +64,22 @@ describe("update command", () => {
       "--registry",
       "https://r.example",
     ]);
+  });
+
+  it("maps update stable to latest in dry-run output", async () => {
+    const { updateCommand } = await import("../src/commands/update.js");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const runner = vi.fn(() => ({ status: 0 }));
+
+    await updateCommand("stable", { dryRun: true }, runner);
+
+    expect(runner).not.toHaveBeenCalled();
+    const printed = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(printed).toMatch(/stable.+latest|Channel alias/i);
+    expect(printed).toContain("Upgrade target: @nuwax-ai/nuwa-cli@latest");
+    expect(printed).toContain(
+      "Run: npm install -g @nuwax-ai/nuwa-cli@latest --progress=true",
+    );
   });
 
   it("prints the install command without running it in dry-run mode", async () => {
@@ -516,6 +549,66 @@ describe("update command", () => {
     // 旧的假百分比进度条应已移除
     expect(printed).not.toMatch(/\[%{0,2}#+\]/);
     expect(printed).not.toContain("30%");
+  });
+
+  it("skips stop confirmation when --yes is set even if services are running", async () => {
+    const ui = await import("../src/util/ui.js");
+    const upgradeStop = await import("../src/core/processes/upgradeStop.js");
+    vi.spyOn(ui, "isInteractive").mockReturnValue(true);
+    vi.spyOn(ui, "isCI").mockReturnValue(false);
+    vi.spyOn(upgradeStop, "collectRunningRuntimeSnapshot").mockReturnValue({
+      gatewayPids: [99],
+      consolePids: [],
+      childPids: [],
+      windowsLockImages: [],
+    });
+    vi.spyOn(upgradeStop, "hasRunningRuntimeProcesses").mockReturnValue(true);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { updateCommand } = await import("../src/commands/update.js");
+    const runner = vi.fn(() => ({ status: 0 }));
+
+    await updateCommand(undefined, { yes: true }, runner);
+
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(runner).toHaveBeenCalledWith(
+      "npm",
+      expect.arrayContaining(["install"]),
+      expect.anything(),
+    );
+  });
+
+  it("aborts upgrade when interactive stop confirmation is declined", async () => {
+    const ui = await import("../src/util/ui.js");
+    const upgradeStop = await import("../src/core/processes/upgradeStop.js");
+    vi.spyOn(ui, "isInteractive").mockReturnValue(true);
+    vi.spyOn(ui, "isCI").mockReturnValue(false);
+    vi.spyOn(upgradeStop, "collectRunningRuntimeSnapshot").mockReturnValue({
+      gatewayPids: [99],
+      consolePids: [],
+      childPids: [],
+      windowsLockImages: [],
+    });
+    vi.spyOn(upgradeStop, "hasRunningRuntimeProcesses").mockReturnValue(true);
+    mocks.confirm.mockResolvedValue(false);
+    mocks.isCancel.mockReturnValue(false);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { updateCommand } = await import("../src/commands/update.js");
+    const runner = vi.fn((cmd: string, args: string[]) => {
+      if (args[0] === "view") return { status: 0, stdout: "9.9.9\n" };
+      return { status: 0, stdout: "" };
+    });
+
+    await updateCommand(undefined, {}, runner);
+
+    expect(process.exitCode).toBe(1);
+    expect(mocks.confirm).toHaveBeenCalled();
+    // Confirm runs before incremental prep — no pack / install after decline.
+    expect(runner.mock.calls.some((c) => c[1]?.[0] === "pack")).toBe(false);
+    expect(runner).not.toHaveBeenCalledWith(
+      "npm",
+      expect.arrayContaining(["install"]),
+      expect.anything(),
+    );
   });
 
   it("runs npm-cli.js directly on Windows when npm resolves to a .cmd shim", async () => {

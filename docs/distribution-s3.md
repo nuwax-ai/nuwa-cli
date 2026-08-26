@@ -92,7 +92,15 @@ NUWAX_S3_NO_VERIFY_SSL=1
 
 ## 安装(用户侧)
 
-一键命令(公开读,无需凭证、无需 aws-cli):
+**日常推荐入口**（交互向导，选语言 / 停服务后再全局安装；文档默认不带 `-y`）：
+
+```bash
+npx @nuwax-ai/nuwa-cli@latest install
+```
+
+自动化：`npx -y @nuwax-ai/nuwa-cli@latest install --yes`。已安装后升级请用 `nuwa-cli update`（增量路径 + 停服务确认）。
+
+**S3 一键命令**适合国内网络 / 无 npm 登录场景（公开读,无需凭证、无需 aws-cli）——与 npx 向导分工：S3 = 镜像可达的 bootstrap；npx install = 交互引导 + 与 registry 对齐的全局包。
 
 ```bash
 # Windows (PowerShell)

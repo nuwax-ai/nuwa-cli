@@ -224,13 +224,56 @@ export const en = {
   "cli.cmd.update.opt.registry": "Specify the npm registry",
   "cli.cmd.update.opt.force":
     "Force a full reinstall: skip the incremental path and let npm rebuild the whole tree (repairs broken installs)",
+  "cli.cmd.update.opt.yes":
+    "Skip the interactive confirmation before stopping running services (CI / Agent)",
   "cli.cmd.update.help":
-    "\nExamples:\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n\nNotes:\n  - update uses npm to upgrade the global CLI package; it does not modify ~/.nuwa-cli login data.\n  - Default channel follows the installed build: stable → latest, pre-release → beta. Pass an explicit version or dist-tag to override.\n  - Windows: bare `npm i -g` while services are running often hits EBUSY on locked nuwax-lanproxy.exe / nuwax-codex.exe. Use this command (it stops services and releases locks); do not overlay with npm while Gateway is up.\n  - When running via npx, prefer npx -y @nuwax-ai/nuwa-cli@latest ... (or @beta for pre-releases).",
+    "\nExamples:\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update stable\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n  nuwa-cli update --yes\n\nNotes:\n  - update uses npm to upgrade the global CLI package; it does not modify ~/.nuwa-cli login data.\n  - Default channel follows the installed build: stable builds → latest, pre-releases → beta. Pass an explicit version or dist-tag to override.\n  - Alias: `stable` maps to the npm `latest` dist-tag (S3 uses the name stable; npm does not publish a `stable` tag).\n  - When Gateway/Console/tunnels are running, an interactive TTY asks before stopping them; `--yes` / CI / non-TTY stop without asking.\n  - Windows: bare `npm i -g` while services are running often hits EBUSY on locked nuwax-lanproxy.exe / nuwax-codex.exe. Use this command (it stops services and releases locks); do not overlay with npm while Gateway is up.\n  - First-time install: `npx @nuwax-ai/nuwa-cli@latest install` (see `install --help`).",
+  "cli.cmd.install.desc":
+    "First-time install wizard: pick language, stop running services if needed, then npm install -g",
+  "cli.cmd.install.opt.yes":
+    "Non-interactive: skip confirms; stop running services automatically; skip language select unless --lang (does not force reinstall — use --force)",
+  "cli.cmd.install.opt.lang": "UI language to persist (en | zh-CN)",
+  "cli.cmd.install.opt.tag":
+    "npm dist-tag or semver (default: latest for stable builds, beta for pre-releases; `stable` aliases to latest)",
+  "cli.cmd.install.opt.registry": "Specify the npm registry",
+  "cli.cmd.install.opt.force":
+    "Reinstall even when @nuwax-ai/nuwa-cli is already globally installed",
+  "cli.cmd.install.help":
+    "\nExamples:\n  npx @nuwax-ai/nuwa-cli@latest install\n  npx -y @nuwax-ai/nuwa-cli@latest install --yes\n  npx @nuwax-ai/nuwa-cli@latest install --lang zh-CN\n  npx @nuwax-ai/nuwa-cli@beta install --tag beta\n  npx @nuwax-ai/nuwa-cli@latest install --force --yes\n\nNotes:\n  - Preferred first-time entry (docs omit `-y` so humans get the interactive wizard).\n  - Always installs via `npm install -g @nuwax-ai/nuwa-cli@<tag>`.\n  - `--tag stable` is accepted as an alias for npm `latest`.\n  - If already installed globally, prefers `nuwa-cli update`; use `--force` to overlay-reinstall (interactive can also confirm).\n  - `--yes` skips prompts only — it does not imply `--force`.\n  - Automation: `npx -y @nuwax-ai/nuwa-cli@latest install --yes`.",
   "cli.cmd.console.desc":
     "Start the local Web Console: view/resume/create sessions and chat directly (foreground single-instance only)",
+  // —— install wizard ——
+  "install.emptyTag":
+    "Install tag cannot be empty. Example: --tag latest or --tag 0.2.6",
+  "install.badTag":
+    "Invalid --tag {tag}. Use latest, beta, stable (→ latest), or a semver like 0.2.6 / 0.2.6-beta.1.",
+  "install.noNpm": "npm not found. Please install Node.js/npm first and retry.",
+  "install.badLang": "Unrecognized language code: {code}. Use en or zh-CN.",
+  "install.prompt.lang": "Choose the UI language for nuwa-cli",
+  "install.langSet": "UI language set to {lang}.",
+  "install.alreadyInstalledConfirm":
+    "nuwa-cli is already installed globally. Prefer `nuwa-cli update`. Reinstall with this wizard anyway?",
+  "install.alreadyInstalledHint":
+    "nuwa-cli is already installed. Prefer: nuwa-cli update\nTo force a wizard reinstall: npx @nuwax-ai/nuwa-cli@latest install --force\n(If a stale shim remains after uninstall, --force also helps.)",
+  "install.confirmStopServices":
+    "Running Gateway / Console / tunnel processes were detected. Stop them before installing?",
+  "install.stopDeclined":
+    "Installation cancelled. Stop services first (`nuwa-cli stop --all`), then retry.",
+  "install.stopping": "Stopping running services to release install files...",
+  "install.stopped": "Stopped running services.",
+  "install.installing": "Installing {spec} ...",
+  "install.execute": "Run: {cmd}",
+  "install.failed": "npm install failed.",
+  "install.done": "Installation complete.",
+  "install.nextSteps":
+    "Next steps:\n  nuwa-cli doctor\n  nuwa-cli login\n  nuwa-cli start",
   // —— update ——
   "update.emptyTarget":
     "Upgrade target cannot be empty. Example: nuwa-cli update latest or nuwa-cli update 0.2.2",
+  "update.channelAlias":
+    "Channel alias: {from} → npm dist-tag {to}",
+  "update.etargetHint":
+    "npm found no matching version for {spec}. Use a published dist-tag (latest / beta) or semver. Note: product channel `stable` maps to npm `latest` — try `nuwa-cli update latest`.",
   "update.noNpm": "npm not found. Please install Node.js/npm first and retry.",
   "update.queryFailed": "Failed to query the npm version.",
   "update.currentVersion": "Current version: {version}",
@@ -252,6 +295,10 @@ export const en = {
     "Incremental replace failed verification — falling back to a full npm install.",
   "update.incrementalDone": "Incremental update complete.",
   "update.alreadyLatest": "Already the latest version; no reinstall needed.",
+  "update.confirmStopServices":
+    "Running Gateway / Console / tunnel processes will be stopped before upgrading. Continue?",
+  "update.stopDeclined":
+    "Upgrade cancelled. Stop services first (`nuwa-cli stop --all`), then retry `nuwa-cli update`.",
   "update.step2": "Step 2/4: Stopping running services to release upgrade files...",
   "update.stopped": "Stopped running services.",
   "update.step3": "Step 3/4: Installing ",

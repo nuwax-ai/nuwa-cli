@@ -182,13 +182,56 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "cli.cmd.update.opt.registry": "指定 npm registry",
   "cli.cmd.update.opt.force":
     "强制完整重装：跳过增量更新，npm 整树重装（修复安装异常）",
+  "cli.cmd.update.opt.yes":
+    "跳过停止运行中服务前的交互确认（CI / Agent）",
   "cli.cmd.update.help":
-    "\n示例：\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n\n说明：\n  - update 使用 npm 升级全局 CLI 包，不修改 ~/.nuwa-cli 登录数据。\n  - 默认通道随当前安装版本：正式版 → latest，预发布版 → beta；也可显式指定版本或 dist-tag。\n  - Windows：服务运行中裸跑 `npm i -g` 常因 nuwax-lanproxy.exe / nuwax-codex.exe 被锁而 EBUSY；请用本命令（会先 stop 并释放锁），不要直接 npm 覆盖。\n  - npx 临时运行时，建议使用 npx -y @nuwax-ai/nuwa-cli@latest ...（预发布用 @beta）。",
+    "\n示例：\n  nuwa-cli update\n  nuwa-cli update latest\n  nuwa-cli update stable\n  nuwa-cli update 0.2.2\n  nuwa-cli update beta\n  nuwa-cli update --check\n  nuwa-cli update --yes\n\n说明：\n  - update 使用 npm 升级全局 CLI 包，不修改 ~/.nuwa-cli 登录数据。\n  - 默认通道随当前安装版本：正式版 → latest，预发布版 → beta；也可显式指定版本或 dist-tag。\n  - 别名：`stable` 映射为 npm 的 `latest` dist-tag（S3 通道叫 stable；npm 不发布名为 stable 的 tag）。\n  - 检测到 Gateway/Console/隧道在跑时，交互 TTY 会先确认是否停止；`--yes` / CI / 非 TTY 直接停。\n  - Windows：服务运行中裸跑 `npm i -g` 常因 nuwax-lanproxy.exe / nuwax-codex.exe 被锁而 EBUSY；请用本命令（会先 stop 并释放锁），不要直接 npm 覆盖。\n  - 首次安装：`npx @nuwax-ai/nuwa-cli@latest install`（见 `install --help`）。",
+  "cli.cmd.install.desc":
+    "首次安装向导：选择语言、按需停止运行中服务，再执行 npm install -g",
+  "cli.cmd.install.opt.yes":
+    "非交互：跳过确认；有服务则直接停止；除非指定 --lang 否则不交互选语言（不会强制重装，重装请用 --force）",
+  "cli.cmd.install.opt.lang": "持久化 UI 语言（en | zh-CN）",
+  "cli.cmd.install.opt.tag":
+    "npm dist-tag 或 semver（正式版默认 latest，预发布版默认 beta；`stable` 为 latest 别名）",
+  "cli.cmd.install.opt.registry": "指定 npm registry",
+  "cli.cmd.install.opt.force":
+    "即使全局已安装 @nuwax-ai/nuwa-cli 也强制用向导重装",
+  "cli.cmd.install.help":
+    "\n示例：\n  npx @nuwax-ai/nuwa-cli@latest install\n  npx -y @nuwax-ai/nuwa-cli@latest install --yes\n  npx @nuwax-ai/nuwa-cli@latest install --lang zh-CN\n  npx @nuwax-ai/nuwa-cli@beta install --tag beta\n  npx @nuwax-ai/nuwa-cli@latest install --force --yes\n\n说明：\n  - 推荐的首次安装入口（文档默认不带 `-y`，便于交互向导）。\n  - 始终通过 `npm install -g @nuwax-ai/nuwa-cli@<tag>` 安装。\n  - `--tag stable` 会映射为 npm 的 `latest`。\n  - 若已全局安装，建议改用 `nuwa-cli update`；覆盖重装请加 `--force`（交互也可确认）。\n  - `--yes` 只跳过确认，不等于 `--force`。\n  - 自动化：`npx -y @nuwax-ai/nuwa-cli@latest install --yes`。",
   "cli.cmd.console.desc":
     "启动本地 Web Console：查看/续接/新建会话并直接聊天（仅前台单例）",
+  // —— install wizard ——
+  "install.emptyTag":
+    "安装 tag 不能为空。示例：--tag latest 或 --tag 0.2.6",
+  "install.badTag":
+    "无效的 --tag {tag}。请使用 latest、beta、stable（→ latest），或 semver（如 0.2.6 / 0.2.6-beta.1）。",
+  "install.noNpm": "未找到 npm。请先安装 Node.js/npm 后重试。",
+  "install.badLang": "无法识别的语言代码：{code}。请使用 en 或 zh-CN。",
+  "install.prompt.lang": "选择 nuwa-cli 的界面语言",
+  "install.langSet": "界面语言已设为 {lang}。",
+  "install.alreadyInstalledConfirm":
+    "检测到全局已安装 nuwa-cli。建议使用 `nuwa-cli update`。仍要用本向导重装吗？",
+  "install.alreadyInstalledHint":
+    "已安装 nuwa-cli。建议：nuwa-cli update\n若要强制向导重装：npx @nuwax-ai/nuwa-cli@latest install --force\n（卸载后若残留 shim，也可加 --force。）",
+  "install.confirmStopServices":
+    "检测到正在运行的 Gateway / Console / 隧道进程。安装前先停止它们？",
+  "install.stopDeclined":
+    "已取消安装。请先停止服务（`nuwa-cli stop --all`）后再重试。",
+  "install.stopping": "正在停止运行中的服务以释放安装文件...",
+  "install.stopped": "已停止运行中的服务。",
+  "install.installing": "正在安装 {spec} ...",
+  "install.execute": "执行：{cmd}",
+  "install.failed": "npm 安装失败。",
+  "install.done": "安装完成。",
+  "install.nextSteps":
+    "下一步：\n  nuwa-cli doctor\n  nuwa-cli login\n  nuwa-cli start",
   // —— update ——
   "update.emptyTarget":
     "升级版本不能为空。示例：nuwa-cli update latest 或 nuwa-cli update 0.2.2",
+  "update.channelAlias":
+    "通道别名：{from} → npm dist-tag {to}",
+  "update.etargetHint":
+    "npm 找不到 {spec} 对应版本。请使用已发布的 dist-tag（latest / beta）或 semver。说明：产品通道 `stable` 对应 npm 的 `latest`，可试 `nuwa-cli update latest`。",
   "update.noNpm": "未找到 npm。请先安装 Node.js/npm 后重试。",
   "update.queryFailed": "查询 npm 版本失败。",
   "update.currentVersion": "当前版本：{version}",
@@ -210,6 +253,10 @@ export const zhCN: { [K in keyof typeof en]: string } = {
     "增量替换校验失败，回退完整 npm 安装。",
   "update.incrementalDone": "增量更新完成。",
   "update.alreadyLatest": "已是最新版本，无需重新安装。",
+  "update.confirmStopServices":
+    "升级前将停止正在运行的 Gateway / Console / 隧道进程。是否继续？",
+  "update.stopDeclined":
+    "已取消升级。请先停止服务（`nuwa-cli stop --all`），再重试 `nuwa-cli update`。",
   "update.step2": "步骤 2/4：停止运行中的服务以释放升级文件...",
   "update.stopped": "已停止运行中的服务。",
   "update.step3": "步骤 3/4：安装 ",

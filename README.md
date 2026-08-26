@@ -8,7 +8,26 @@ Headless multi-engine agent CLI. `nuwa-cli` bundles ACP runtimes for Codex and C
 
 ## Install
 
-**One-line installer** (S3 mirror, CN-reachable, auto-configures PATH):
+**Recommended** (interactive wizard — pick language, stop running services if needed, then global npm install):
+
+```bash
+npx @nuwax-ai/nuwa-cli@latest install
+```
+
+Automation / CI (non-interactive):
+
+```bash
+npx -y @nuwax-ai/nuwa-cli@latest install --yes
+```
+
+**Alternative · bare npm** (no wizard: no language prompt, does not stop services):
+
+```bash
+npm install -g @nuwax-ai/nuwa-cli --progress=true
+nuwa-cli doctor
+```
+
+**Alternative · S3 one-liner** (CN-reachable mirror, auto-configures PATH):
 
 ```bash
 # Windows (PowerShell)
@@ -18,18 +37,11 @@ irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from
 curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.sh | bash
 ```
 
-Or via npm (requires Node.js 22+):
-
-```bash
-npm install -g @nuwax-ai/nuwa-cli@beta --progress=true
-nuwa-cli doctor
-```
-
 > npm too slow? `NUWACLI_REGISTRY=https://registry.npmmirror.com` (bash) / `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'` (PowerShell).
 
 ### Upgrade
 
-Prefer **`nuwa-cli update`** (stops Gateway/tunnels, releases Windows vendor `.exe` locks, then runs npm). On Windows, **do not** run bare `npm i -g @nuwax-ai/nuwa-cli@…` while services are running — npm will `EBUSY` on locked `nuwax-lanproxy.exe` / `nuwax-codex.exe`. If you must use npm manually: `nuwa-cli stop --all` first, then install.
+Prefer **`nuwa-cli update`** (interactive confirm before stopping Gateway/Console/tunnels; `--yes` skips the prompt; releases Windows vendor `.exe` locks; supports the incremental path). On Windows, **do not** run bare `npm i -g @nuwax-ai/nuwa-cli@…` while services are running — npm will `EBUSY` on locked `nuwax-lanproxy.exe` / `nuwax-codex.exe`. If you must use npm manually: `nuwa-cli stop --all` first, then install.
 
 ## Uninstall
 
@@ -91,7 +103,8 @@ nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>  # cloud tun
 | `nuwa-cli account` | Manage multiple accounts |
 | `nuwa-cli config` | Get/set domain, lanproxy path, etc. |
 | `nuwa-cli service` | OS-level autostart (LaunchAgent / systemd / Scheduled Task) |
-| `nuwa-cli update` | Upgrade the npm package (preferred; stops services first on Windows) |
+| `nuwa-cli update` | Upgrade the npm package (preferred; confirms before stopping services; `--yes` for CI) |
+| `nuwa-cli install` | First-time install wizard (usually via `npx @nuwax-ai/nuwa-cli@latest install`) |
 | `nuwa-cli lang` | Show or set the UI language (`en` / `zh-CN` / `auto`) |
 
 ### Process management
@@ -243,7 +256,26 @@ See [`docs/serve-lifecycle.md`](docs/serve-lifecycle.md) for full lifecycle, aut
 
 ### 安装
 
-**一键安装**（S3 镜像，国内可达，自动配置 PATH）：
+**推荐**（交互向导：选语言、按需停服务，再全局 npm 安装）：
+
+```bash
+npx @nuwax-ai/nuwa-cli@latest install
+```
+
+自动化 / CI（非交互）：
+
+```bash
+npx -y @nuwax-ai/nuwa-cli@latest install --yes
+```
+
+**备选 · 裸 npm**（无向导：不选语言、不停服务）：
+
+```bash
+npm install -g @nuwax-ai/nuwa-cli --progress=true
+nuwa-cli doctor
+```
+
+**备选 · S3 一键安装**（国内可达镜像，自动配置 PATH）：
 
 ```bash
 # Windows (PowerShell)
@@ -253,18 +285,11 @@ irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from
 curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.sh | bash
 ```
 
-或通过 npm 安装（需要 Node.js 22+）：
-
-```bash
-npm install -g @nuwax-ai/nuwa-cli@beta --progress=true
-nuwa-cli doctor
-```
-
 > npm 太慢？`NUWACLI_REGISTRY=https://registry.npmmirror.com`（bash）/ `$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'`（PowerShell）。
 
 ### 升级
 
-请优先使用 **`nuwa-cli update`**（会先停 Gateway/隧道、释放 Windows 上 vendor `.exe` 锁，再跑 npm）。Windows 上**不要**在服务仍运行时裸跑 `npm i -g @nuwax-ai/nuwa-cli@…`——npm 会对被锁的 `nuwax-lanproxy.exe` / `nuwax-codex.exe` 报 `EBUSY`。若必须手动 npm：先 `nuwa-cli stop --all`，再安装。
+请优先使用 **`nuwa-cli update`**（有服务在跑时交互确认是否停止；`--yes` 跳过确认；释放 Windows vendor `.exe` 锁；支持增量路径）。Windows 上**不要**在服务仍运行时裸跑 `npm i -g @nuwax-ai/nuwa-cli@…`——npm 会对被锁的 `nuwax-lanproxy.exe` / `nuwax-codex.exe` 报 `EBUSY`。若必须手动 npm：先 `nuwa-cli stop --all`，再安装。
 
 ### 卸载
 
@@ -327,7 +352,8 @@ nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>  # 云端隧
 | `nuwa-cli account` | 管理多个账号 |
 | `nuwa-cli config` | 获取/设置 domain、lanproxy 路径等 |
 | `nuwa-cli service` | 系统级开机自启（LaunchAgent / systemd / 计划任务） |
-| `nuwa-cli update` | 升级 npm 包（推荐；Windows 上会先停服务再装） |
+| `nuwa-cli update` | 升级 npm 包（推荐；有服务时确认停止；`--yes` 供 CI） |
+| `nuwa-cli install` | 首次安装向导（通常：`npx @nuwax-ai/nuwa-cli@latest install`） |
 | `nuwa-cli lang` | 查看或设置界面语言（`en` / `zh-CN` / `auto`） |
 
 #### 进程管理

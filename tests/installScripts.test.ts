@@ -70,6 +70,12 @@ describe("install script progress", () => {
     expect(ps1).toContain("if (-not $SkipInstall)");
   });
 
+  it("stops running services before overlay install on Unix install.sh", () => {
+    const sh = readScript("install.sh");
+    expect(sh).toContain("nuwa-cli stop --all");
+    expect(sh).toContain("command -v nuwa-cli");
+  });
+
   it("releases Windows vendor exe locks before npm install and null-safes log Trim", () => {
     for (const name of ["install.ps1", "install-from-s3.ps1"] as const) {
       const ps1 = readScript(name);

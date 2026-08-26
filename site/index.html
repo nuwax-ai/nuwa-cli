@@ -861,13 +861,38 @@ h1,h2,h3{ font-family:var(--ff-display); font-weight:600; line-height:1.04; lett
     <div class="install-wrap reveal">
       <div class="install-card">
         <div class="os-tabs" role="tablist">
-          <button class="os-tab" role="tab" aria-selected="true" data-os="s3-mac">macOS / Linux</button>
-          <button class="os-tab" role="tab" aria-selected="false" data-os="s3-win">Windows (PS)</button>
+          <button class="os-tab" role="tab" aria-selected="true" data-os="npx">npx install</button>
           <button class="os-tab" role="tab" aria-selected="false" data-os="npm">npm</button>
+          <button class="os-tab" role="tab" aria-selected="false" data-os="s3-mac">S3 · macOS / Linux</button>
+          <button class="os-tab" role="tab" aria-selected="false" data-os="s3-win">S3 · Windows</button>
         </div>
 
-        <div class="os-pane" data-pane="s3-mac">
-          <div class="label">S3 一键安装 · curl（国内可达，自动配置 PATH）</div>
+        <div class="os-pane" data-pane="npx">
+          <div class="label"><span class="zh">推荐 · 首次安装向导（选语言、按需停服务，再全局安装）</span><span class="en">Recommended · first-time wizard (language, stop services if needed, then global install)</span></div>
+          <div class="code-row">
+            <code id="code-npx">npx @nuwax-ai/nuwa-cli@latest install</code>
+            <button class="copy-btn" data-copy="code-npx"><svg width="13" height="13"><use href="#i-copy"/></svg><span class="zh">复制</span><span class="en">Copy</span></button>
+          </div>
+          <p class="os-note"><span class="zh">自动化：</span><span class="en">Automation:</span>
+            <code>npx -y @nuwax-ai/nuwa-cli@latest install --yes</code></p>
+          <p class="os-note"><span class="zh">已安装后升级：</span><span class="en">Already installed? Upgrade with:</span>
+            <code>nuwa-cli update</code></p>
+        </div>
+
+        <div class="os-pane" data-pane="npm" hidden>
+          <div class="label"><span class="zh">备选 · 裸 npm（无向导：不停服务、不选语言；需 Node.js 22+）</span><span class="en">Alternative · bare npm (no wizard: does not stop services or pick language; Node.js 22+)</span></div>
+          <div class="code-row">
+            <code id="code-npm">npm install -g @nuwax-ai/nuwa-cli --progress=true</code>
+            <button class="copy-btn" data-copy="code-npm"><svg width="13" height="13"><use href="#i-copy"/></svg><span class="zh">复制</span><span class="en">Copy</span></button>
+          </div>
+          <div class="code-row" style="margin-top:10px">
+            <code id="code-doctor">nuwa-cli doctor</code>
+            <button class="copy-btn" data-copy="code-doctor"><svg width="13" height="13"><use href="#i-copy"/></svg><span class="zh">复制</span><span class="en">Copy</span></button>
+          </div>
+        </div>
+
+        <div class="os-pane" data-pane="s3-mac" hidden>
+          <div class="label"><span class="zh">备选 · S3 一键安装 · curl（国内可达，自动配置 PATH）</span><span class="en">Alternative · S3 one-liner · curl (CN-reachable, auto PATH)</span></div>
           <div class="code-row">
             <code id="code-s3-mac">curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.sh | bash</code>
             <button class="copy-btn" data-copy="code-s3-mac"><svg width="13" height="13"><use href="#i-copy"/></svg><span class="zh">复制</span><span class="en">Copy</span></button>
@@ -877,25 +902,13 @@ h1,h2,h3{ font-family:var(--ff-display); font-weight:600; line-height:1.04; lett
         </div>
 
         <div class="os-pane" data-pane="s3-win" hidden>
-          <div class="label">S3 一键安装 · PowerShell</div>
+          <div class="label"><span class="zh">备选 · S3 一键安装 · PowerShell</span><span class="en">Alternative · S3 one-liner · PowerShell</span></div>
           <div class="code-row">
             <code id="code-s3-win">irm https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/install-from-s3.ps1 | iex</code>
             <button class="copy-btn" data-copy="code-s3-win"><svg width="13" height="13"><use href="#i-copy"/></svg><span class="zh">复制</span><span class="en">Copy</span></button>
           </div>
           <p class="os-note"><span class="zh">PowerShell 镜像：</span><span class="en">PowerShell mirror:</span>
             <code>$env:NUWACLI_REGISTRY='https://registry.npmmirror.com'</code></p>
-        </div>
-
-        <div class="os-pane" data-pane="npm" hidden>
-          <div class="label"><span class="zh">通过 npm 安装（需 Node.js 22+）</span><span class="en">Via npm (requires Node.js 22+)</span></div>
-          <div class="code-row">
-            <code id="code-npm">npm install -g @nuwax-ai/nuwa-cli --progress=true</code>
-            <button class="copy-btn" data-copy="code-npm"><svg width="13" height="13"><use href="#i-copy"/></svg><span class="zh">复制</span><span class="en">Copy</span></button>
-          </div>
-          <div class="code-row" style="margin-top:10px">
-            <code id="code-doctor">nuwa-cli doctor</code>
-            <button class="copy-btn" data-copy="code-doctor"><svg width="13" height="13"><use href="#i-copy"/></svg><span class="zh">复制</span><span class="en">Copy</span></button>
-          </div>
         </div>
       </div>
 
@@ -1074,14 +1087,7 @@ h1,h2,h3{ font-family:var(--ff-display); font-weight:600; line-height:1.04; lett
       document.querySelectorAll(".os-pane").forEach(p=> p.hidden = (p.getAttribute("data-pane") !== key));
     });
   });
-  /* 按平台预选 */
-  const ua = navigator.platform || navigator.userAgent || "";
-  if(/Win/.test(ua)){
-    const w = document.querySelector('.os-tab[data-os="s3-win"]');
-    document.querySelectorAll(".os-tab").forEach(t=>t.setAttribute("aria-selected","false"));
-    w.setAttribute("aria-selected","true");
-    document.querySelectorAll(".os-pane").forEach(p=> p.hidden = (p.getAttribute("data-pane") !== "s3-win"));
-  }
+  /* Default tab is npx install (recommended). Keep it even on Windows. */
 
   /* ---------- 6. 滚动揭示 ---------- */
   const io = new IntersectionObserver((entries)=>{

@@ -154,6 +154,23 @@ npx nuwa-cli doctor
 
 这种方式会验证 `package.json` 的 `bin`、`files`、依赖解析和 `dist/cli.js` 产物是否像真实 npm 安装一样工作。未发布 npm 时不能通过 `npx @nuwax-ai/nuwa-cli@beta gateway` 拉取远端包，但可以用本地 tarball 的 `npx nuwa-cli gateway` 或 `npm link` 后的 `nuwa-cli gateway` 调试同一条命令。
 
+### 调试首次安装向导 `install`
+
+产品推荐入口（文档默认**不带** `-y`，给人交互向导）：
+
+```bash
+npx @nuwax-ai/nuwa-cli@latest install
+```
+
+本地开发可：
+
+```bash
+npm run dev:cli -- install --help
+npm run dev:cli -- install --yes --lang en --tag latest
+```
+
+向导步骤：选语言（**真正开始安装前**才写入 `~/.nuwa-cli/config.json` 的 `lang`）→ 探测已安装 / 运行中服务 → 交互确认后 `stop` → `npm install -g @nuwax-ai/nuwa-cli@<tag>`。`--yes` 只跳过确认（有服务则直接停），**不等于**强制重装；已全局安装时建议改跑 `nuwa-cli update`，覆盖重装请加 `--force`（或交互确认）。自动化示例：`npx -y @nuwax-ai/nuwa-cli@latest install --yes`。
+
 ### 调试 `update`
 
 `update` 默认会执行全局包升级。开发期建议先用 `--dry-run` 验证命令拼接：
@@ -176,7 +193,7 @@ nuwa-cli update --dry-run
 nuwa-cli update --check
 ```
 
-`update` 不读写 `~/.nuwa-cli/credentials.json`，不会影响 savedKey 或账号列表。真正执行 `nuwa-cli update` 时会**先停止** Gateway / Console / lanproxy 等运行时（Windows 上还会 taskkill `nuwax-codex.exe` / `nuwax-lanproxy.exe` 并校验已释放），装完后再按登录态重启——避免裸 `npm i -g` 在服务运行时对 vendor `.exe` 报 EBUSY。升级后请重新打开 shell 或确认 `which nuwa-cli` 指向新全局包路径。
+`update` 不读写 `~/.nuwa-cli/credentials.json`，不会影响 savedKey 或账号列表。真正执行 `nuwa-cli update` 时：交互 TTY 若检测到 Gateway / Console / 隧道在跑会先 **confirm** 是否停止（`--yes` / CI / 非 TTY 直接停）；随后停止运行时（Windows 上还会 taskkill `nuwax-codex.exe` / `nuwax-lanproxy.exe` 并校验已释放），装完后再按登录态重启——避免裸 `npm i -g` 在服务运行时对 vendor `.exe` 报 EBUSY。升级后请重新打开 shell 或确认 `which nuwa-cli` 指向新全局包路径。
 
 Windows 覆盖安装请用 `nuwa-cli update` 或官方安装脚本；不要在 Gateway 仍运行时直接 `npm i -g`。
 

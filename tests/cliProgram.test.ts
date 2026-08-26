@@ -36,9 +36,23 @@ describe("createProgram", () => {
       "gateway",
       "service",
       "console",
+      "install",
       "update",
       "lang",
     ]);
+  });
+
+  it("registers install and update --yes", () => {
+    expect(optionLongNames("install")).toEqual(
+      expect.arrayContaining([
+        "--yes",
+        "--lang",
+        "--tag",
+        "--registry",
+        "--force",
+      ]),
+    );
+    expect(optionLongNames("update")).toContain("--yes");
   });
 
   it("does not expose legacy command aliases", () => {

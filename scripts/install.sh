@@ -93,6 +93,12 @@ fi
 
 # --- Install (skipped when already at target) ---
 if [ "$SKIP_INSTALL" = "0" ]; then
+# Align with `nuwa-cli update` / install.ps1: stop runtime before overlaying
+# the global package (best-effort; ignore failures on first install).
+if command -v nuwa-cli >/dev/null 2>&1; then
+  info "升级前停止运行中的 nuwa-cli 服务（best-effort）..."
+  nuwa-cli stop --all >/dev/null 2>&1 || true
+fi
 INSTALL_ARGS=(install -g "${PACKAGE}@${TAG}" --progress=true)
 [ -n "$REGISTRY" ] && INSTALL_ARGS+=(--registry "$REGISTRY")
 step 2 3 "安装 ${PACKAGE}@${TAG}${REGISTRY:+ via $REGISTRY} ..."
