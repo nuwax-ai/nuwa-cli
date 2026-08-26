@@ -321,7 +321,7 @@ h1,h2,h3{ font-family:var(--ff-display); font-weight:600; line-height:1.04; lett
 .install-wrap{ display:grid; grid-template-columns:1fr 1fr; gap:clamp(28px,4vw,48px); align-items:start; }
 .install-card{ border:1px solid var(--line-2); border-radius:16px; overflow:hidden; background:#0c0c11; }
 .os-tabs{ display:flex; gap:4px; padding:8px; background:rgba(255,255,255,.02); border-bottom:1px solid var(--line); }
-.os-tab{ flex:1; padding:11px 10px; border-radius:9px; font-family:var(--ff-mono); font-size:12.5px; color:var(--bone-3); transition:.2s; text-align:center; }
+.os-tab{ flex:1; padding:11px 8px; border-radius:9px; font-family:var(--ff-mono); font-size:12px; color:var(--bone-3); transition:.2s; text-align:center; white-space:nowrap; }
 .os-tab[aria-selected="true"]{ background:var(--ink-4); color:var(--bone); }
 .os-pane{ padding:20px 22px; }
 .os-pane[hidden]{ display:none; }
@@ -862,8 +862,7 @@ h1,h2,h3{ font-family:var(--ff-display); font-weight:600; line-height:1.04; lett
       <div class="install-card">
         <div class="os-tabs" role="tablist">
           <button class="os-tab" role="tab" aria-selected="true" data-os="npx">npx install</button>
-          <button class="os-tab" role="tab" aria-selected="false" data-os="npm">npm</button>
-          <button class="os-tab" role="tab" aria-selected="false" data-os="s3-mac">S3 · macOS / Linux</button>
+          <button class="os-tab" role="tab" aria-selected="false" data-os="s3-mac">S3 · macOS/Linux</button>
           <button class="os-tab" role="tab" aria-selected="false" data-os="s3-win">S3 · Windows</button>
         </div>
 
@@ -877,18 +876,6 @@ h1,h2,h3{ font-family:var(--ff-display); font-weight:600; line-height:1.04; lett
             <code>npx -y @nuwax-ai/nuwa-cli@latest install --yes</code></p>
           <p class="os-note"><span class="zh">已安装后升级：</span><span class="en">Already installed? Upgrade with:</span>
             <code>nuwa-cli update</code></p>
-        </div>
-
-        <div class="os-pane" data-pane="npm" hidden>
-          <div class="label"><span class="zh">备选 · 裸 npm（无向导：不停服务、不选语言；需 Node.js 22+）</span><span class="en">Alternative · bare npm (no wizard: does not stop services or pick language; Node.js 22+)</span></div>
-          <div class="code-row">
-            <code id="code-npm">npm install -g @nuwax-ai/nuwa-cli --progress=true</code>
-            <button class="copy-btn" data-copy="code-npm"><svg width="13" height="13"><use href="#i-copy"/></svg><span class="zh">复制</span><span class="en">Copy</span></button>
-          </div>
-          <div class="code-row" style="margin-top:10px">
-            <code id="code-doctor">nuwa-cli doctor</code>
-            <button class="copy-btn" data-copy="code-doctor"><svg width="13" height="13"><use href="#i-copy"/></svg><span class="zh">复制</span><span class="en">Copy</span></button>
-          </div>
         </div>
 
         <div class="os-pane" data-pane="s3-mac" hidden>
