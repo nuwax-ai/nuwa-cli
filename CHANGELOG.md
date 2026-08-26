@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-08-26
+
+Stable release promoting `0.2.7-beta.0`. Distributed as npm `latest` and S3 `stable`.
+
+### Added
+
+- **`nuwa-cli install` 首次安装向导：** `npx @nuwax-ai/nuwa-cli@latest install` 可选语言、探测并确认停服务后执行 `npm install -g`；`--yes` / `--lang` / `--tag` / `--registry` / `--force`（`--yes` 不隐含强制重装）。
+- **`nuwa-cli update --yes`：** 有运行中服务时交互确认是否停止（确认在增量下载之前）；`--yes` / CI / 非 TTY 跳过确认。
+- **`update`/`install` 通道别名：** `stable` → npm `latest`（避免 `@stable` ETARGET）。
+
+### Changed
+
+- Unix `scripts/install.sh` 在覆盖安装前 best-effort `nuwa-cli stop --all`（对齐 install.ps1）。
+- README / docs / `site/index.html`：推荐入口改为 npx install 向导；S3 与裸 npm 为备选；升级指向 `nuwa-cli update`。
+
 ## [0.2.7-beta.0] - 2026-08-26
 
 ### Added
