@@ -344,6 +344,11 @@ async function printServeStatus(): Promise<void> {
   }
 }
 
+/** Shared runtime block for `status` and `info` (Gateway / children / autostart). */
+export async function printRuntimeStatus(): Promise<void> {
+  await printServeStatus();
+}
+
 export async function statusCommand(
   options: StatusCommandOptions,
 ): Promise<void> {

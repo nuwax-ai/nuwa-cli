@@ -90,6 +90,7 @@ nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>  # cloud tun
 | `nuwa-cli gateway` | Auto-detect engine → login → start `serve --tunnel` ([docs](docs/gateway.md)) |
 | `nuwa-cli serve` | Local HTTP API for scripting / IM integration ([docs](docs/serve-lifecycle.md)) |
 | `nuwa-cli login` / `logout` / `status` | Nuwax account login (headless) |
+| `nuwa-cli info` | Panoramic overview: redacted config, runtime, recent sessions, update hint |
 | `nuwa-cli account` | Manage multiple accounts |
 | `nuwa-cli config` | Get/set domain, lanproxy path, etc. |
 | `nuwa-cli service` | OS-level autostart (LaunchAgent / systemd / Scheduled Task) |
@@ -330,6 +331,7 @@ nuwa-cli gateway --domain https://agent.nuwax.com --saved-key <key>  # 云端隧
 | `nuwa-cli gateway` | 自动检测引擎 → 登录 → 启动 `serve --tunnel`（[文档](docs/gateway.md)） |
 | `nuwa-cli serve` | 本机 HTTP API，供脚本/IM 集成（[文档](docs/serve-lifecycle.md)） |
 | `nuwa-cli login` / `logout` / `status` | Nuwax 账号登录（无 UI） |
+| `nuwa-cli info` | 全景概览：脱敏配置、运行状态、最近会话、升级提示 |
 | `nuwa-cli account` | 管理多个账号 |
 | `nuwa-cli config` | 获取/设置 domain、lanproxy 路径等 |
 | `nuwa-cli service` | 系统级开机自启（LaunchAgent / systemd / 计划任务） |

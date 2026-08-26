@@ -187,6 +187,13 @@ export const en = {
     "Show the Nuwax login state and the Gateway/Console run state",
   "cli.cmd.status.opt.remote":
     "Additionally verify with the server whether savedKey is still valid",
+  "cli.cmd.info.desc":
+    "Panoramic overview: redacted config, runtime status, recent sessions, and update hint",
+  "cli.cmd.info.opt.limit": "Max recent sessions to list (default: 10)",
+  "cli.cmd.info.opt.noSessions": "Skip the recent sessions section",
+  "cli.cmd.info.opt.noUpdateCheck": "Skip the npm update check",
+  "cli.cmd.info.help":
+    "\nExamples:\n  nuwa-cli info\n  nuwa-cli info --limit 5\n  nuwa-cli info --no-sessions\n  nuwa-cli info --no-update-check\n\nNotes:\n  - Shows login/home/lang plus set/unset for secrets (never prints configKey/savedKey values).\n  - Recent sessions go through the sensitive-access gate (same as `sessions`).\n  - Update hint is best-effort via `npm view`; upgrade with `nuwa-cli update`.",
   "cli.cmd.config.desc":
     "View/change the current default account config (use the account command for multiple accounts)",
   "cli.cmd.config.get.desc":
@@ -386,6 +393,28 @@ export const en = {
   "config.unknownKey":
     "[nuwa-cli] Unknown config key \"{key}\". Available: {keys}.",
   "config.updated": "Updated {key}.",
+  // —— info ——
+  "info.section.config": "Config",
+  "info.section.runtime": "Runtime",
+  "info.section.sessions": "Recent sessions (latest {n})",
+  "info.section.update": "Update",
+  "info.version": "CLI version: {version}",
+  "info.lang": "Language: {lang}",
+  "info.home": "Home: {dir}",
+  "info.login": "Logged in: {state}",
+  "info.loginYes": "yes",
+  "info.loginNo": "no",
+  "info.configKey": "configKey: {state}",
+  "info.sessionHint":
+    "view: nuwa-cli sessions summary --engine {engine} --session-id {id}",
+  "info.sessionsMore":
+    "More: nuwa-cli sessions   |   resume in chat: nuwa-cli chat --resume <id>",
+  "info.sessionsFailed": "Could not list sessions: {msg}",
+  "info.updateCheckSkipped": "Update check skipped (npm unavailable or query failed).",
+  "info.updateAvailable":
+    "Update available: {from} → {to} (channel: {channel})",
+  "info.updateHint": "Upgrade: nuwa-cli update",
+  "info.updateCurrent": "Up to date: {version} (channel: {channel})",
   // —— processes / ps / stop ——
   "processes.none": "No running nuwa-cli processes found.",
   "processes.header": "PID\tType\tState\tMode\tAddress\tStarted",

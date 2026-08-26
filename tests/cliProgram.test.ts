@@ -36,11 +36,22 @@ describe("createProgram", () => {
       "gateway",
       "service",
       "console",
+      "info",
       "install",
       "uninstall",
       "update",
       "lang",
     ]);
+  });
+
+  it("registers info overview flags", () => {
+    expect(optionLongNames("info")).toEqual(
+      expect.arrayContaining([
+        "--limit",
+        "--no-sessions",
+        "--no-update-check",
+      ]),
+    );
   });
 
   it("registers install and update --yes", () => {

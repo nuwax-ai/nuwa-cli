@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-08-26
+
+### Added
+
+- **`nuwa-cli info`：** 全景概览（脱敏配置 + 运行状态 + 最近会话默认 10 条 + 尽力 `npm view` 升级提示）。密钥仅显示 set/unset；会话走敏感访问门禁。`--limit` / `--no-sessions` / `--no-update-check`。
+
 ## [0.2.8] - 2026-08-26
 
 Stable release promoting `0.2.8-beta.0` / `0.2.8-beta.1`. Distributed as npm `latest` and S3 `stable`.

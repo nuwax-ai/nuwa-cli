@@ -155,6 +155,13 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "cli.cmd.logout.desc": "退出登录（保留 savedKey，可免密重新登录）",
   "cli.cmd.status.desc": "查看 Nuwax 登录状态以及 Gateway/Console 运行状态",
   "cli.cmd.status.opt.remote": "额外向服务器校验 savedKey 是否仍然有效",
+  "cli.cmd.info.desc":
+    "全景概览：脱敏配置、运行状态、最近会话，以及升级提示",
+  "cli.cmd.info.opt.limit": "最近会话最多列出条数（默认 10）",
+  "cli.cmd.info.opt.noSessions": "跳过最近会话区块",
+  "cli.cmd.info.opt.noUpdateCheck": "跳过 npm 升级检查",
+  "cli.cmd.info.help":
+    "\n示例：\n  nuwa-cli info\n  nuwa-cli info --limit 5\n  nuwa-cli info --no-sessions\n  nuwa-cli info --no-update-check\n\n说明：\n  - 展示登录/主目录/语言，以及对密钥仅显示已设置/未设置（绝不打印 configKey/savedKey 原文）。\n  - 最近会话走敏感访问门禁（与 `sessions` 相同）。\n  - 升级提示为 `npm view` 尽力查询；真正升级请用 `nuwa-cli update`。",
   "cli.cmd.config.desc": "查看/修改当前默认账号配置（多账号请用 account 命令）",
   "cli.cmd.config.get.desc": "查看配置项，省略 key 时列出全部",
   "cli.cmd.config.set.desc": "设置配置项（domain/saved-key/username/lanproxy-path）",
@@ -340,6 +347,28 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "config.stateUnset": "(未设置)",
   "config.unknownKey": "[nuwa-cli] 未知配置项 \"{key}\"，可用：{keys}",
   "config.updated": "已更新 {key}。",
+  // —— info ——
+  "info.section.config": "配置",
+  "info.section.runtime": "运行状态",
+  "info.section.sessions": "最近会话（最新 {n} 条）",
+  "info.section.update": "升级",
+  "info.version": "CLI 版本：{version}",
+  "info.lang": "语言：{lang}",
+  "info.home": "主目录：{dir}",
+  "info.login": "已登录：{state}",
+  "info.loginYes": "是",
+  "info.loginNo": "否",
+  "info.configKey": "configKey：{state}",
+  "info.sessionHint":
+    "查看：nuwa-cli sessions summary --engine {engine} --session-id {id}",
+  "info.sessionsMore":
+    "更多：nuwa-cli sessions   |   在 chat 续接：nuwa-cli chat --resume <id>",
+  "info.sessionsFailed": "无法列出会话：{msg}",
+  "info.updateCheckSkipped": "已跳过升级检查（npm 不可用或查询失败）。",
+  "info.updateAvailable":
+    "有可用更新：{from} → {to}（通道：{channel}）",
+  "info.updateHint": "升级：nuwa-cli update",
+  "info.updateCurrent": "已是最新：{version}（通道：{channel}）",
   // —— processes / ps / stop ——
   "processes.none": "未发现仍在运行的 nuwa-cli 进程。",
   "processes.header": "PID\t类型\t状态\t模式\t地址\t启动时间",
