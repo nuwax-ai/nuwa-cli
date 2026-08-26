@@ -28,7 +28,9 @@ export default defineConfig({
     include: ["tests/**/*.{test,spec}.ts"],
     exclude: ["node_modules", "dist"],
     setupFiles: ["./tests/setup.ts"],
-    testTimeout: 15000,
+    // Full-suite parallel transform/import of heavy modules (createProgram /
+    // install) can exceed 15s on a busy machine; release:beta gates on this.
+    testTimeout: 60_000,
     // Parallel startServeHttp would otherwise contend on the process-wide
     // PersistentMcpBridge (real npx chrome-devtools) and flake stop() past
     // testTimeout. Warmup is still covered in proxyRewriteDefaults with the
