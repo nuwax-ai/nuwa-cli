@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   notifications: [] as Array<{ method: string; params: unknown }>,
   requests: [] as Array<{ method: string; params: unknown }>,
   engineIds: [] as string[],
+  /** 由用例注入：session/new 返回的 modes（默认 null = 引擎未广告）。 */
+  newSessionModes: null as unknown,
   bridgeStart: vi.fn().mockResolvedValue(undefined),
   bridgeStop: vi.fn().mockResolvedValue(undefined),
 }));
@@ -50,7 +52,7 @@ vi.mock("../src/core/acp/connection.js", () => ({
         return {
           start: async () => ({
             sessionId: `acp-session-${mocks.newSessionRequests.length}`,
-            modes: null,
+            modes: mocks.newSessionModes ?? null,
             newSessionResponse: { configOptions: [] },
             prompt: async () => ({}),
           }),
@@ -76,6 +78,7 @@ describe("SessionHub ACP runtime precedence", () => {
     mocks.notifications.length = 0;
     mocks.requests.length = 0;
     mocks.engineIds.length = 0;
+    mocks.newSessionModes = null;
     mocks.bridgeStart.mockClear();
     mocks.bridgeStop.mockClear();
   });
@@ -217,6 +220,98 @@ describe("SessionHub ACP runtime precedence", () => {
     expect((loadCall!.params as { cwd?: string }).cwd).toBe("/historical/cwd");
     // The historical ACP id is exposed as acpSessionId on the managed session.
     expect(session.acpSessionId).toBe("hist-acp-1");
+
+    await hub.stopSession(session.sessionId);
+  });
+
+  it("syncs downstream agent_mode=plan to the engine session mode before each prompt", async () => {
+    const { SessionHub } = await import("../src/core/serve/sessionHub.js");
+    mocks.newSessionModes = {
+      currentModeId: "build",
+      availableModes: [
+        { id: "build", name: "build" },
+        { id: "plan", name: "plan" },
+      ],
+    };
+    const hub = new SessionHub("deny-noninteractive");
+    const session = hub.startSession("codex", process.cwd(), undefined, {
+      agentMode: "plan",
+      mcpServers: [],
+    });
+    await session.ready;
+
+    session.queue.push("plan this feature");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const setModeCall = mocks.requests.find(
+      (r) => r.method === "session/set_mode",
+    );
+    expect(setModeCall).toMatchObject({
+      params: { sessionId: session.acpSessionId, modeId: "plan" },
+    });
+    expect(session.currentEngineModeId).toBe("plan");
+    // modes 镜像同步（Console 状态下拉用）
+    expect(session.modes?.currentModeId).toBe("plan");
+
+    await hub.stopSession(session.sessionId);
+  });
+
+  it("keeps the engine default when agent_mode=plan but the engine has no plan mode", async () => {
+    const { SessionHub } = await import("../src/core/serve/sessionHub.js");
+    mocks.newSessionModes = {
+      currentModeId: "agent",
+      availableModes: [{ id: "read-only", name: "read-only" }, { id: "agent", name: "agent" }],
+    };
+    const hub = new SessionHub("deny-noninteractive");
+    const session = hub.startSession("codex", process.cwd(), undefined, {
+      agentMode: "plan",
+      mcpServers: [],
+    });
+    await session.ready;
+
+    session.queue.push("plan this feature");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(
+      mocks.requests.find((r) => r.method === "session/set_mode"),
+    ).toBeUndefined();
+    expect(session.currentEngineModeId).toBe("agent");
+
+    await hub.stopSession(session.sessionId);
+  });
+
+  it("restores the initial mode when leaving plan (agent_mode switch on a live session)", async () => {
+    const { SessionHub } = await import("../src/core/serve/sessionHub.js");
+    mocks.newSessionModes = {
+      currentModeId: "build",
+      availableModes: [
+        { id: "build", name: "build" },
+        { id: "plan", name: "plan" },
+      ],
+    };
+    const hub = new SessionHub("deny-noninteractive");
+    const session = hub.startSession("codex", process.cwd(), undefined, {
+      agentMode: "plan",
+      mcpServers: [],
+    });
+    await session.ready;
+    session.queue.push("plan this feature");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // 云端把 agent_mode 切回 yolo：reconfigureSession 命中 runtimeMatches
+    // （不重启引擎），仅刷新 agentMode，逐 prompt 恢复初始 mode。
+    await hub.reconfigureSession(session.sessionId, "codex", {
+      mcpServers: [],
+    });
+    expect(session.agentMode).toBeUndefined();
+    session.queue.push("now implement");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const modeCalls = mocks.requests
+      .filter((r) => r.method === "session/set_mode")
+      .map((r) => (r.params as { modeId: string }).modeId);
+    expect(modeCalls).toEqual(["plan", "build"]);
+    expect(session.currentEngineModeId).toBe("build");
 
     await hub.stopSession(session.sessionId);
   });

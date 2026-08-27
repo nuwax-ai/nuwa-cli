@@ -100,6 +100,8 @@
       .bubble { padding: 10px 12px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; }
       .thought { color: var(--dim); font-style: italic; border-left: 2px solid var(--border); padding-left: 10px; margin: 4px 0; white-space: pre-wrap; }
       .tool { font-size: 12px; color: var(--warn); background: var(--panel2); border: 1px solid var(--border); padding: 3px 8px; border-radius: 6px; display: inline-block; margin: 2px 4px 2px 0; }
+      .plan { border-left: 2px solid var(--border); padding-left: 10px; margin: 4px 0; }
+      .plan .pitem { font-size: 13px; color: var(--dim); white-space: pre-wrap; }
       .system { color: var(--dim); font-size: 12px; }
       .perm {
         background: var(--panel2); border: 1px solid var(--warn); border-radius: 8px;
@@ -408,7 +410,7 @@
           });
           // ACP subtype events. nuwa-cli 不再额外发 aggregate `agent_session_update`
           // (与 codex 等客户端双消费会叠词)，改为直接按 subtype 监听。
-          for (const evn of ["agent_message_chunk", "agent_thought_chunk", "tool_call", "tool_call_update"])
+          for (const evn of ["agent_message_chunk", "agent_thought_chunk", "tool_call", "tool_call_update", "plan", "plan_update", "plan_removed", "current_mode_update"])
             on(evn, (m) => handleUpdate(id, m.data));
           on("end_turn", (m) => {
             const arr = state.msgs[id]; if (arr && arr.length) arr[arr.length - 1].done = true;
@@ -444,6 +446,20 @@
               const name = tc.title || tc.kind || "tool";
               if (!last.tools.includes(name)) last.tools.push(name);
             }
+          } else if (su === "plan" || su === "plan_update" || su === "plan_removed") {
+            // ACP 全量替换语义：只保留最新一份计划
+            for (const m of arr) delete m.plan;
+            if (su !== "plan_removed") {
+              const last = arr[arr.length - 1];
+              if (last && last.role === "assistant") {
+                last.plan = (update.entries || []).map((e) => ({
+                  content: e.content || "",
+                  status: e.status === "completed" || e.status === "in_progress" ? e.status : "pending",
+                }));
+              }
+            }
+          } else if (su === "current_mode_update") {
+            pushSystem(id, "引擎模式切换：" + (update.modeId || "(unknown)"));
           }
           if (state.activeId === id) renderMessages();
         }
@@ -532,6 +548,16 @@
             d.appendChild(el("div", "role", m.role === "user" ? "你" : "assistant"));
             const bubble = el("div", "bubble");
             if (m.thought) bubble.appendChild(el("div", "thought", m.thought));
+            if (m.plan && m.plan.length) {
+              const pw = el("div", "plan");
+              const done = m.plan.filter((p) => p.status === "completed").length;
+              pw.appendChild(el("div", "ptitle", "计划（" + done + "/" + m.plan.length + " 已完成）"));
+              m.plan.forEach((p) => {
+                const mark = p.status === "completed" ? "✓" : p.status === "in_progress" ? "▸" : "·";
+                pw.appendChild(el("div", "pitem", mark + " " + p.content));
+              });
+              bubble.appendChild(pw);
+            }
             if (m.tools && m.tools.length) {
               const tw = el("div");
               m.tools.forEach((t) => tw.appendChild(el("span", "tool", "🔧 " + t)));

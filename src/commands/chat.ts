@@ -197,6 +197,28 @@ export async function chatCommand(options: ChatCommandOptions): Promise<void> {
       process.stdout.write(text);
       wroteAny = true;
     },
+    // 计划条目：简易 checklist（[✓/▸/·] content），全量替换语义下每次重绘
+    onPlanUpdate: (payload: {
+      entries: Array<{ content: string; status: string }>;
+      removed: boolean;
+    }) => {
+      if (payload.removed) return;
+      const lines = payload.entries.map((entry) => {
+        const mark =
+          entry.status === "completed" ? "✓" : entry.status === "in_progress" ? "▸" : "·";
+        return pc.dim(`  [${mark}] ${entry.content}`);
+      });
+      if (lines.length > 0) {
+        process.stdout.write(pc.bold(`\nplan (${payload.entries.length}):\n`));
+        process.stdout.write(lines.join("\n") + "\n");
+      }
+      wroteAny = true;
+    },
+    onModeChange: (modeId: string | null) => {
+      if (modeId) {
+        process.stdout.write(pc.dim(`\n[mode → ${modeId}]\n`));
+      }
+    },
   };
 
   registerProcess({

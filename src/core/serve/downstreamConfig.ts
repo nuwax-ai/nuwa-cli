@@ -16,6 +16,13 @@ export interface DownstreamSessionConfig {
    * (mirrors nuwaclaw acpNewSessionParams). Whitespace-only values drop out.
    */
   systemPrompt?: string;
+  /**
+   * Business agent mode from `agent_config.agent_server.agent_mode`
+   * (nuwaclaw's contract): ask/yolo drive the local permission policy;
+   * plan additionally syncs the engine session mode before each prompt.
+   * Unknown values are dropped (host defaults apply).
+   */
+  agentMode?: "ask" | "yolo" | "plan";
 }
 
 const CLAUDE_ENGINE_COMMANDS = new Set([
@@ -380,6 +387,16 @@ export function parseDownstreamSessionConfig(
   const systemPrompt =
     firstText([body], "system_prompt", "systemPrompt")?.trim() || undefined;
 
+  const agentModeRaw = firstText(
+    [agentServer ?? {}, agentConfig ?? {}],
+    "agent_mode",
+    "agentMode",
+  );
+  const agentMode =
+    agentModeRaw === "ask" || agentModeRaw === "yolo" || agentModeRaw === "plan"
+      ? agentModeRaw
+      : undefined;
+
   return {
     engine,
     modelOverlay: hasModelOverlay ? modelOverlay : undefined,
@@ -388,5 +405,6 @@ export function parseDownstreamSessionConfig(
       unwrapMcpProxyBridgeEntries(mcpValue).map(normalizeMcpServer),
     ),
     systemPrompt,
+    agentMode,
   };
 }

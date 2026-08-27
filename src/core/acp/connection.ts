@@ -11,7 +11,11 @@ import {
   type RequestPermissionResponse,
   type SessionNotification,
 } from "@agentclientprotocol/sdk";
-import { normalizeMcpAskToolUpdate } from "@nuwax-ai/agent-kit";
+import {
+  buildClientCapabilities,
+  classifySessionUpdate,
+  normalizeMcpAskToolUpdate,
+} from "@nuwax-ai/agent-kit";
 import type { PermissionMode } from "../permissions/policy.js";
 import { decidePermission } from "../permissions/policy.js";
 import type { PermissionCoordinator } from "../permissions/coordinator.js";
@@ -31,6 +35,13 @@ export interface EngineSessionHandlers {
   onAgentThought?: (text: string) => void;
   /** Fired for every session/update notification, in addition to the text-specific handlers above — used by `serve` to forward the full update over SSE. */
   onRawUpdate?: (notification: SessionNotification) => void;
+  /** Plan-family updates (plan / plan_update / plan_removed) — classified by agent-kit; entries are the full replacement list. */
+  onPlanUpdate?: (payload: {
+    entries: Array<{ content: string; priority: string; status: string }>;
+    removed: boolean;
+  }) => void;
+  /** Engine-side mode change (e.g. ExitPlanMode approved → back to build/default). */
+  onModeChange?: (modeId: string | null) => void;
   permissionMode: PermissionMode;
   /** serve 侧注入：敏感/ask 时走 SSE + notify-resolved。 */
   onPermissionAsk?: (
@@ -80,6 +91,15 @@ function routeSessionUpdate(
       ? notification
       : ({ ...notification, update } as SessionNotification);
   handlers.onRawUpdate?.(normalizedNotification);
+  const classified = classifySessionUpdate(
+    update as unknown as Record<string, unknown>,
+  );
+  if (classified.plan && handlers.onPlanUpdate) {
+    handlers.onPlanUpdate(classified.plan);
+  }
+  if (classified.modeChange && handlers.onModeChange) {
+    handlers.onModeChange(classified.modeChange.modeId);
+  }
   switch (update.sessionUpdate) {
     case "agent_message_chunk":
       if (update.content.type === "text")
@@ -179,7 +199,9 @@ export async function withEngineConnection<T>(
   const run = app.connectWith(stream, async (ctx) => {
     await ctx.request(AGENT_METHODS.initialize, {
       protocolVersion: PROTOCOL_VERSION,
-      clientCapabilities: {},
+      // plan: {} opts into plan_update / plan_removed session updates
+      // (agent-kit assembler, shared with nuwaclaw).
+      clientCapabilities: buildClientCapabilities(),
       clientInfo: { name: "nuwa-cli", version: CLI_VERSION },
     });
     return op(ctx);

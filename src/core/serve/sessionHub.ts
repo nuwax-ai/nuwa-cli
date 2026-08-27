@@ -22,7 +22,11 @@ import {
   wrapResumedSession,
   type SessionHandle,
 } from "../acp/sessionHandle.js";
-import { applySessionMode } from "../acp/sessionMode.js";
+import { applySessionMode, sessionModeChannelFor } from "../acp/sessionMode.js";
+import {
+  resolveEngineModeInfo,
+  syncBusinessModeToEngine,
+} from "@nuwax-ai/agent-kit";
 import { debugLog } from "../debugLog.js";
 import { ENGINE_STOP_WAIT_MS } from "../processes/killTree.js";
 import { modelFromConfigOptions } from "../ui/modelInfo.js";
@@ -74,6 +78,8 @@ export interface SessionControls {
 export interface SessionRuntimeOptions {
   mode?: string;
   yolo?: boolean;
+  /** 业务 agent_mode（/computer/chat agent_config.agent_server.agent_mode）：ask/yolo 驱动本地审批策略；plan 额外逐 prompt 同步引擎 session mode。 */
+  agentMode?: "ask" | "yolo" | "plan";
   /** Per-session ACP model settings override Gateway flags and local config. */
   modelOverlay?: ModelOverlay;
   /** Per-session ACP environment is applied last to the engine process. */
@@ -109,6 +115,12 @@ interface ManagedSession {
   controls?: SessionControls;
   initialModeId?: string;
   yolo?: boolean;
+  /** 下行业务 agent_mode；运行中可变（不参与 runtimeMatches，逐 prompt 生效）。 */
+  agentMode?: "ask" | "yolo" | "plan";
+  /** 上一次逐 prompt 同步使用的业务档（下游撤回 agent_mode 后仍需退出 plan）。 */
+  lastSyncedAgentMode?: "ask" | "yolo" | "plan";
+  /** 引擎当前 session mode 镜像（发现 / 逐 prompt 同步 / current_mode_update 维护）。 */
+  currentEngineModeId?: string | null;
   modelOverlay?: ModelOverlay;
   engineEnv?: NodeJS.ProcessEnv;
   mcpServers: McpServer[];
@@ -286,6 +298,7 @@ export class SessionHub {
       done: Promise.resolve(),
       initialModeId: runtime?.mode,
       yolo: runtime?.yolo,
+      agentMode: runtime?.agentMode,
       modelOverlay: runtime?.modelOverlay,
       engineEnv: runtime?.engineEnv,
       mcpServers: runtime?.mcpServers ?? [],
@@ -338,6 +351,7 @@ export class SessionHub {
     const generation = session.generation;
     const queue = session.queue;
     const abortController = session.abortController;
+    const hubPermissionMode = () => this.permissionMode;
     const setRunnerReady = (result: Readiness) => {
       if (session.generation === generation) this.setReady(session, result);
     };
@@ -368,7 +382,14 @@ export class SessionHub {
             cwd: session.cwd,
           },
           {
-            permissionMode: this.permissionMode,
+            // 下行 agent_mode 覆盖审批策略（nuwaclaw 同语义）：yolo→自动放行，
+            // ask/plan→走 ask（serve 即 SSE 远程审批；plan 的 ExitPlanMode 类
+            // 确认必须人工放行）。getter 保证逐请求读取最新值。
+            get permissionMode(): PermissionMode {
+              if (!session.agentMode) return hubPermissionMode();
+              if (session.agentMode === "yolo") return "yolo";
+              return "ask";
+            },
             coordinator: this.coordinator,
             appSessionId: sessionId,
             onPermissionAsk: (request, meta) =>
@@ -376,6 +397,18 @@ export class SessionHub {
             onAgentText: () => {},
             onRawUpdate: (notification: SessionNotification) => {
               if (session.generation !== generation) return;
+              // 引擎侧模式变化（如 ExitPlanMode 批准）→ 更新镜像，供逐 prompt 同步去重
+              if (notification.update.sessionUpdate === "current_mode_update") {
+                const modeId = (
+                  notification.update as { modeId?: string }
+                ).modeId;
+                if (typeof modeId === "string") {
+                  session.currentEngineModeId = modeId;
+                  if (session.modes) {
+                    session.modes = { ...session.modes, currentModeId: modeId };
+                  }
+                }
+              }
               const message: UnifiedSessionMessage = {
                 sessionId,
                 acpSessionId: notification.sessionId,
@@ -461,6 +494,54 @@ export class SessionHub {
             while (true) {
               const prompt = await queue.next();
               if (prompt === undefined) break; // queue closed -> stop this session
+              // 逐 prompt 同步下行业务 agent_mode（plan 档）到引擎 session mode。
+              // 语义与 nuwaclaw per-chat 同步共享 agent-kit syncBusinessModeToEngine：
+              // plan→set_mode（fallback mode config option）；ask/yolo→仅在引擎
+              // 仍处于 plan 时恢复初始 mode。下游撤回 agent_mode（undefined）后，
+              // 若上一轮是我们切进 plan 的，仍以 yolo 语义退出，避免 plan 泄漏。
+              // 失败不阻断 prompt。
+              const effectiveAgentMode =
+                session.agentMode ??
+                (session.lastSyncedAgentMode === "plan"
+                  ? ("yolo" as const)
+                  : undefined);
+              if (effectiveAgentMode) {
+                const modeInfo = resolveEngineModeInfo({
+                  modes: session.modes,
+                  configOptions: session.configOptions,
+                });
+                const result = await syncBusinessModeToEngine({
+                  sessionId: handle.sessionId,
+                  desired: effectiveAgentMode,
+                  info: modeInfo,
+                  currentModeId:
+                    session.currentEngineModeId ?? modeInfo.currentModeId,
+                  connection: sessionModeChannelFor(ctx),
+                });
+                session.currentEngineModeId = result.currentModeId;
+                session.lastSyncedAgentMode = session.agentMode;
+                if (
+                  result.outcome?.status === "applied" &&
+                  session.modes &&
+                  result.currentModeId
+                ) {
+                  session.modes = {
+                    ...session.modes,
+                    currentModeId: result.currentModeId,
+                  };
+                  this.broadcastState(sessionId);
+                } else if (
+                  result.outcome &&
+                  result.outcome.status !== "applied"
+                ) {
+                  debugLog("serve.chat", "engine mode sync not applied", {
+                    sessionId,
+                    agentMode: effectiveAgentMode,
+                    status: result.outcome.status,
+                    reason: result.outcome.reason,
+                  });
+                }
+              }
               this.broadcast(sessionId, "session_prompt_start", {
                 sessionId,
                 acpSessionId: handle.sessionId,
@@ -822,6 +903,9 @@ export class SessionHub {
   ): Promise<ManagedSession | undefined> {
     const session = this.sessions.get(sessionId);
     if (!session) return undefined;
+    // agent_mode 运行中可变：即使其余 runtime 全匹配（不重启引擎），也要刷新，
+    // 逐 prompt 生效（见 spawnRunner 队列循环）。
+    session.agentMode = runtime.agentMode;
     if (this.runtimeMatches(session, engineId, runtime)) return session;
 
     await session.controls?.cancel().catch(() => {});

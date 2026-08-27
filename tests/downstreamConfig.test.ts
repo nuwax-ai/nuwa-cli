@@ -360,3 +360,28 @@ describe("parseDownstreamSessionConfig", () => {
     });
   });
 });
+
+describe("parseDownstreamSessionConfig agent_mode (nuwaclaw contract)", () => {
+  it.each(["ask", "yolo", "plan"])(
+    "extracts agent_server.agent_mode=%s verbatim",
+    (mode) => {
+      const result = parseDownstreamSessionConfig({
+        prompt: "hi",
+        agent_config: { agent_server: { agent_mode: mode } },
+      });
+      expect(result.agentMode).toBe(mode);
+    },
+  );
+
+  it("drops unknown agent_mode values (host defaults apply)", () => {
+    const result = parseDownstreamSessionConfig({
+      prompt: "hi",
+      agent_config: { agent_server: { agent_mode: "turbo" } },
+    });
+    expect(result.agentMode).toBeUndefined();
+  });
+
+  it("keeps agentMode undefined when the request carries none", () => {
+    expect(parseDownstreamSessionConfig({ prompt: "hi" }).agentMode).toBeUndefined();
+  });
+});

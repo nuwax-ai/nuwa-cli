@@ -173,4 +173,45 @@ describe("withEngineConnection", () => {
     controller.abort();
     await expect(result).rejects.toThrow(/engine session aborted/);
   });
+
+  it("routes plan updates and mode changes to their handlers", async () => {
+    const plans: any[] = [];
+    const modeChanges: Array<string | null> = [];
+    await withEngineConnection(
+      spawnTarget(),
+      {
+        permissionMode: "yolo",
+        onAgentText: () => {},
+        onPlanUpdate: (payload) => plans.push(payload),
+        onModeChange: (modeId) => modeChanges.push(modeId),
+      },
+      async (ctx) => {
+        const session = await ctx.buildSession(process.cwd()).start();
+        await session.prompt("trigger-plan");
+      },
+    );
+
+    expect(plans).toHaveLength(1);
+    expect(plans[0].removed).toBe(false);
+    expect(plans[0].entries).toEqual([
+      { content: "step 1", priority: "high", status: "completed" },
+      { content: "step 2", priority: "medium", status: "in_progress" },
+      { content: "step 3", priority: "low", status: "pending" },
+    ]);
+    expect(modeChanges).toEqual(["plan"]);
+  });
+
+  it("declares the experimental plan client capability on initialize", async () => {
+    const chunks: string[] = [];
+    await withEngineConnection(
+      spawnTarget(),
+      { permissionMode: "yolo", onAgentText: (t) => chunks.push(t) },
+      async (ctx) => {
+        const session = await ctx.buildSession(process.cwd()).start();
+        await session.prompt("trigger-caps"); // mock echoes initialize caps as text
+      },
+    );
+    // agent-kit assembler: headless hosts declare plan only (no terminal).
+    expect(JSON.parse(chunks.join(""))).toEqual({ plan: {} });
+  });
 });

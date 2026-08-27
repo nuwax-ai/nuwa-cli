@@ -21,6 +21,7 @@ import * as readline from "node:readline";
 const rl = readline.createInterface({ input: process.stdin });
 let nextSessionCounter = 0;
 let grandchildPid = null;
+let lastClientCapabilities = null;
 
 const grandchildScript = `
 const fs = require("node:fs");
@@ -106,6 +107,7 @@ rl.on("line", async (line) => {
 
   switch (msg.method) {
     case "initialize":
+      lastClientCapabilities = msg.params.clientCapabilities ?? null;
       respond(msg.id, {
         protocolVersion: msg.params.protocolVersion,
         agentCapabilities: { loadSession: true, promptCapabilities: {} },
@@ -140,6 +142,39 @@ rl.on("line", async (line) => {
       if (text.includes("trigger-hang")) {
         // Intentionally never respond — simulates an engine parked mid-tool.
         // The connection's AbortSignal is what unblocks the caller.
+        break;
+      }
+      if (text.includes("trigger-plan")) {
+        notify("session/update", {
+          sessionId: msg.params.sessionId,
+          update: {
+            sessionUpdate: "plan",
+            entries: [
+              { content: "step 1", priority: "high", status: "completed" },
+              { content: "step 2", priority: "medium", status: "in_progress" },
+              { content: "step 3", priority: "low", status: "pending" },
+            ],
+          },
+        });
+        notify("session/update", {
+          sessionId: msg.params.sessionId,
+          update: { sessionUpdate: "current_mode_update", currentModeId: "plan" },
+        });
+        respond(msg.id, { stopReason: "end_turn" });
+        break;
+      }
+      if (text.includes("trigger-caps")) {
+        notify("session/update", {
+          sessionId: msg.params.sessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text: JSON.stringify(lastClientCapabilities),
+            },
+          },
+        });
+        respond(msg.id, { stopReason: "end_turn" });
         break;
       }
       if (text.includes("trigger-codex-ask")) {
