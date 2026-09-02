@@ -10,6 +10,7 @@ import {
   type ApprovePolicyMode,
   type PermissionCoordinator,
 } from "./coordinator.js";
+import { evaluateSdlcGate } from "./sdlcGate.js";
 
 /**
  * ACP 客户端侧权限模式：
@@ -50,6 +51,8 @@ export interface DecidePermissionHandlers {
     meta: { classifierId?: string; reason: string },
   ) => Promise<RequestPermissionResponse>;
   appSessionId?: string;
+  /** 会话工作区根：SDLC 门禁按项目目录维度读该目录下的 .sdlc.json（缺省 process.cwd()）。 */
+  cwd?: string;
 }
 
 const sharedCoordinator = createDefaultCoordinator();
@@ -69,6 +72,30 @@ export async function decidePermission(
 
   const { mode, onAsk, appSessionId } = handlers;
   const coordinator = handlers.coordinator ?? sharedCoordinator;
+
+  // SDLC 门禁（nuwa-sdlc-kit 同源规则）：先于一切模式判定——yolo/interactive 都不豁免。
+  // deny → 直接选 reject 选项；ask → 有 onAsk 走 onAsk，否则提示后放行（fail-open，同会话只提示一次）。
+  const toolCall = request.toolCall as
+    | { rawInput?: Record<string, unknown> | null; title?: string | null }
+    | undefined;
+  const gate = evaluateSdlcGate({
+    rawInput: toolCall?.rawInput ?? null,
+    title: toolCall?.title ?? null,
+    sessionId: (request as { sessionId?: string }).sessionId,
+    cwd: handlers.cwd,
+  });
+  if (gate.decision === "deny") {
+    console.error(pc.red(gate.reason ?? "[sdlc-guard] denied"));
+    const rejectOpt = firstOptionOfKind(request, ["reject_once", "reject_always"]);
+    if (!rejectOpt) return { outcome: { outcome: "cancelled" } };
+    return { outcome: { outcome: "selected", optionId: rejectOpt.optionId } };
+  }
+  if (gate.decision === "ask" && onAsk) {
+    return onAsk(request, { reason: gate.reason ?? "sdlc plan gate" });
+  }
+  if (gate.decision === "ask") {
+    console.error(pc.yellow(gate.reason ?? "[sdlc-plan] ask"));
+  }
 
   // chat 本机交互：一律 TTY 询问（敏感与否都由人点），不走 yolo 自动放行
   if (mode === "interactive" && !onAsk) {
