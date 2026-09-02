@@ -1,0 +1,20 @@
+{
+  "name": "nuwa-cli",
+  "srcPaths": [
+    "src/",
+    "packages/[^/]+/src/"
+  ],
+  "plansDirs": [
+    "plans",
+    "specs"
+  ],
+  "protectedWrite": [],
+  "envPrefix": "NUWACLAW",
+  "test": "npm run test:run",
+  "grillExtra": [
+    "ACP 协议字符串保持英文（clients/engines），终端 UI 文案走 i18n(en+zh-CN)",
+    "顶层 install/uninstall 是产品向导，service install/uninstall 是 OS 自启——二者语义不可混",
+    "update 的 stop/lock/restart 逻辑不要在并行 S3 overlay 路径里重造",
+    "S3 channel stable ≡ npm latest（update/install --tag 别名）"
+  ]
+}
