@@ -169,7 +169,7 @@ npm run dev:cli -- install --help
 npm run dev:cli -- install --yes --lang en --tag latest
 ```
 
-向导步骤：选语言（**真正开始安装前**才写入 `~/.nuwa-cli/config.json` 的 `lang`）→ 探测已安装 / 运行中服务 → 交互确认后 `stop` → `npm install -g`（或 `--force` 时走 `update --force`）→ **bootstrap**（已登录可跳过重登 → `start` 直到 Gateway 就绪）。`--yes` 只跳过确认（有服务则直接停；已登录则跳过重登并 start；未登录则只装包并提示），**不等于**强制重装。已全局安装时建议改跑 `nuwa-cli update`；覆盖重装请加 `--force`。`--bootstrap` 跳过装包（S3 新装收尾）。`--no-start` 只装包。分流见 [`install-upgrade-split.md`](install-upgrade-split.md)。自动化示例：`npx -y @nuwax-ai/nuwa-cli@latest install --yes`。
+向导步骤：选语言（**真正开始安装前**才写入 `~/.nuwa-cli/config.json` 的 `lang`）→ 探测已安装 / 运行中服务 → 交互确认后 `stop` → `npm install -g`（已装同版本跳过；异版本走 `update`；`--force` 时走 `update --force`）→ **bootstrap**（已登录可跳过重登 → `start` 直到 Gateway 就绪；异版本 update 路径不再二次 bootstrap）。`--yes` 只跳过确认（有服务则直接停；已登录则跳过重登并 start；未登录则只装包并提示），**不等于**强制重装。`--bootstrap` 跳过装包（S3 新装收尾）。`--no-start` 只装包。分流见 [`install-upgrade-split.md`](install-upgrade-split.md)。自动化示例：`npx -y @nuwax-ai/nuwa-cli@latest install --yes`。
 
 ### 调试 `update`
 

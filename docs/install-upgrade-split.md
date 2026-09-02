@@ -10,7 +10,9 @@
 | **升级**（全局已装） | **`nuwa-cli update`** | update 内核 | **已登录 → `restartServeIfLoggedIn`** |
 | S3 且已装、版本不同 | 脚本调 `update <VERSION> --yes` | 不再 tarball overlay | update 内 restart |
 | S3 同版本 | 整段 skip | 无 | 无 restart / 无 bootstrap |
-| `npx install` 且已装 | 提示改用 `update` | 仅 `--force` 经 update 内核覆盖 | 再 bootstrap |
+| `npx install` 且已装、同版本 | 跳过 | 无 | 无 |
+| `npx install` 且已装、异版本 | 自动 `update` | update 内核 | update 内 restart（不再 bootstrap） |
+| `npx install --force` | 覆盖 | update `--force` | 再 bootstrap |
 | **卸载** | `npx … uninstall` | `npm uninstall -g`（先停服 / 卸自启） | 默认保留 `~/.nuwa-cli`；`--purge` 才删 |
 
 `scripts/install.sh` / `install.ps1`：legacy registry 脚本，不作为产品入口宣传。  
@@ -21,7 +23,8 @@
 ```text
 npx … install
   ├─ 未安装 → npm i -g → bootstrap（交互：已登录可跳过登录 → start）
-  ├─ 已安装、无 --force → 提示 nuwa-cli update
+  ├─ 已安装、同版本 → skip
+  ├─ 已安装、异版本 → updateCommand(tag)（已登录则 restart；不再 bootstrap）
   └─ --force → updateCommand(tag, { force, yes }) → bootstrap
 
 npx … uninstall

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`install` 已装分流：** 与目标同版本 → 直接跳过；异版本 → 自动走 `update`（对齐 S3）。`update` 早退改为比对**全局安装版**（避免 `npx` 已是新版却跳过升级旧全局树）。
+
 ## [0.2.9] - 2026-08-26
 
 ### Added

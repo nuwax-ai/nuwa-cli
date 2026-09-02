@@ -208,7 +208,7 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "cli.cmd.install.opt.bootstrap":
     "跳过 npm install -g；假定包已在 PATH，只跑登录 / 启动（供 S3 新装收尾）",
   "cli.cmd.install.help":
-    "\n示例：\n  npx @nuwax-ai/nuwa-cli@latest install\n  npx -y @nuwax-ai/nuwa-cli@latest install --yes\n  npx @nuwax-ai/nuwa-cli@latest install --lang zh-CN\n  npx @nuwax-ai/nuwa-cli@beta install --tag beta\n  npx @nuwax-ai/nuwa-cli@latest install --force --yes\n  npx @nuwax-ai/nuwa-cli@latest install --no-start\n  nuwa-cli install --yes --bootstrap\n\n说明：\n  - 推荐的首次安装入口（文档默认不带 `-y`，便于交互向导）。\n  - 新装：`npm install -g` 后继续登录 + `start` 直到 Gateway 就绪。\n  - 已安装：请用 `nuwa-cli update`（停服/释锁/增量 + 已登录 restart）。仅 `--force` 时经 update 内核覆盖重装。\n  - 若已登录，会询问是否跳过登录（默认跳过）；`--yes` 自动跳过重登。\n  - `--tag stable` 会映射为 npm 的 `latest`。\n  - `--yes` 只跳过确认，不等于 `--force`。\n  - `--bootstrap` 跳过装包（S3 tarball 装完后收尾）；`--no-start` 仅装包。\n  - 自动化：`npx -y @nuwax-ai/nuwa-cli@latest install --yes`（要完整 start 需事先已登录）。",
+    "\n示例：\n  npx @nuwax-ai/nuwa-cli@latest install\n  npx -y @nuwax-ai/nuwa-cli@latest install --yes\n  npx @nuwax-ai/nuwa-cli@latest install --lang zh-CN\n  npx @nuwax-ai/nuwa-cli@beta install --tag beta\n  npx @nuwax-ai/nuwa-cli@latest install --force --yes\n  npx @nuwax-ai/nuwa-cli@latest install --no-start\n  nuwa-cli install --yes --bootstrap\n\n说明：\n  - 推荐的首次安装入口（文档默认不带 `-y`，便于交互向导）。\n  - 新装：`npm install -g` 后继续登录 + `start` 直到 Gateway 就绪。\n  - 已安装且与目标同版本：直接跳过。\n  - 已安装且版本不同：自动走 `update`（停服/释锁/增量 + 已登录 restart）。\n  - `--force` 经 update 内核覆盖后继续 bootstrap。\n  - 若已登录，会询问是否跳过登录（默认跳过）；`--yes` 自动跳过重登。\n  - `--tag stable` 会映射为 npm 的 `latest`。\n  - `--yes` 只跳过确认，不等于 `--force`。\n  - `--bootstrap` 跳过装包（S3 tarball 装完后收尾）；`--no-start` 仅装包。\n  - 自动化：`npx -y @nuwax-ai/nuwa-cli@latest install --yes`（要完整 start 需事先已登录）。",
   "cli.cmd.uninstall.desc":
     "卸载全局 nuwa-cli 包（默认保留 ~/.nuwa-cli 登录与用户数据）",
   "cli.cmd.uninstall.opt.purge":
@@ -228,10 +228,12 @@ export const zhCN: { [K in keyof typeof en]: string } = {
   "install.badLang": "无法识别的语言代码：{code}。请使用 en 或 zh-CN。",
   "install.prompt.lang": "选择 nuwa-cli 的界面语言",
   "install.langSet": "界面语言已设为 {lang}。",
-  "install.alreadyInstalledConfirm":
-    "检测到全局已安装 nuwa-cli。建议使用 `nuwa-cli update`。仍要用本向导重装吗？",
   "install.alreadyInstalledHint":
-    "已安装 nuwa-cli。建议：nuwa-cli update\n若要强制向导重装：npx @nuwax-ai/nuwa-cli@latest install --force\n（卸载后若残留 shim，也可加 --force。）",
+    "已安装 nuwa-cli，但无法解析目标版本。建议：nuwa-cli update\n强制覆盖重装：npx @nuwax-ai/nuwa-cli@latest install --force",
+  "install.alreadySameVersion":
+    "nuwa-cli {version} 已安装，无需操作。",
+  "install.upgradeViaUpdate":
+    "已安装 {from} → 目标 {to}；正在通过 `nuwa-cli update` 升级 ...",
   "install.confirmStopServices":
     "检测到正在运行的 Gateway / Console / 隧道进程。安装前先停止它们？",
   "install.stopDeclined":

@@ -91,13 +91,16 @@ function notInstalledRunner() {
   });
 }
 
-function installedRunner() {
+function installedRunner(installedVersion = "0.2.6") {
   return vi.fn((cmd: string, args: string[]) => {
     if (args[0] === "list") {
       return {
         status: 0,
-        stdout: "/usr/lib\n└── @nuwax-ai/nuwa-cli@0.2.6\n",
+        stdout: `/usr/lib\n└── @nuwax-ai/nuwa-cli@${installedVersion}\n`,
       };
+    }
+    if (args[0] === "view") {
+      return { status: 0, stdout: "0.2.9\n" };
     }
     if (args[0] === "install") return { status: 0, stdout: "" };
     return { status: 0, stdout: "" };
@@ -169,22 +172,58 @@ describe("install wizard", () => {
     expect(printed).toContain("nuwa-cli start");
   });
 
-  it("redirects to update when already installed without --force (even with --yes)", async () => {
+  it("skips when already installed at the same target version", async () => {
     const { installCommand } = await import("../src/commands/install.js");
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const runner = installedRunner();
+    const runner = installedRunner("0.2.9");
+    // tag is exact semver → no view needed; list reports 0.2.9
+    const updateFn = vi.fn(async () => {});
 
-    await installCommand({ yes: true, lang: "en" }, runner);
+    await installCommand(
+      { yes: true, lang: "en", tag: "0.2.9" },
+      runner,
+      undefined,
+      updateFn,
+    );
 
     expect(mocks.writeLangConfig).not.toHaveBeenCalled();
-    expect(mocks.stopRuntime).not.toHaveBeenCalled();
+    expect(updateFn).not.toHaveBeenCalled();
     expect(runner).not.toHaveBeenCalledWith(
       "npm",
       expect.arrayContaining(["install"]),
       expect.anything(),
     );
     const printed = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
-    expect(printed).toMatch(/nuwa-cli update/);
+    expect(printed).toMatch(/already installed|已安装/);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("runs update when already installed at a different version", async () => {
+    const { installCommand } = await import("../src/commands/install.js");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const runner = installedRunner("0.2.6");
+    const updateFn = vi.fn(async () => {});
+
+    await installCommand(
+      { yes: true, lang: "en", tag: "latest" },
+      runner,
+      undefined,
+      updateFn,
+    );
+
+    expect(mocks.writeLangConfig).toHaveBeenCalledWith("en");
+    expect(updateFn).toHaveBeenCalledWith(
+      "latest",
+      expect.objectContaining({ yes: true }),
+      runner,
+    );
+    expect(runner).not.toHaveBeenCalledWith(
+      "npm",
+      expect.arrayContaining(["install"]),
+      expect.anything(),
+    );
+    const printed = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(printed).toMatch(/0\.2\.6.*0\.2\.9|update/i);
   });
 
   it("reinstalls with --force via the update kernel when already installed", async () => {
@@ -257,21 +296,33 @@ describe("install wizard", () => {
     );
   });
 
-  it("does not persist lang when interactive already-installed confirm is declined", async () => {
+  it("hints without upgrading when installed but target version cannot be resolved", async () => {
     mocks.isInteractive.mockReturnValue(true);
     mocks.isCI.mockReturnValue(false);
     mocks.select.mockResolvedValue("zh-CN");
-    mocks.confirm.mockResolvedValue(false);
     const { installCommand } = await import("../src/commands/install.js");
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const runner = installedRunner();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const updateFn = vi.fn(async () => {});
+    const runner = vi.fn((cmd: string, args: string[]) => {
+      if (args[0] === "list") {
+        return {
+          status: 0,
+          stdout: "/usr/lib\n└── @nuwax-ai/nuwa-cli@0.2.6\n",
+        };
+      }
+      if (args[0] === "view") return { status: 1, stdout: "", stderr: "err" };
+      return { status: 0, stdout: "" };
+    });
 
-    await installCommand({}, runner);
+    await installCommand({ tag: "latest" }, runner, undefined, updateFn);
 
     expect(mocks.setLang).toHaveBeenCalledWith("zh-CN");
     expect(mocks.writeLangConfig).not.toHaveBeenCalled();
+    expect(updateFn).not.toHaveBeenCalled();
     expect(mocks.stopRuntime).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(0);
+    const printed = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(printed).toMatch(/update|--force/i);
   });
 
   it("skips npm and bootstraps when --bootstrap is set", async () => {

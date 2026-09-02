@@ -3,8 +3,10 @@
  *
  * Typical entry: `npx @nuwax-ai/nuwa-cli@latest install`
  * - New install: npm install -g, then login / start (bootstrap).
- * - Already installed: prefer `nuwa-cli update` (stop/locks/incremental +
- *   logged-in restart). `--force` overlays via `updateCommand(..., { force })`.
+ * - Already installed, same version as target: skip (exit 0).
+ * - Already installed, different version: `updateCommand` (stop/locks/
+ *   incremental + logged-in restart). No second bootstrap after update.
+ * - `--force`: overlay via `updateCommand(..., { force })`, then bootstrap.
  * - `--bootstrap`: skip packaging; only run login / start (S3 new-install tail).
  * Upgrade for everyday users stays on `nuwa-cli update`.
  */
@@ -42,7 +44,9 @@ import {
 import {
   buildInstallArgs,
   buildPackageManagerEnv,
+  readGloballyInstalledVersion,
   resolvePackageManagerInvocation,
+  resolveRemotePackageVersion,
   updateCommand,
   type CommandResult,
   type CommandRunner,
@@ -433,24 +437,73 @@ export async function installCommand(
       env,
       options.registry,
     );
-    // --yes only skips confirms; reinstall still requires --force so CI/Agent
-    // loops do not silently rewrite the global tree every time.
+    // Already installed (no --force):
+    //   same version as target → skip
+    //   different version → update kernel (align S3; no bootstrap after)
+    //   versions unknown → hint only (never silent npm i -g)
     if (already && !options.force) {
-      if (isInteractive() && !isCI() && !options.yes) {
-        const proceed = await clack.confirm({
-          message: t("install.alreadyInstalledConfirm"),
-          initialValue: false,
-        });
-        if (clack.isCancel(proceed) || !proceed) {
-          console.log(warn(t("install.alreadyInstalledHint")));
-          process.exitCode = clack.isCancel(proceed) ? CANCEL_EXIT_CODE : 0;
-          return;
-        }
-      } else {
-        console.log(warn(t("install.alreadyInstalledHint")));
+      const installedVersion = readGloballyInstalledVersion(
+        runner,
+        command,
+        env,
+        options.registry,
+      );
+      const targetVersion = isSemverTag(tag)
+        ? tag
+        : resolveRemotePackageVersion(
+            runner,
+            command,
+            env,
+            packageSpec,
+            options.registry,
+          );
+
+      if (
+        installedVersion &&
+        targetVersion &&
+        installedVersion === targetVersion
+      ) {
+        console.log(
+          success(t("install.alreadySameVersion", { version: installedVersion })),
+        );
         process.exitCode = 0;
         return;
       }
+
+      if (
+        installedVersion &&
+        targetVersion &&
+        installedVersion !== targetVersion
+      ) {
+        if (langToPersist) {
+          writeLangConfig(langToPersist);
+          console.log(t("install.langSet", { lang: langToPersist }));
+        }
+        console.log(
+          t("install.upgradeViaUpdate", {
+            from: installedVersion,
+            to: targetVersion,
+          }),
+        );
+        const yes = options.yes === true || !isInteractive() || isCI();
+        const skipRealUpdate =
+          Boolean(process.env.VITEST) &&
+          typeof runnerArg !== "function" &&
+          updateFn === updateCommand;
+        if (!skipRealUpdate) {
+          await updateFn(
+            tag,
+            { yes, registry: options.registry },
+            typeof runnerArg === "function" ? runner : undefined,
+          );
+        }
+        // update already restarts when logged in — do not bootstrap again.
+        return;
+      }
+
+      console.log(warn(t("install.alreadyInstalledHint")));
+      process.exitCode = 0;
+      return;
     }
 
     // Overlay reinstall: reuse update kernel (stop/locks/incremental|full +

@@ -257,6 +257,88 @@ export function buildViewArgs(
   return args;
 }
 
+/**
+ * Parse `npm list -g --depth=0 <pkg>` stdout for `name@version`.
+ * Works with tree glyphs (`└── pkg@1.2.3`) and plain lines.
+ */
+export function parseNpmListPackageVersion(
+  stdout: string,
+  packageName: string = PACKAGE_NAME,
+): string | null {
+  const escaped = packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = stdout.match(new RegExp(`${escaped}@([^\\s\\r\\n]+)`));
+  const version = match?.[1]?.trim();
+  return version || null;
+}
+
+/**
+ * Version of the **globally** installed package (not the running entry).
+ * Prefer `npm list -g`; fall back to `npm root -g` + package.json.
+ * Critical for `npx @… install/update`: the npx copy's CLI_VERSION may
+ * already equal the channel while the global tree is still older.
+ */
+export function readGloballyInstalledVersion(
+  runner: CommandRunner,
+  command: string,
+  env: NodeJS.ProcessEnv,
+  registry?: string,
+): string | null {
+  const listArgs = ["list", "-g", "--depth=0", PACKAGE_NAME];
+  if (registry) listArgs.push("--registry", registry);
+  const listed = runner(command, listArgs, {
+    encoding: "utf-8",
+    env,
+    stdio: "pipe",
+  });
+  if (listed.status === 0) {
+    const fromList = parseNpmListPackageVersion(listed.stdout || "");
+    if (fromList) return fromList;
+  }
+
+  try {
+    const rootResult = runner(command, ["root", "-g"], {
+      encoding: "utf-8",
+      env,
+      stdio: "pipe",
+    });
+    if (rootResult.error || rootResult.status !== 0) return null;
+    const npmGlobal = (rootResult.stdout || "").replace(/\r/g, "").trim();
+    if (!npmGlobal) return null;
+    const pkgFile = path.join(
+      npmGlobal,
+      ...PACKAGE_NAME.split("/"),
+      "package.json",
+    );
+    if (!fs.existsSync(pkgFile)) return null;
+    const pkg = JSON.parse(fs.readFileSync(pkgFile, "utf8")) as {
+      name?: string;
+      version?: string;
+    };
+    if (pkg?.name !== PACKAGE_NAME || !pkg.version) return null;
+    return String(pkg.version);
+  } catch {
+    return null;
+  }
+}
+
+/** `npm view <spec> version` → remote semver, or null on failure. */
+export function resolveRemotePackageVersion(
+  runner: CommandRunner,
+  command: string,
+  env: NodeJS.ProcessEnv,
+  packageSpec: string,
+  registry?: string,
+): string | null {
+  const result = runner(command, buildViewArgs(packageSpec, registry), {
+    encoding: "utf-8",
+    env,
+    stdio: "pipe",
+  });
+  if (result.error || result.status !== 0) return null;
+  const remote = (result.stdout || "").trim().split(/\r?\n/)[0]?.trim();
+  return remote || null;
+}
+
 /** 增量更新计划：tarball 位置 + 安装根目录 + 临时目录清理句柄。 */
 export interface IncrementalUpdatePlan {
   tgz: string;
@@ -605,6 +687,27 @@ export async function updateCommand(
       );
     }
 
+    const installArgs = buildInstallArgs(packageSpec, options.registry);
+    // dry-run is local-only (no npm list/view) — print running binary version.
+    if (options.dryRun) {
+      console.log(t("update.currentVersion", { version: CLI_VERSION }));
+      console.log(t("update.upgradeTarget", { spec: packageSpec }));
+      console.log(
+        t("update.execute", { cmd: printableCommand("npm", installArgs) }),
+      );
+      return;
+    }
+
+    // Prefer global install version over the running binary (npx may already
+    // be on the channel while ~/.npm global is still older).
+    const currentVersion =
+      readGloballyInstalledVersion(
+        runner,
+        command,
+        env,
+        options.registry,
+      ) ?? CLI_VERSION;
+
     if (options.check) {
       const viewArgs = buildViewArgs(packageSpec, options.registry);
       const result = runner(command, viewArgs, {
@@ -619,25 +722,16 @@ export async function updateCommand(
         );
       }
       const remoteVersion = (result.stdout || "").trim();
-      console.log(t("update.currentVersion", { version: CLI_VERSION }));
+      console.log(t("update.currentVersion", { version: currentVersion }));
       console.log(
         t("update.targetSpec", { spec: packageSpec, version: remoteVersion }),
       );
-      if (remoteVersion === CLI_VERSION) console.log(t("update.alreadyTarget"));
+      if (remoteVersion === currentVersion)
+        console.log(t("update.alreadyTarget"));
       else
         console.log(
-          t("update.canUpgrade", { from: CLI_VERSION, to: remoteVersion }),
+          t("update.canUpgrade", { from: currentVersion, to: remoteVersion }),
         );
-      return;
-    }
-
-    const installArgs = buildInstallArgs(packageSpec, options.registry);
-    if (options.dryRun) {
-      console.log(t("update.currentVersion", { version: CLI_VERSION }));
-      console.log(t("update.upgradeTarget", { spec: packageSpec }));
-      console.log(
-        t("update.execute", { cmd: printableCommand("npm", installArgs) }),
-      );
       return;
     }
 
@@ -660,18 +754,18 @@ export async function updateCommand(
           : "";
       },
     );
-    if (remoteVersion === CLI_VERSION) {
+    if (remoteVersion === currentVersion) {
       console.log(success(t("update.alreadyLatest")));
       return;
     }
 
     // 防降级:目标版本比当前旧(例如正式版用户的 `nuwa-cli update` 命中 beta 通道)
     // 则跳过安装,不把用户降级。确需切换/降级请显式 `npm i -g ...@<version>`。
-    if (remoteVersion && compareSemver(remoteVersion, CLI_VERSION) < 0) {
+    if (remoteVersion && compareSemver(remoteVersion, currentVersion) < 0) {
       console.log(
         warn(
           t("update.olderTarget", {
-            current: CLI_VERSION,
+            current: currentVersion,
             target: remoteVersion,
           }),
         ),
@@ -679,7 +773,7 @@ export async function updateCommand(
       return;
     }
 
-    console.log(t("update.currentVersion", { version: CLI_VERSION }));
+    console.log(t("update.currentVersion", { version: currentVersion }));
     if (remoteVersion)
       console.log(t("update.targetVersion", { version: remoteVersion }));
     console.log(t("update.upgradeTarget", { spec: packageSpec }));

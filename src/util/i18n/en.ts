@@ -250,7 +250,7 @@ export const en = {
   "cli.cmd.install.opt.bootstrap":
     "Skip npm install -g; assume the package is already on PATH and only run login / start (S3 new-install tail)",
   "cli.cmd.install.help":
-    "\nExamples:\n  npx @nuwax-ai/nuwa-cli@latest install\n  npx -y @nuwax-ai/nuwa-cli@latest install --yes\n  npx @nuwax-ai/nuwa-cli@latest install --lang zh-CN\n  npx @nuwax-ai/nuwa-cli@beta install --tag beta\n  npx @nuwax-ai/nuwa-cli@latest install --force --yes\n  npx @nuwax-ai/nuwa-cli@latest install --no-start\n  nuwa-cli install --yes --bootstrap\n\nNotes:\n  - Preferred first-time entry (docs omit `-y` so humans get the interactive wizard).\n  - New install: `npm install -g` then login + `start` until Gateway is ready.\n  - Already installed: prefer `nuwa-cli update` (keeps stop/locks/incremental + logged-in restart). Use `--force` only to overlay-reinstall via the update kernel.\n  - If already logged in, asks whether to skip login (default: skip). `--yes` skips re-login automatically.\n  - `--tag stable` aliases to npm `latest`.\n  - `--yes` skips prompts only — it does not imply `--force`.\n  - `--bootstrap` skips packaging (for S3 after tarball install). `--no-start` installs the package only.\n  - Automation: `npx -y @nuwax-ai/nuwa-cli@latest install --yes` (full start requires prior login).",
+    "\nExamples:\n  npx @nuwax-ai/nuwa-cli@latest install\n  npx -y @nuwax-ai/nuwa-cli@latest install --yes\n  npx @nuwax-ai/nuwa-cli@latest install --lang zh-CN\n  npx @nuwax-ai/nuwa-cli@beta install --tag beta\n  npx @nuwax-ai/nuwa-cli@latest install --force --yes\n  npx @nuwax-ai/nuwa-cli@latest install --no-start\n  nuwa-cli install --yes --bootstrap\n\nNotes:\n  - Preferred first-time entry (docs omit `-y` so humans get the interactive wizard).\n  - New install: `npm install -g` then login + `start` until Gateway is ready.\n  - Already installed + same target version: skip.\n  - Already installed + different version: runs `update` (stop/locks/incremental + logged-in restart).\n  - `--force` overlays via the update kernel, then continues bootstrap.\n  - If already logged in, asks whether to skip login (default: skip). `--yes` skips re-login automatically.\n  - `--tag stable` aliases to npm `latest`.\n  - `--yes` skips prompts only — it does not imply `--force`.\n  - `--bootstrap` skips packaging (for S3 after tarball install). `--no-start` installs the package only.\n  - Automation: `npx -y @nuwax-ai/nuwa-cli@latest install --yes` (full start requires prior login).",
   "cli.cmd.uninstall.desc":
     "Uninstall the global nuwa-cli package (keeps ~/.nuwa-cli login data by default)",
   "cli.cmd.uninstall.opt.purge":
@@ -271,10 +271,12 @@ export const en = {
   "install.badLang": "Unrecognized language code: {code}. Use en or zh-CN.",
   "install.prompt.lang": "Choose the UI language for nuwa-cli",
   "install.langSet": "UI language set to {lang}.",
-  "install.alreadyInstalledConfirm":
-    "nuwa-cli is already installed globally. Prefer `nuwa-cli update`. Reinstall with this wizard anyway?",
   "install.alreadyInstalledHint":
-    "nuwa-cli is already installed. Prefer: nuwa-cli update\nTo force a wizard reinstall: npx @nuwax-ai/nuwa-cli@latest install --force\n(If a stale shim remains after uninstall, --force also helps.)",
+    "nuwa-cli is already installed, but the target version could not be resolved. Prefer: nuwa-cli update\nTo force an overlay reinstall: npx @nuwax-ai/nuwa-cli@latest install --force",
+  "install.alreadySameVersion":
+    "nuwa-cli {version} is already installed; nothing to do.",
+  "install.upgradeViaUpdate":
+    "Already installed {from} → target {to}; upgrading via `nuwa-cli update` ...",
   "install.confirmStopServices":
     "Running Gateway / Console / tunnel processes were detected. Stop them before installing?",
   "install.stopDeclined":

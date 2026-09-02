@@ -169,25 +169,59 @@ describe("update command", () => {
     );
   });
 
-  it("does not reinstall when the selected channel already matches the current version", async () => {
+  it("does not reinstall when the selected channel already matches the global install", async () => {
     const { updateCommand } = await import("../src/commands/update.js");
     const { CLI_VERSION } = await import("../src/core/version.js");
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const runner = vi.fn(() => ({
-      status: 0,
-      stdout: `${CLI_VERSION}\n`,
-    }));
+    const runner = vi.fn((cmd: string, args: string[]) => {
+      if (args[0] === "list") {
+        return {
+          status: 0,
+          stdout: `/usr/lib\n└── @nuwax-ai/nuwa-cli@${CLI_VERSION}\n`,
+        };
+      }
+      return { status: 0, stdout: `${CLI_VERSION}\n` };
+    });
 
     await updateCommand(undefined, {}, runner);
 
-    expect(runner).toHaveBeenCalledTimes(1);
     expect(runner).toHaveBeenCalledWith(
       "npm",
       ["view", "@nuwax-ai/nuwa-cli@beta", "version"],
       expect.objectContaining({ stdio: "pipe" }),
     );
+    expect(
+      runner.mock.calls.some((c) => c[1]?.[0] === "install"),
+    ).toBe(false);
     expect(logSpy.mock.calls.flat().join("\n")).toContain(
       "Already the latest version; no reinstall needed",
+    );
+  });
+
+  it("upgrades global install even when the running binary is already on the channel", async () => {
+    // Simulates `npx @latest …` where CLI_VERSION is new but global is old.
+    const { updateCommand } = await import("../src/commands/update.js");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const runner = vi.fn((cmd: string, args: string[]) => {
+      if (args[0] === "list") {
+        return {
+          status: 0,
+          stdout: "/usr/lib\n└── @nuwax-ai/nuwa-cli@0.2.6\n",
+        };
+      }
+      if (args[0] === "view") return { status: 0, stdout: "0.2.9\n" };
+      if (args[0] === "root") return { status: 1, stdout: "" };
+      if (args[0] === "pack") return { status: 1, stdout: "" };
+      if (args[0] === "install") return { status: 0, stdout: "" };
+      return { status: 0, stdout: "" };
+    });
+
+    await updateCommand("latest", { yes: true }, runner);
+
+    expect(runner).toHaveBeenCalledWith(
+      "npm",
+      ["install", "-g", "@nuwax-ai/nuwa-cli@latest", "--progress=true"],
+      expect.objectContaining({ stdio: "inherit" }),
     );
   });
 
