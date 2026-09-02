@@ -807,4 +807,25 @@ export const zhCN: { [K in keyof typeof en]: string } = {
     "检测到已有 nuwa-cli Console 进程（PID {pids}）。同一时间只允许一个前台实例；确认替换时请加 --force。",
   "singleton.serve.detected":
     "检测到已有 nuwa-cli serve 进程（PID {pids}）。同一时间只允许一个实例；确认替换时请加 --force。",
+
+  // skill 子命令
+  "cli.cmd.skill.opt.noBundle": "不随装套件关联成员",
+  "skill.list.missingRootHint": "agent 未装",
+  "cli.cmd.skill.opt.noLink": "装完不自动挂链到本机 agent 技能目录",
+  "cli.cmd.skill.opt.name": "技能名（缺省 nuwa-cli-usage 套件总入口）",
+  "skill.list.dirHint": "真实目录，未接管",
+  "cli.cmd.skill.install.desc": "从 S3 安装技能（默认 nuwa-cli-usage 套件总入口，自动随装关联成员；装完自动软链到本机 agent 技能目录）",
+  "skill.list.empty": "未安装任何技能。安装：nuwa-cli skill install",
+  "cli.cmd.skill.link.desc": "只补挂 agent 目录软链，不下载（给已装技能接线）",
+  "cli.cmd.skill.opt.force": "同版本已装也强制重装",
+  "skill.list.linkedCount": "已挂链 {n} 个 agent 目录",
+  "skill.scriptMissing": "未找到 skills/scripts/install-skill.sh（npm 包应含 skills/scripts；开发布局从仓库根解析）。",
+  "cli.cmd.skill.opt.version": "指定版本（缺省 latest.json 定版）",
+  "cli.cmd.skill.opt.target": "安装目标目录（缺省 ~/.nuwa-cli/skills；显式指定时不自动挂链）",
+  "cli.cmd.skill.list.desc": "列出已装技能及各 agent 目录的链接状态",
+  "cli.cmd.skill.update.desc": "升级技能到 S3 latest（重跑安装；同版本自动跳过，--force 强制）",
+  "cli.cmd.skill.desc": "nuwa-cli 技能套件管理：安装（S3 下载+挂链 agent 目录）/ 升级 / 补挂链 / 查看已装与链状态",
+  "skill.list.header": "已装技能（安装目录 ~/.nuwa-cli/skills）：",
+  "skill.list.noneHint": "未挂链（nuwa-cli skill link 补挂）",
+  "skill.scriptSpawnFailed": "执行 install-skill.sh 失败：{error}",
 };

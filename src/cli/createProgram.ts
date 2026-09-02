@@ -10,6 +10,7 @@ import { registerUpdateCommand } from "./registerUpdateCommand.js";
 import { registerInfoCommand } from "./registerInfoCommand.js";
 import { registerUiCommand } from "./registerUiCommand.js";
 import { registerLangCommand } from "../commands/lang.js";
+import { registerSkillCommands } from "./registerSkillCommands.js";
 import { t } from "../util/i18n/index.js";
 
 export function createProgram(): Command {
@@ -30,6 +31,7 @@ export function createProgram(): Command {
   registerUninstallCommand(program);
   registerUpdateCommand(program);
   registerLangCommand(program);
+  registerSkillCommands(program);
 
   return program;
 }

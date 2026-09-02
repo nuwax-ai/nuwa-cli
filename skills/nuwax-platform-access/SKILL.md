@@ -1,9 +1,8 @@
 ---
 name: nuwax-platform-access
-version: 1.2.3
 description: 接入 nuwax 平台底层能力的统一入口：沙箱 API 鉴权、资料库文档导入/导出、会话创建与继续、本机网关与文件服务调用、平台技能库同步发布、nuwax/nuwax-mobile 路由规则解析与两端业务参数对照（会话 Id、空间 Id 等）。当用户要求同步文档到资料库、创建/继续平台会话、上传文件到项目工作区、调用 /api/v1/4sandbox 接口、检查平台凭据可用性、解析 PC/移动端路由参数，或任何「让 Agent 具备 nuwax 平台操作能力」的场景时触发。资料库深度编辑（ops 指令级）见 library-document-management。
 metadata:
-  version: "1.2.3"
+  version: "1.2.4"
   syncedAt: "2026-09-02"
   platformSkillId: 722
 ---

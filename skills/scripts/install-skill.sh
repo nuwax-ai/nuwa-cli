@@ -2,13 +2,15 @@
 # install-skill.sh — 从 Nuwax S3 (MinIO) 一键安装 skill 到本机技能目录。
 #
 # 用法:
-#   bash install-skill.sh [skillName] [--version 0.1.0] [--target <dir>] [--force] [--no-bundle]
+#   bash install-skill.sh [skillName] [--version 0.1.0] [--target <dir>] [--force] [--no-bundle] [--no-link]
 #   skillName 缺省 nuwa-cli-usage（套件总入口，自动随装其关联 skill）
 #   套件关联: 装 nuwa-cli-usage 时自动随装 nuwax-platform-access（--no-bundle 关闭）
 #   --target  缺省 $NUWAX_SKILLS_DIR，再缺省 $HOME/.nuwa-cli/skills
 #             （装到某 agent 的 store: --target ~/.nuwa-cli/workspaces/<user>/.agent-store/<agentId>/skills）
+#   --no-link 关闭「装完自动挂链到本机 agent CLI 技能目录」（默认开启；见 link_to_agents）
+#   --link-only 只挂链不下载（给已装 skill 补接 agent 目录；nuwa-cli skill link 用）
 #
-# 公开读桶，无需任何凭证、无需 aws-cli。流程：latest.json 定版 → 下载 zip+sha256 → 校验 → 解压落盘。
+# 公开读桶，无需任何凭证、无需 aws-cli。流程：latest.json 定版 → 下载 zip+sha256 → 校验 → 解压落盘 → 挂链 agent 目录。
 # 重装/升级直接重跑；--force 跳过「同版本已装」跳过逻辑。
 
 set -euo pipefail
@@ -16,21 +18,68 @@ set -euo pipefail
 # 套件入口 → 随装列表（总入口 skill 安装时连带安装，保持「一套能力一次装齐」）
 declare -a BUNDLE_WITH_DEFAULT=(nuwax-platform-access)
 
+# 本机 agent CLI 的技能目录（存在即挂链）：
+#   ~/.claude/skills  ← Claude Code；也被 OpenCode 兼容读取
+#   ~/.codex/skills   ← Codex CLI
+#   ~/.cursor/skills  ← Cursor
+#   ~/.zcode/skills   ← ZCode
+#   ~/.agents/skills  ← OpenCode 官方全局路径 + Gemini CLI 官方别名
+# 五目录合计覆盖六引擎；软链指回安装目录，升级重跑本脚本即全局生效。
+declare -a AGENT_SKILL_DIRS=(".claude/skills" ".codex/skills" ".cursor/skills" ".zcode/skills" ".agents/skills")
+
 SKILL_NAME="nuwa-cli-usage"
 VERSION=""
 TARGET="${NUWAX_SKILLS_DIR:-$HOME/.nuwa-cli/skills}"
+TARGET_EXPLICIT=0
 FORCE=0
 NO_BUNDLE=0
+NO_LINK=0
+LINK_ONLY=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --version) VERSION="$2"; shift 2 ;;
-    --target) TARGET="$2"; shift 2 ;;
+    --target) TARGET="$2"; TARGET_EXPLICIT=1; shift 2 ;;
     --force) FORCE=1; shift ;;
     --no-bundle) NO_BUNDLE=1; shift ;;
-    -h|--help) echo "用法: $0 [skillName] [--version v] [--target dir] [--force] [--no-bundle]"; exit 0 ;;
+    --no-link) NO_LINK=1; shift ;;
+    --link-only) LINK_ONLY=1; shift ;;
+    -h|--help) echo "用法: $0 [skillName] [--version v] [--target dir] [--force] [--no-bundle] [--no-link] [--link-only]"; exit 0 ;;
     *) SKILL_NAME="$1"; shift ;;
   esac
 done
+
+# 挂链到本机 agent CLI 技能目录（装好 ≠ 被发现：agent 只扫自家 skills 目录）。
+# 覆盖矩阵见文件头注释；幂等：软链统一重指安装目录，真实目录不接管。
+link_to_agents() {  # link_to_agents <skillName>
+  local NAME="$1" REL DIR DEST
+  [[ -f "$TARGET/$NAME/SKILL.md" ]] || { echo "[ERROR] $TARGET/$NAME 未安装（--link-only 需先安装）" >&2; exit 4; }
+  for REL in "${AGENT_SKILL_DIRS[@]}"; do
+    DIR="$HOME/$REL"
+    [[ -d "$DIR" ]] || continue
+    DEST="$DIR/$NAME"
+    if [[ -e "$DEST" && ! -L "$DEST" ]]; then
+      echo "[WARN] $DEST 已是真实目录（非软链），保留不动" >&2
+      continue
+    fi
+    ln -sfn "$TARGET/$NAME" "$DEST"
+    echo "[OK] 挂链 $DEST → $TARGET/$NAME"
+  done
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      echo "[INFO] Windows 下 ln -s 为复制语义，升级后重跑本脚本刷新各 agent 目录" >&2 ;;
+  esac
+}
+
+# --link-only：跳过下载安装，只给 TARGET 里已装 skill 补挂 agent 目录软链
+if [[ "$LINK_ONLY" -eq 1 ]]; then
+  link_to_agents "$SKILL_NAME"
+  if [[ "$NO_BUNDLE" -ne 1 && "$SKILL_NAME" == "nuwa-cli-usage" ]]; then
+    for dep in "${BUNDLE_WITH_DEFAULT[@]}"; do
+      link_to_agents "$dep"
+    done
+  fi
+  exit 0
+fi
 
 ENDPOINT="${NUWAX_S3_ENDPOINT:-https://s3.nuwax.com:9443}"
 BUCKET="${NUWAX_S3_BUCKET:-nuwax-packages}"
@@ -108,4 +157,19 @@ if [[ "$NO_BUNDLE" -ne 1 && "$SKILL_NAME" == "nuwa-cli-usage" ]]; then
     echo "[INFO] 套件随装: $dep"
     install_one "$dep"
   done
+fi
+
+# 挂链规则：默认挂链；--no-link 或显式 --target（如 agent-store 场景）不挂。
+if [[ "$NO_LINK" -eq 1 ]]; then
+  echo "[INFO] --no-link：跳过 agent 目录挂链"
+elif [[ "$TARGET_EXPLICIT" -eq 1 ]]; then
+  echo "[INFO] 显式 --target：只装不挂链（agent-store 场景由平台侧发现）"
+else
+  echo "[INFO] 挂链到本机 agent 技能目录（--no-link 关闭）"
+  link_to_agents "$SKILL_NAME"
+  if [[ "$NO_BUNDLE" -ne 1 && "$SKILL_NAME" == "nuwa-cli-usage" ]]; then
+    for dep in "${BUNDLE_WITH_DEFAULT[@]}"; do
+      link_to_agents "$dep"
+    done
+  fi
 fi

@@ -1,8 +1,9 @@
 ---
 name: nuwa-cli-usage
-version: 0.2.2
 description: nuwa-cli 技能套件总入口。覆盖两块：① nuwa-cli 生命周期运维——安装、升级、登录、服务管理（gateway/file-server/lanproxy）、排障；② 通过随装的 nuwax-platform-access 使用 nuwax 平台能力——资料库文档同步、平台会话、文件上传、技能库同步发布、nuwax/nuwax-mobile 路由参数对照。当用户要求安装/升级/卸载 nuwa-cli、检查版本/服务/登录状态、排障 CLI、或任何「让 Agent 接入 nuwax 平台/同步文档到资料库/操作平台 API」的场景时触发。
 metadata:
+  platformSkillId: 723
+  version: "0.2.3"
   syncedAt: "2026-09-02"
 ---
 
@@ -64,7 +65,17 @@ bash <(curl -fsSL …install-skill.sh) nuwax-platform-access --no-bundle
 # 装到某 agent 专属目录：加 --target ~/.nuwa-cli/workspaces/<user>/.agent-store/<agentId>/skills
 ```
 
-安装目标目录加入 agent CLI 的 skills 搜索路径即可被发现（ZCode：`~/.zcode/skills/` 可软链）。套件成员也可从平台技能库分发（platform-access=722、nuwa-cli-usage=723，同步契约见 platform-access 的 `references/platform-skill-sync.md`）。
+安装脚本装完会**自动软链到本机 agent 技能目录**（`--no-link` 关闭；显式 `--target` 如 agent-store 场景不挂链）。覆盖矩阵：
+
+| 挂链目录 | 生效引擎 |
+|---|---|
+| `~/.claude/skills` | Claude Code；OpenCode（官方兼容读取） |
+| `~/.codex/skills` | Codex CLI |
+| `~/.cursor/skills` | Cursor |
+| `~/.zcode/skills` | ZCode |
+| `~/.agents/skills` | OpenCode（官方全局路径）；Gemini CLI（官方别名） |
+
+软链指回安装目录，升级重跑安装脚本即全引擎生效；agent 目录下已存在真实目录（非软链）时不接管、打印 WARN。套件成员也可从平台技能库分发（platform-access=722、nuwa-cli-usage=723，同步契约见 platform-access 的 `references/platform-skill-sync.md`）。
 
 ## 5. 逃生口
 

@@ -12,7 +12,8 @@
   },
   "files": [
     "dist",
-    "scripts/preuninstall-release-locks.mjs"
+    "scripts/preuninstall-release-locks.mjs",
+    "skills/scripts"
   ],
   "scripts": {
     "prepare": "npm run build",

@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`nuwa-cli skill` 子命令：** install/update/link/list——S3 下载、原子落盘、自动软链到本机 agent 技能目录（五目录覆盖 Claude Code/Codex/Cursor/ZCode/OpenCode/Gemini 六引擎）；npm 包随附 skills/scripts，安装逻辑单一事实源仍是 install-skill.sh。
+- **install-skill.sh 自动挂链：** 装完默认软链到 `~/.claude|codex|cursor|zcode|agents/skills`（--no-link 关闭；--link-only 只补链；显式 --target 不挂）。修复「装到 ~/.nuwa-cli/skills 无 agent 可读」的发现层断裂。
+- **publish-skill.sh 发布门禁：** frontmatter 合规校验（agentskills.io 规范子集，违规拒发）；版本单源读 metadata.version；发布日自动刷新 syncedAt。
+- **sync_platform_skill.py：** skill 全链同步一条命令——本地正本 → S3 → 平台技能库（add/update 差集）→ export 逐字节核验 → publish/apply。
+
 ### Changed
 
+- **技能 frontmatter 统一：** 版本统一放 `metadata.version`（去顶层非规范 `version:` 与双写冗余）；nuwa-cli-usage 0.2.2→0.2.3、nuwax-platform-access 1.2.3→1.2.4。
 - **`install` 已装分流：** 与目标同版本 → 直接跳过；异版本 → 自动走 `update`（对齐 S3）。`update` 早退改为比对**全局安装版**（避免 `npx` 已是新版却跳过升级旧全局树）。
 
 ## [0.2.9] - 2026-08-26

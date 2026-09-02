@@ -42,7 +42,41 @@ fi
 [[ -f "$SKILL_DIR/SKILL.md" ]] || { echo "[ERROR] $SKILL_DIR 缺 SKILL.md" >&2; exit 1; }
 
 SKILL_NAME="$(basename "$SKILL_DIR")"
-VERSION="${VERSION:-0.1.0}"
+
+# --- 发布门禁：frontmatter 合规校验（agentskills.io 规范子集）---
+python3 - "$SKILL_DIR/SKILL.md" "$SKILL_NAME" <<'PY' || { echo "[ERROR] frontmatter 校验未过，拒绝发布（规范: agentskills.io/specification）" >&2; exit 1; }
+import re, sys
+path, dirname = sys.argv[1], sys.argv[2]
+text = open(path, encoding="utf-8").read()
+m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+assert m, "缺 frontmatter"
+fm = m.group(1)
+name = re.search(r"^name: (.+)$", fm, re.M)
+desc = re.search(r"^description: (.+)$", fm, re.M)
+assert name, "缺 name"
+assert name.group(1).strip() == dirname, f"name({name.group(1)}) != 目录名({dirname})"
+assert not re.search(r"^version:", fm, re.M), "顶层 version 非规范字段，请移入 metadata.version"
+assert desc and 0 < len(desc.group(1)) <= 1024, "description 缺失或超 1024 字符"
+meta = re.search(r"^metadata:\n((?:  .+\n)+)", fm, re.M)
+assert meta and re.search(r'^  version: "\S+"', meta.group(1), re.M), "缺 metadata.version"
+assert len(text.splitlines()) < 500, "SKILL.md 超过 500 行，请拆分到 references/"
+print("[OK] frontmatter 合规")
+PY
+
+# 版本单源：SKILL.md metadata.version（--version 显式覆盖）
+FM_VERSION=$(python3 -c 'import re,sys; t=open(sys.argv[1],encoding="utf-8").read(); fm=re.match(r"^---\n(.*?)\n---\n",t,re.S).group(1); m=re.search(r"^  version: \"([^\"]+)\"",fm,re.M); print(m.group(1) if m else "")' "$SKILL_DIR/SKILL.md")
+VERSION="${VERSION:-${FM_VERSION:-0.1.0}}"
+
+# 发布即同步：刷正本 syncedAt 为发布日（dry-run 不动正本）
+if [[ "$DRY_RUN" -ne 1 && -n "${VERSION}" ]]; then
+  python3 - "$SKILL_DIR/SKILL.md" "$(date -u +%Y-%m-%d)" <<'PY'
+import re, sys
+path, today = sys.argv[1], sys.argv[2]
+t = open(path, encoding="utf-8").read()
+t2 = re.sub(r'^(  syncedAt: ).*$', rf'\1"{today}"', t, count=1, flags=re.M)
+open(path, "w", encoding="utf-8").write(t2)
+PY
+fi
 
 # --- S3 配置（与 publish-s3.sh 同契约） ---
 ENDPOINT="${NUWAX_S3_ENDPOINT:-https://s3.nuwax.com:9443}"

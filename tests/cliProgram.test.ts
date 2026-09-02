@@ -41,7 +41,25 @@ describe("createProgram", () => {
       "uninstall",
       "update",
       "lang",
+      "skill",
     ]);
+  });
+
+  it("registers skill subcommands", () => {
+    const skill = createProgram().commands.find((c) => c.name() === "skill");
+    expect(skill?.commands.map((c) => c.name())).toEqual([
+      "install",
+      "update",
+      "link",
+      "list",
+    ]);
+    expect(
+      skill?.commands
+        .find((c) => c.name() === "install")
+        ?.options.map((o) => o.long),
+    ).toEqual(
+      expect.arrayContaining(["--version", "--target", "--force", "--no-bundle", "--no-link"]),
+    );
   });
 
   it("registers info overview flags", () => {
