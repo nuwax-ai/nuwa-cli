@@ -910,6 +910,21 @@ h1,h2,h3{ font-family:var(--ff-display); font-weight:600; line-height:1.04; lett
         </ul>
       </div>
     </div>
+
+    <div class="reveal" style="margin-top:26px">
+      <div class="install-card">
+        <div class="label"><span class="zh">Agent Skills 套件一键安装（公开读，零凭证；latest 定版 + sha256 校验）</span><span class="en">One-line agent skill suite install (public read, no credentials; latest pin + sha256 verified)</span></div>
+        <div class="code-row">
+          <code id="code-skill-pa">bash &lt;(curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/skills/install-skill.sh)</code>
+          <button class="copy-btn" data-copy="code-skill-pa"><svg width="13" height="13"><use href="#i-copy"/></svg><span class="zh">复制</span><span class="en">Copy</span></button>
+        </div>
+        <p class="os-note"><span class="zh">缺省装套件总入口 <code>nuwa-cli-usage</code>（CLI 安装升级/登录/服务运维），并自动随装 <code>nuwax-platform-access</code>（平台 API 底座：资料库/会话/文件/技能库同步/路由参数对照）。只装单个成员：</span><span class="en">Installs the suite entry <code>nuwa-cli-usage</code> (CLI ops) plus <code>nuwax-platform-access</code> (platform API: library/conversations/files/skill sync/route params). Single member:</span>
+          <code>…install-skill.sh nuwax-platform-access --no-bundle</code></p>
+        <p class="os-note"><span class="zh">装到 agent 专属目录：</span><span class="en">Install into an agent's own store:</span>
+          <code>--target ~/.nuwa-cli/workspaces/&lt;user&gt;/.agent-store/&lt;agentId&gt;/skills</code></p>
+        <p class="os-note"><span class="zh"><code>nuwa-cli-usage</code> = CLI 安装/升级/登录/服务运维手册；两者均已同步平台技能库。</span><span class="en"><code>nuwa-cli-usage</code> = CLI install/upgrade/login/service ops manual; both are also published to the platform skill library.</span></p>
+      </div>
+    </div>
   </div>
 </section>
 

@@ -62,7 +62,7 @@ PC_PATTERNS = [
 # 仅收录已实证（源码 onLoad / 跳转 URL 实测）的映射；"id" 语义按页面标注。
 MOBILE_PAGES = {
     "subpackages/pages/agent-detail/agent-detail": {
-        "id": "agentId",  # ⚠️ 与 PC /home/chat/:id 相反
+        "id": "agentId",  # [!] 与 PC /home/chat/:id 相反
         "conversationId": "conversationId",
         "accessToken": "_shell_token",
         "statusBarHeight": "_shell_ui",
@@ -87,8 +87,8 @@ MOBILE_PASSTHROUGH = {
 MOBILE_SHELL_KEYS = {"_rs", "statusBarHeight", "accessToken", "noTicket", "hideShare", "subview", "title", "redirect"}
 
 WARNINGS = [
-    "语义漂移⚠️: PC /home/chat/:id/:agentId 的 :id=conversationId；mobile agent-detail 的 id=agentId。同名不同义，跨端拼接 URL 必须换名。",
-    "顺序漂移⚠️: /home/chat/:id/:agentId 与 /app/chat/:agentId/:id 两段顺序相反。",
+    "语义漂移[!]: PC /home/chat/:id/:agentId 的 :id=conversationId；mobile agent-detail 的 id=agentId。同名不同义，跨端拼接 URL 必须换名。",
+    "顺序漂移[!]: /home/chat/:id/:agentId 与 /app/chat/:agentId/:id 两段顺序相反。",
     "spaceId 仅 PC 有空间域路由（/space/:spaceId/**）；mobile 无对应原生页。",
     "mobile H5 形态 = {API_BASE}/m/?_rs=<nonce>#/<page-path>?<query>（hash 路由），壳参数 _rs/statusBarHeight/accessToken 非业务参数。",
 ]
@@ -173,7 +173,7 @@ def parse(target: str, app: str = "auto", as_json: bool = False):
 def compare() -> str:
     rows = [
         ("会话 conversationId", "path 段 :id（/home/chat/:id/:agentId；/app/chat 中 :id 居末）", "query conversationId（agent-detail，伴随 id=<agentId>）"),
-        ("智能体 agentId", "path 段 :agentId（/agent、/space/:s/agent、/app 前缀）", "query agentId；⚠️ agent-detail 页用 id=agentId"),
+        ("智能体 agentId", "path 段 :agentId（/agent、/space/:s/agent、/app 前缀）", "query agentId；[!] agent-detail 页用 id=agentId"),
         ("空间 spaceId", "path 段 :spaceId（/space/** 域路由）", "无对应原生页（移动端弱化空间域）"),
         ("技能 skillId", "path 段 :skillId（skill-details 三个变体）", "无独立页（H5 内承载）"),
         ("设备 deviceId", "—", "query deviceId（terminal-device-detail）"),
@@ -187,7 +187,7 @@ def compare() -> str:
     for r in rows:
         out.append(f"{r[0]:<18} | {r[1]:<42} | {r[2]}")
     out.append("")
-    out.extend("⚠️ " + w for w in WARNINGS)
+    out.extend("[!] " + w for w in WARNINGS)
     return "\n".join(out)
 
 

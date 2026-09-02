@@ -36,16 +36,18 @@
 | 方法 | 路径（/api/computer 前缀） | 说明 |
 |---|---|---|
 | POST | `/upload-file` | multipart `file` + `userId`/`cId`/`filePath`（+可选 `customTargetDir`） |
-| POST | `/upload-files` | multipart `files[]` + `filePaths[]`，批量 |
-| GET | `/get-file-list` | `userId`/`cId`（+`recursive`/`relativePath` 单层查询，后端已支持） |
+| POST | `/upload-files` | multipart `files[]` + `filePaths[]`，批量（+可选 `customTargetDir`） |
+| GET | `/get-file-list` | `userId`/`cId`（+`recursive`/`relativePath` 单层查询、`customTargetDir` 定向目录） |
 | GET | `/resolve-file` | 按地址取文件（不过滤 dotfile） |
-| GET | `/search-files` | 搜索 |
-| POST | `/files-update` | 批量写文件 |
+| GET | `/search-files` | 有界搜索：`kw` + 必填 `limit`/`maxVisit`/`timeoutMs`（+`customTargetDir`/`relativePath`） |
+| POST | `/files-update` | 批量写文件：create/delete/rename/modify（+可选 `customTargetDir`） |
 | POST | `/generate-file` | 生成文件 |
-| GET | `/download-all-files` | 打包下载 |
+| GET | `/download-all-files` | 打包下载（+可选 `customTargetDir`） |
 | POST | `/zip-workspace` / `/import-project` / `/create-workspace[-v2]` / `/delete-workspace` | 工作区生命周期 |
 | POST | `/execute-command` / `/install-project` / `/init-project-template` / `/push-skills-to-workspace[-v2]` | 执行/装依赖/模板/技能下发 |
 | GET | `/get-logs` | 日志拉取 |
+
+`customTargetDir` = 会话电脑上的任意目录绝对路径：nuwax 会话文件树「打开本地目录」功能的数据面就走它（云网关 `/api/computer/static/*` 映射到本表端点）。注意版本边界：npm `latest=1.4.2` **不含** `relativePath`/`recursive` 单层查询与 `customTargetDir` 全端点支持（git main 1.4.3 起）；未升级到 1.4.3+ 前，nuwa-cli 机器上该功能不可用、文件树退化为全量扁平列表。
 
 上传示例：
 

@@ -2,8 +2,9 @@
 # install-skill.sh — 从 Nuwax S3 (MinIO) 一键安装 skill 到本机技能目录。
 #
 # 用法:
-#   bash install-skill.sh [skillName] [--version 0.1.0] [--target <dir>] [--force]
-#   skillName 缺省 nuwax-platform-access
+#   bash install-skill.sh [skillName] [--version 0.1.0] [--target <dir>] [--force] [--no-bundle]
+#   skillName 缺省 nuwa-cli-usage（套件总入口，自动随装其关联 skill）
+#   套件关联: 装 nuwa-cli-usage 时自动随装 nuwax-platform-access（--no-bundle 关闭）
 #   --target  缺省 $NUWAX_SKILLS_DIR，再缺省 $HOME/.nuwa-cli/skills
 #             （装到某 agent 的 store: --target ~/.nuwa-cli/workspaces/<user>/.agent-store/<agentId>/skills）
 #
@@ -12,16 +13,21 @@
 
 set -euo pipefail
 
-SKILL_NAME="nuwax-platform-access"
+# 套件入口 → 随装列表（总入口 skill 安装时连带安装，保持「一套能力一次装齐」）
+declare -a BUNDLE_WITH_DEFAULT=(nuwax-platform-access)
+
+SKILL_NAME="nuwa-cli-usage"
 VERSION=""
 TARGET="${NUWAX_SKILLS_DIR:-$HOME/.nuwa-cli/skills}"
 FORCE=0
+NO_BUNDLE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --version) VERSION="$2"; shift 2 ;;
     --target) TARGET="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
-    -h|--help) echo "用法: $0 [skillName] [--version v] [--target dir] [--force]"; exit 0 ;;
+    --no-bundle) NO_BUNDLE=1; shift ;;
+    -h|--help) echo "用法: $0 [skillName] [--version v] [--target dir] [--force] [--no-bundle]"; exit 0 ;;
     *) SKILL_NAME="$1"; shift ;;
   esac
 done
@@ -30,7 +36,6 @@ ENDPOINT="${NUWAX_S3_ENDPOINT:-https://s3.nuwax.com:9443}"
 BUCKET="${NUWAX_S3_BUCKET:-nuwax-packages}"
 PREFIX="${NUWAX_S3_SKILL_PREFIX:-agent-engines/nuwa-cli/skills}"
 INSECURE="${NUWAX_S3_INSECURE:-0}"
-PUBLIC="$ENDPOINT/$BUCKET/$PREFIX/$SKILL_NAME"
 
 CURL=(curl -fsSL)
 if [[ "$INSECURE" == "1" ]]; then CURL+=(--insecure); fi
@@ -42,45 +47,65 @@ fetch_try_insecure_on_tls_fail() {
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
-# 1) 定版本
-if [[ -z "$VERSION" ]]; then
-  VERSION=$(fetch "$PUBLIC/latest.json" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])') \
-    || { echo "[ERROR] 无法解析 $PUBLIC/latest.json（检查网络或域名）" >&2; exit 3; }
-fi
-ARTIFACT="$SKILL_NAME-$VERSION.zip"
-ART_URL="$PUBLIC/versions/$VERSION/artifacts/$ARTIFACT"
-echo "[INFO] 安装 $SKILL_NAME@$VERSION ← $ART_URL"
+install_one() {  # install_one <skillName> [version]
+  local NAME="$1" VER="${2:-}"
+  local PUBLIC="$ENDPOINT/$BUCKET/$PREFIX/$NAME"
 
-# 2) 同版本已装检查
-if [[ "$FORCE" -ne 1 && -f "$TARGET/$SKILL_NAME/.installed" ]]; then
-  INSTALLED=$(cat "$TARGET/$SKILL_NAME/.installed" 2>/dev/null || true)
-  if [[ "$INSTALLED" == "$VERSION" ]]; then
-    echo "[OK] 同版本 $VERSION 已安装于 ${TARGET}/${SKILL_NAME}（--force 重装）"
-    exit 0
+  # 1) 定版本
+  if [[ -z "$VER" ]]; then
+    VER=$(fetch "$PUBLIC/latest.json" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])') \
+      || { echo "[ERROR] 无法解析 $PUBLIC/latest.json（检查网络或域名）" >&2; return 3; }
   fi
-fi
+  local ARTIFACT="$NAME-$VER.zip"
+  local ART_URL="$PUBLIC/versions/$VER/artifacts/$ARTIFACT"
+  echo "[INFO] 安装 $NAME@$VER ← $ART_URL"
 
-# 3) 下载 + 校验
-fetch_try_insecure_on_tls_fail "$ART_URL" -o "$STAGE/$ARTIFACT"
-EXPECTED=$(fetch_try_insecure_on_tls_fail "$ART_URL.sha256" | awk '{print $1}')
-ACTUAL=$(shasum -a 256 "$STAGE/$ARTIFACT" | awk '{print $1}')
-[[ "$EXPECTED" == "$ACTUAL" ]] || { echo "[ERROR] sha256 不一致: 期望 $EXPECTED 实得 $ACTUAL" >&2; exit 4; }
-echo "[OK] sha256 校验通过 ($ACTUAL)"
+  # 2) 同版本已装检查
+  if [[ "$FORCE" -ne 1 && -f "$TARGET/$NAME/.installed" ]]; then
+    local INSTALLED
+    INSTALLED=$(cat "$TARGET/$NAME/.installed" 2>/dev/null || true)
+    if [[ "$INSTALLED" == "$VER" ]]; then
+      echo "[OK] 同版本 $NAME@$VER 已安装于 ${TARGET}/${NAME}（--force 重装）"
+      return 0
+    fi
+  fi
 
-# 4) 落盘（原子：先解到临时再 mv 覆盖；兼容带/不带顶层目录两种 zip 布局）
-mkdir -p "$TARGET"
-( cd "$STAGE" && unzip -qo "$ARTIFACT" )
-if [[ ! -d "$STAGE/$SKILL_NAME" && -f "$STAGE/SKILL.md" ]]; then
-  mkdir -p "$STAGE/$SKILL_NAME"
-  while IFS= read -r f; do mv "$f" "$STAGE/$SKILL_NAME/"; done < <(find "$STAGE" -mindepth 1 -maxdepth 1 ! -name "$ARTIFACT" ! -name "$SKILL_NAME")
-fi
-if [[ -d "$TARGET/$SKILL_NAME" ]]; then
-  rm -rf "$TARGET/$SKILL_NAME.bak"
-  mv "$TARGET/$SKILL_NAME" "$TARGET/$SKILL_NAME.bak"
-fi
-mv "$STAGE/$SKILL_NAME" "$TARGET/$SKILL_NAME"
-echo "$VERSION" > "$TARGET/$SKILL_NAME/.installed"
-[[ -d "$TARGET/$SKILL_NAME.bak" ]] && rm -rf "$TARGET/$SKILL_NAME.bak"
+  # 3) 下载 + 校验
+  fetch_try_insecure_on_tls_fail "$ART_URL" -o "$STAGE/$ARTIFACT"
+  local EXPECTED ACTUAL
+  EXPECTED=$(fetch_try_insecure_on_tls_fail "$ART_URL.sha256" | awk '{print $1}')
+  ACTUAL=$(shasum -a 256 "$STAGE/$ARTIFACT" | awk '{print $1}')
+  [[ "$EXPECTED" == "$ACTUAL" ]] || { echo "[ERROR] sha256 不一致: 期望 $EXPECTED 实得 $ACTUAL" >&2; return 4; }
+  echo "[OK] sha256 校验通过 ($ACTUAL)"
 
-echo "[OK] 已安装 $SKILL_NAME@$VERSION → $TARGET/$SKILL_NAME"
-[[ -f "$TARGET/$SKILL_NAME/SKILL.md" ]] && echo "[INFO] 入口: $TARGET/$SKILL_NAME/SKILL.md"
+  # 4) 落盘（原子：先解到临时再 mv 覆盖；兼容带/不带顶层目录两种 zip 布局）
+  mkdir -p "$TARGET"
+  local WORK="$STAGE/work-$NAME"
+  mkdir -p "$WORK"
+  ( cd "$WORK" && unzip -qo "$STAGE/$ARTIFACT" )
+  if [[ ! -d "$WORK/$NAME" && -f "$WORK/SKILL.md" ]]; then
+    mkdir -p "$WORK/$NAME"
+    while IFS= read -r f; do mv "$f" "$WORK/$NAME/"; done < <(find "$WORK" -mindepth 1 -maxdepth 1 ! -name "$NAME")
+  fi
+  if [[ -d "$TARGET/$NAME" ]]; then
+    rm -rf "$TARGET/$NAME.bak"
+    mv "$TARGET/$NAME" "$TARGET/$NAME.bak"
+  fi
+  mv "$WORK/$NAME" "$TARGET/$NAME"
+  echo "$VER" > "$TARGET/$NAME/.installed"
+  [[ -d "$TARGET/$NAME.bak" ]] && rm -rf "$TARGET/$NAME.bak"
+
+  echo "[OK] 已安装 $NAME@$VER → $TARGET/$NAME"
+  # 注意：不能写 `[[ -f ]] && echo` 收尾——测试为假时函数返回 1，set -e 会中止脚本且跳过 bundle 随装
+  if [[ -f "$TARGET/$NAME/SKILL.md" ]]; then echo "[INFO] 入口: $TARGET/$NAME/SKILL.md"; fi
+}
+
+install_one "$SKILL_NAME" "$VERSION"
+
+# 套件随装：总入口 skill 带关联 skill 一起装齐
+if [[ "$NO_BUNDLE" -ne 1 && "$SKILL_NAME" == "nuwa-cli-usage" ]]; then
+  for dep in "${BUNDLE_WITH_DEFAULT[@]}"; do
+    echo "[INFO] 套件随装: $dep"
+    install_one "$dep"
+  done
+fi

@@ -150,6 +150,20 @@ def require_env(name: str) -> str:
 
 
 def configure_stdio_utf8() -> None:
+    """控制台输出编码（Windows 乱码防护）。
+
+    - 非 Windows：强制 UTF-8（终端生态默认）。
+    - Windows：**不要**强设 UTF-8——真实控制台 Python 走 Unicode API 本就正常，
+      强设 UTF-8 会被 GBK 代码页的控制台解码成乱码；重定向时保持控制台代码页。
+      仅兜底 errors=replace，防止 ⚠️ 等 GBK 外字符在重定向时 UnicodeEncodeError 崩溃。
+    """
+    if os.name == "nt":
+        for stream in (sys.stdout, sys.stderr):
+            try:
+                stream.reconfigure(errors="replace")
+            except AttributeError:
+                pass
+        return
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8")

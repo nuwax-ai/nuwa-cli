@@ -1,9 +1,9 @@
 ---
 name: nuwax-platform-access
-version: 1.1.0
+version: 1.2.3
 description: 接入 nuwax 平台底层能力的统一入口：沙箱 API 鉴权、资料库文档导入/导出、会话创建与继续、本机网关与文件服务调用、平台技能库同步发布、nuwax/nuwax-mobile 路由规则解析与两端业务参数对照（会话 Id、空间 Id 等）。当用户要求同步文档到资料库、创建/继续平台会话、上传文件到项目工作区、调用 /api/v1/4sandbox 接口、检查平台凭据可用性、解析 PC/移动端路由参数，或任何「让 Agent 具备 nuwax 平台操作能力」的场景时触发。资料库深度编辑（ops 指令级）见 library-document-management。
 metadata:
-  version: "1.1.0"
+  version: "1.2.3"
   syncedAt: "2026-09-02"
   platformSkillId: 722
 ---
@@ -24,8 +24,8 @@ metadata:
 > ⚠️ 已实测：**nuwa-cli 登录态（savedKey/configKey）≠ 4sandbox 的 SANDBOX_ACCESS_KEY**（后者由平台沙箱/Agent AK 体系按域名签发，跨环境不通用）。探测失败时脚本会给出补救指引：`export SANDBOX_ACCESS_KEY=<AK>`，或写 `~/.nuwa-cli/skill-env.json`：`{"aks": {"<域名>": "ak-..."}}`。每个登录过的域名配一次即可。
 
 ```bash
-# 30 秒体检：凭据是否可用
-python3 scripts/check_env.py
+# 前置体检（五层门禁，用 skill 前先跑）：安装/版本升级/本机服务/登录态/平台 API
+python3 scripts/check_env.py          # 任一层 FAIL 给修复指引，退出码 1
 ```
 
 成败判断铁律：**看响应 JSON 的 `code`，`"0000"` 才是成功——HTTP 200 也可能是失败**（`4030`=缺 Bearer，`4000`=参数/凭据无效，`4040`=路径不存在）。AK 报 `page not found`/`4030` 多半是 AK 的 user 不在目标 space。
@@ -34,7 +34,7 @@ python3 scripts/check_env.py
 
 | 能力 | 脚本 | 一句话 |
 |---|---|---|
-| 凭据体检 | `scripts/check_env.py` | GET /repo/spaces，通了会列出空间与个人空间 ID |
+| **前置体检** | `scripts/check_env.py` | 五层门禁：L1 nuwa-cli 安装 → L2 版本升级（npm 比对）→ L3 本机服务（gateway/file-server/lanproxy）→ L4 登录态 → L5 平台 API；**核心功能前提，先跑这个**；FAIL 层给修复指引 |
 | **文档导入资料库** | `scripts/library_import.py <file.md> [--title X] [--space-id N]` | 走 `POST /repo/import`，一步建页+解析+快照；不传 spaceId 自动选个人空间 |
 | 文档导出 | `scripts/library_export.py <pageId> [--format markdown]` | GET /repo/pages/{id}/export，实时内容 |
 | **创建会话** | `scripts/conversation.py new --agent-id N [--dev-mode]` | POST /conversation/create，打印 conversationId |
@@ -46,7 +46,7 @@ python3 scripts/check_env.py
 
 ## 端点地图（详细格式见 references/）
 
-- **平台会话/Agent**（`references/api-platform.md`）：`POST /conversation/create`、`POST /conversation/chat/stop/{id}`、agent 配置读取——契约与 flow-debugger 已验证实现一致。
+- **平台会话/Agent**（`references/api-platform.md`）：`POST /conversation/create`、`POST /conversation/chat/stop/{id}`、agent 配置读取。
 - **资料库**（`references/api-library.md`）：repo 前缀 13 端点速查 + `/import` 的 `text`/`content`/`fileKey` 语义；**深度 ops 编辑直接读 `library-document-management` 的 references，勿在此重复**。
 - **本机网关/文件**（`references/gateway-local.md`）：`POST :60016/computer/chat`（创建/自动续接同 cwd 会话）、`GET :60016/computer/progress/{id}` SSE、`POST :60015/api/computer/upload-file`；workspaces 布局 `~/.nuwa-cli/workspaces/<user_id>/<cId>/`。
 - **技能库同步**（`references/platform-skill-sync.md`）：沙箱前缀 `/api/v1/4sandbox` 下 `skill/add|update|export` + `publish/apply` 全 REST 链路；UI 直连 `/api/skill/*` 恒 4010；契约正源 `test-nvwa-api.xspaceagi.com/doc.html`。
@@ -70,6 +70,18 @@ python3 scripts/check_env.py                              # 1. 体检
 python3 scripts/library_import.py 报告.md --title 报告      # 2. 导入，回显 pageId/slugId
 ```
 
-**创建会话**：`conversation.py new --agent-id $DEV_AGENT_ID` 拿 conversationId → 消息执行/调试走业务 SSE（参考 flow-debugger/scripts/debug_http.py 的 sse_request）→ 结束 `conversation.py cancel <id>`。
+**创建会话**：`conversation.py new --agent-id $DEV_AGENT_ID` 拿 conversationId → 消息执行/调试走业务 SSE（dev 调试进阶，未配置前可先用网页端）→ 结束 `conversation.py cancel <id>`。
 
 **文件给云侧项目**：`upload_workspace_file.sh 文件 <cId> <userId>` → 云侧文件树即刻可见（经 lanproxy 隧道读本机）。
+
+## 安装 / 升级（套件一键）
+
+套件总入口是 **nuwa-cli-usage**——缺省安装即装齐套件（usage + 本 skill）：
+
+```bash
+bash <(curl -fsSL https://s3.nuwax.com:9443/nuwax-packages/agent-engines/nuwa-cli/skills/install-skill.sh)
+# 只装本 skill（跳过套件关联）：…install-skill.sh nuwax-platform-access --no-bundle
+# 指定 agent 专属目录：…install-skill.sh --target ~/.nuwa-cli/workspaces/<user>/.agent-store/<agentId>/skills
+```
+
+安装目标目录加入 agent CLI 的 skills 搜索路径即可被发现（ZCode：`~/.zcode/skills/`，可软链）。套件成员亦可经平台技能库分发（本 skill=722、usage=723，`references/platform-skill-sync.md`）。
